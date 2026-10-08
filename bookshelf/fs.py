@@ -64,6 +64,7 @@ class Entry:
     size: int
     mtime: float
     parts: tuple          # path below the root, ending with this entry's name
+    path: str = ""        # real (extended-length) path, set for files
 
 
 @dataclass(frozen=True)
@@ -164,7 +165,8 @@ class Library:
                     except OSError:
                         continue
                     entry = Entry(name, self.display_name(name) if is_dir else name, is_dir,
-                                  0 if is_dir else st.st_size, st.st_mtime, parts + (name,))
+                                  0 if is_dir else st.st_size, st.st_mtime, parts + (name,),
+                                  "" if is_dir else e.path)
                     (dirs if is_dir else files).append(entry)
         except OSError as err:
             raise NotFound(str(err))

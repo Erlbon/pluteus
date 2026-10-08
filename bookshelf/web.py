@@ -38,7 +38,19 @@ def roots_page(roots: list, urls, user_name: str) -> str:
     return _page("Library", body)
 
 
-def listing_page(root: str, parts: tuple, entries: list, page: int, pages: int, total: int, urls) -> str:
+def _book_label(entry, meta: dict) -> str:
+    if meta.get("title"):
+        by = " &ndash; " + escape(", ".join(meta["authors"])) if meta.get("authors") else ""
+        series = (" <span class='meta'>(%s%s)</span>" % (
+            escape(meta["series"]), " #" + escape(meta["series_index"]) if meta.get("series_index") else "")
+            if meta.get("series") else "")
+        return escape(meta["title"]) + by + series
+    return escape(entry.name)
+
+
+def listing_page(root: str, parts: tuple, entries: list, page: int, pages: int, total: int, urls,
+                 metas: dict | None = None) -> str:
+    metas = metas or {}
     crumbs = ["<a href='%s'>Library</a>" % escape(urls.home()),
               "<a href='%s'>%s</a>" % (escape(urls.browse(root)), escape(root))]
     for i, seg in enumerate(parts):
@@ -50,7 +62,8 @@ def listing_page(root: str, parts: tuple, entries: list, page: int, pages: int, 
                         % (escape(urls.browse(root, e.parts)), escape(e.display)))
         else:
             rows.append("<li><a href='%s'>%s</a><span class='meta'>%s</span></li>"
-                        % (escape(urls.download(root, e.parts)), escape(e.name), _size(e.size)))
+                        % (escape(urls.download(root, e.parts)), _book_label(e, metas.get(e.path, {})),
+                           _size(e.size)))
     here = urls.browse(root, parts)
     pager = ""
     if pages > 1:

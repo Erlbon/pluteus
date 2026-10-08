@@ -3,6 +3,7 @@ import base64
 import os
 
 import pytest
+from epub_factory import make_epub
 from starlette.testclient import TestClient
 
 from bookshelf.app import create_app
@@ -39,6 +40,10 @@ def library(tmp_path):
     _touch(str(comics / "Adult Pub" / ".adult"))
     # a folder name ending in a dot, as found on the real server
     _touch(str(books / "Lescroart, John T." / "Il Tredicesimo Giurato.epub"), b"EPUBDATA" * 100)
+    make_epub(str(books / "Good Author" / "Real Book.epub"), title="The Real Title",
+              authors=("Good Author",), language="no", date="2011-05-01",
+              calibre_series="Great Saga", series_index="3")
+    _touch(str(books / "Good Author" / "Plain Filename.epub"), b"not a real epub")
     _touch(str(tmp_path / "secret.txt"), b"outside the library")
     return tmp_path
 

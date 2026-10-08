@@ -40,6 +40,15 @@ Put it behind HTTPS (a reverse proxy such as Caddy) before exposing it beyond yo
 | `/dl/{root}/{path}` | download, with `Range` support |
 | `/healthz` | unauthenticated, for Docker health checks |
 
+## EPUB metadata
+
+EPUB is the main use, so OPDS entries and web pages show what is inside each book: title, authors,
+series and number (Calibre `calibre:series` tags and EPUB 3 collections), language and year. Only the
+books on the page being shown are read (50 by default), never the whole library. Results are cached in
+SQLite (WAL) keyed on path + size + modified time: a changed file is re-read, a damaged cache file is set
+aside and rebuilt, and deleting it is always safe. Books that cannot be read fall back to their file name.
+Measured on 50 real EPUBs over SMB: about 1 s cold, 18 ms warm. Listing order is still by file name.
+
 ## Access control
 
 - **Per user:** `roots = [...]` limits which roots a user sees (omit for all).

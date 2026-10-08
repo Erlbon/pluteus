@@ -57,6 +57,8 @@ class Config:
     realm: str = "bookshelf"
     auth_cache_seconds: int = 300
     anonymous_user: str = ""   # requests with NO credentials act as this user (off by default)
+    metadata: bool = True      # read title/author/series from inside EPUBs
+    cache_dir: str = ""        # folder for the SQLite metadata cache; "" = in memory only
 
 
 def parse_config(data: dict, check_roots: bool = True) -> Config:
@@ -116,6 +118,8 @@ def parse_config(data: dict, check_roots: bool = True) -> Config:
         realm=str(server.get("realm", "bookshelf")),
         auth_cache_seconds=int(server.get("auth_cache_seconds", 300)),
         anonymous_user=anonymous_user,
+        metadata=bool(data.get("metadata", True)),
+        cache_dir=str(data.get("cache_dir", "")),
     )
 
 

@@ -43,11 +43,22 @@ def nav_entry(title: str, entry_id: str, href: str, updated: float) -> ET.Elemen
     return e
 
 
-def book_entry(title: str, entry_id: str, href: str, mime: str, updated: float, size: int) -> ET.Element:
+def book_entry(title: str, entry_id: str, href: str, mime: str, updated: float, size: int,
+               meta: dict | None = None) -> ET.Element:
+    meta = meta or {}
     e = ET.Element(_q("entry"))
-    _text(e, "title", title)
+    _text(e, "title", meta.get("title") or title)
     _text(e, "id", entry_id)
     _text(e, "updated", _iso(updated))
+    for name in meta.get("authors", ()):
+        _text(ET.SubElement(e, _q("author")), "name", name)
+    if meta.get("language"):
+        ET.SubElement(e, "{%s}language" % DC).text = meta["language"]
+    if meta.get("year"):
+        ET.SubElement(e, "{%s}issued" % DC).text = meta["year"]
+    if meta.get("series"):
+        label = meta["series"] + (" #" + meta["series_index"] if meta.get("series_index") else "")
+        ET.SubElement(e, _q("content"), {"type": "text"}).text = label
     ET.SubElement(e, "{%s}format" % DC).text = mime
     ET.SubElement(e, _q("link"), {"rel": ACQUISITION_REL, "href": href, "type": mime,
                                   "length": str(size)})

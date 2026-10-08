@@ -11,6 +11,11 @@ page_size = 50              # entries per OPDS / web page
 #                           # that cannot log in. Wrong credentials are still refused. Give that user few roots
 #                           # and never adult = true, and do not expose this to the internet.
 
+# EPUB metadata (title, authors, series, language, year) is read from inside each book, only for the
+# books on the page being shown, and cached in a disposable SQLite file (safe to delete at any time).
+# metadata = true
+# cache_dir = 'D:\bookshelf-cache'   # leave out to keep the cache in memory only (lost on restart)
+
 # Folders to serve. The folder tree is read live from disk; nothing is indexed up front.
 # Names appear in URLs, so use letters, digits, - and _ only.
 [[roots]]

@@ -15,6 +15,7 @@ from . import opds, web
 from .auth import Authenticator
 from .config import MIME_TYPES, Config
 from .fs import Library, NotFound, PathError
+from .meta import MetaCache, MetaService
 from .urls import Urls, with_page
 
 
@@ -32,6 +33,7 @@ def _page_number(request: Request) -> int:
 
 def create_app(cfg: Config) -> Starlette:
     lib = Library(cfg)
+    meta = MetaService(MetaCache(cfg.cache_dir), enabled=cfg.metadata)
     auth = Authenticator(cfg.users, cfg.auth_cache_seconds)
     urls = Urls(cfg.base_path)
     challenge = {"WWW-Authenticate": 'Basic realm="%s", charset="UTF-8"' % cfg.realm}
@@ -67,7 +69,8 @@ def create_app(cfg: Config) -> Starlette:
         parts = _parts(request.path_params.get("path", ""))
         entries = await run_in_threadpool(lib.list_dir, user, root, parts)
         shown, page, pages = opds.paginate(entries, _page_number(request), cfg.page_size)
-        return HTMLResponse(web.listing_page(root, parts, shown, page, pages, len(entries), urls))
+        metas = await run_in_threadpool(meta.lookup_many, shown)
+        return HTMLResponse(web.listing_page(root, parts, shown, page, pages, len(entries), urls, metas))
 
     @authed
     async def opds_root(request: Request, user):
@@ -85,6 +88,7 @@ def create_app(cfg: Config) -> Starlette:
         listing = await run_in_threadpool(lib.list_dir, user, root, parts)
         shown, page, pages = opds.paginate(listing, _page_number(request), cfg.page_size)
         here = urls.opds(root, parts)
+        metas = await run_in_threadpool(meta.lookup_many, shown)
         entries = []
         for e in shown:
             eid = "urn:bookshelf:" + root + ":" + "/".join(e.parts)
@@ -93,7 +97,8 @@ def create_app(cfg: Config) -> Starlette:
             else:
                 mime = MIME_TYPES.get(os.path.splitext(e.name)[1].lower(), "application/octet-stream")
                 entries.append(opds.book_entry(e.name.rsplit(".", 1)[0], eid,
-                                               urls.download(root, e.parts), mime, e.mtime, e.size))
+                                               urls.download(root, e.parts), mime, e.mtime, e.size,
+                                               metas.get(e.path)))
         up = urls.opds(root, parts[:-1]) if parts else urls.opds()
         updated = max((e.mtime for e in listing), default=time.time())
         body = opds.build_feed(
