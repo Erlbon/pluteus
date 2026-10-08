@@ -56,6 +56,7 @@ class Config:
     adult_marker: str = ".adult"
     realm: str = "bookshelf"
     auth_cache_seconds: int = 300
+    anonymous_user: str = ""   # requests with NO credentials act as this user (off by default)
 
 
 def parse_config(data: dict, check_roots: bool = True) -> Config:
@@ -92,6 +93,9 @@ def parse_config(data: dict, check_roots: bool = True) -> Config:
     if not users:
         raise ConfigError("no [[users]] defined")
 
+    anonymous_user = str(server.get("anonymous_user", ""))
+    if anonymous_user and anonymous_user not in users:
+        raise ConfigError("anonymous_user %r is not a defined user" % anonymous_user)
     base_path = str(server.get("base_path", "")).rstrip("/")
     if base_path and not base_path.startswith("/"):
         raise ConfigError("base_path must start with /")
@@ -111,6 +115,7 @@ def parse_config(data: dict, check_roots: bool = True) -> Config:
         adult_marker=str(data.get("adult_marker", ".adult")),
         realm=str(server.get("realm", "bookshelf")),
         auth_cache_seconds=int(server.get("auth_cache_seconds", 300)),
+        anonymous_user=anonymous_user,
     )
 
 

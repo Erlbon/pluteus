@@ -39,7 +39,10 @@ def create_app(cfg: Config) -> Starlette:
     def authed(fn):
         @functools.wraps(fn)
         async def wrapper(request: Request):
-            user = auth.authenticate(request.headers.get("authorization"))
+            header = request.headers.get("authorization")
+            user = auth.authenticate(header)
+            if user is None and not header and cfg.anonymous_user:
+                user = cfg.users[cfg.anonymous_user]     # no credentials sent at all
             if user is None:
                 return PlainTextResponse("Authentication required", 401, headers=challenge)
             try:

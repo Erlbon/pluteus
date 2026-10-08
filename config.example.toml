@@ -7,6 +7,9 @@ port = 8080
 page_size = 50              # entries per OPDS / web page
 # base_path = "/library"    # only when served under a prefix by a reverse proxy
 # auth_cache_seconds = 300  # successful logins are remembered this long (reader apps send credentials on every request)
+# anonymous_user = "guest"  # OFF by default. Requests that send NO credentials act as this user, for reader apps
+#                           # that cannot log in. Wrong credentials are still refused. Give that user few roots
+#                           # and never adult = true, and do not expose this to the internet.
 
 # Folders to serve. The folder tree is read live from disk; nothing is indexed up front.
 # Names appear in URLs, so use letters, digits, - and _ only.

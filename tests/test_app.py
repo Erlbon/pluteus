@@ -38,6 +38,28 @@ def test_wrong_password_is_refused(client):
     assert client.get("/opds", headers=basic("ghost", "pw-alice")).status_code == 401
 
 
+def test_anonymous_user_is_opt_in_and_never_overrides_bad_credentials(cfg):
+    import dataclasses
+
+    from starlette.testclient import TestClient
+
+    from bookshelf.app import create_app
+    from bookshelf.config import ConfigError, parse_config
+    from conftest import basic
+
+    anon = TestClient(create_app(dataclasses.replace(cfg, anonymous_user="carol")))
+    assert titles(feed(anon.get("/opds"))) == ["comics"]                       # carol's roots only
+    assert anon.get("/opds/books").status_code == 404
+    assert anon.get("/opds", headers=basic("alice", "wrong")).status_code == 401
+    assert titles(feed(anon.get("/opds", headers=basic("alice", "pw-alice")))) == ["comics", "books"]
+    off = TestClient(create_app(cfg))
+    assert off.get("/opds").status_code == 401                                 # default stays closed
+    import pytest
+    with pytest.raises(ConfigError):
+        parse_config({"server": {"anonymous_user": "ghost"}, "roots": [{"name": "r", "path": "."}],
+                      "users": [{"name": "u", "password_hash": "scrypt$1$2$3$4$5"}]})
+
+
 # ---- roots and per-user access -------------------------------------------
 def test_opds_root_lists_only_the_users_roots(client, alice, carol):
     assert titles(feed(client.get("/opds", headers=alice))) == ["comics", "books"]
