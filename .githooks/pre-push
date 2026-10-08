@@ -1,0 +1,4 @@
+#!/bin/sh
+# Test gate: the tests must pass before anything is pushed.
+python -m pytest -q || { echo "pre-push: the tests fail; not pushing" >&2; exit 1; }
+exit 0

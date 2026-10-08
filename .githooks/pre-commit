@@ -1,0 +1,29 @@
+#!/bin/sh
+# Syntax gate (2026-10-02): a staged Python file must parse and a staged JavaScript file must pass `node --check`.
+# Added after a patch script turned a backslash-n into a real line break and a broken build script was committed and pushed.
+# Control-character gate (2026-10-03): a patch script also turns backslash-b / backslash-1 / backslash-x into control characters
+# (backspace, \x01, ...) INSIDE a regex or a string, which still parses, so the syntax check passes (a `\bEx\b` rule that
+# silently matched nothing, a `\1\2` back-reference that became \x01\x02). No source or text file may contain one.
+fail=0
+for f in $(git diff --cached --name-only --diff-filter=ACM); do
+  case "$f" in
+    *.py)
+      python -c "import ast,sys; ast.parse(open(sys.argv[1], encoding='utf-8').read())" "$f" || { echo "pre-commit: syntax error in $f" >&2; fail=1; } ;;
+    *.js|*.mjs)
+      node --check "$f" || { echo "pre-commit: syntax error in $f" >&2; fail=1; } ;;
+  esac
+  case "$f" in
+    *.py|*.js|*.mjs|*.gs|*.css|*.html|*.md|*.sql|*.toml|*.json|*.sh|*.bat|*.yml|*.yaml|*.txt)
+      python - "$f" <<'PYEOF' || { echo "pre-commit: control character in $f (a backslash escape was turned into a real character?)" >&2; fail=1; }
+import sys
+data = open(sys.argv[1], "rb").read()
+bad = sorted({c for c in data if c < 32 and c not in (9, 10, 13)})
+if bad:
+    line = data[:data.index(bytes([bad[0]]))].count(b"\n") + 1
+    print(f"{sys.argv[1]}: byte(s) {[hex(c) for c in bad]}, first on line {line}", file=sys.stderr)
+    sys.exit(1)
+PYEOF
+      ;;
+  esac
+done
+exit $fail

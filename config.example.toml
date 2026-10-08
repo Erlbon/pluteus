@@ -1,0 +1,45 @@
+# bookshelf configuration. Copy to config.toml (git-ignored) and edit.
+# Check it with:  python -m bookshelf check-config --config config.toml
+
+[server]
+host = "127.0.0.1"          # use "0.0.0.0" inside Docker or to serve the LAN
+port = 8080
+page_size = 50              # entries per OPDS / web page
+# base_path = "/library"    # only when served under a prefix by a reverse proxy
+# auth_cache_seconds = 300  # successful logins are remembered this long (reader apps send credentials on every request)
+
+# Folders to serve. The folder tree is read live from disk; nothing is indexed up front.
+# Names appear in URLs, so use letters, digits, - and _ only.
+[[roots]]
+name = "books"
+path = 'D:\eLib\800 - Fiction'
+
+[[roots]]
+name = "comics"
+path = 'E:\eLib\741.59 - Comic Books'
+
+# Folder or file names to hide anywhere (case-insensitive), on top of the built-in
+# list (Recycle Bin, Thumbs.db, ...). Names starting with a dot are always hidden.
+exclude = ["_incoming", "_Quarantine", "_sort", "_Trash Folder", "_Thrash"]
+
+# File types that are listed and downloadable.
+extensions = [".epub", ".cbz", ".pdf"]
+
+# Leading numbers such as "3.23 - " or "0. " are removed from FOLDER display names
+# (sorting still uses the real name). Set to "" to show names untouched.
+# display_strip = '^\d+(?:\.\d+)*(?: - |\.\s+)'
+
+# A folder containing a file with this name (and everything below it) is hidden from
+# users who do not have adult = true. Hidden folders answer 404, like missing ones.
+adult_marker = ".adult"
+
+# Users. Make a password hash with:  python -m bookshelf hash-password
+[[users]]
+name = "erlend"
+password_hash = "scrypt$16384$8$1$replace-with-output-of-hash-password"
+adult = true
+
+[[users]]
+name = "guest"
+password_hash = "scrypt$16384$8$1$replace-with-output-of-hash-password"
+roots = ["books"]           # omit to allow every root

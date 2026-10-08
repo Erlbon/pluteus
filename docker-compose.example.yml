@@ -1,0 +1,14 @@
+# UNTESTED example. In config.toml use host = "0.0.0.0" and the container paths below.
+# On Windows, bind-mounting a Windows drive into Docker Desktop goes through the WSL2
+# file-sharing layer, which is slow for folder walks: benchmark before choosing Docker
+# over running bookshelf natively (see README).
+services:
+  bookshelf:
+    build: .
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./config.toml:/config/config.toml:ro
+      - /path/to/books:/library/books:ro
+      - /path/to/comics:/library/comics:ro
+    restart: unless-stopped

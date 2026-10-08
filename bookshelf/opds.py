@@ -1,0 +1,83 @@
+"""OPDS 1.2 (Atom) feeds: one navigation feed per folder, books as acquisition entries."""
+from __future__ import annotations
+
+import time
+import xml.etree.ElementTree as ET
+
+ATOM = "http://www.w3.org/2005/Atom"
+OPDS = "http://opds-spec.org/2010/catalog"
+DC = "http://purl.org/dc/terms/"
+ET.register_namespace("", ATOM)
+ET.register_namespace("opds", OPDS)
+ET.register_namespace("dc", DC)
+
+NAV_TYPE = "application/atom+xml;profile=opds-catalog;kind=navigation"
+ACQ_TYPE = "application/atom+xml;profile=opds-catalog;kind=acquisition"
+ACQUISITION_REL = "http://opds-spec.org/acquisition"
+
+
+def _q(tag: str) -> str:
+    return "{%s}%s" % (ATOM, tag)
+
+
+def _iso(ts: float) -> str:
+    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(ts))
+
+
+def _text(parent, tag: str, text: str):
+    el = ET.SubElement(parent, _q(tag))
+    el.text = text
+    return el
+
+
+def _link(parent, rel: str, href: str, type_: str):
+    ET.SubElement(parent, _q("link"), {"rel": rel, "href": href, "type": type_})
+
+
+def nav_entry(title: str, entry_id: str, href: str, updated: float) -> ET.Element:
+    e = ET.Element(_q("entry"))
+    _text(e, "title", title)
+    _text(e, "id", entry_id)
+    _text(e, "updated", _iso(updated))
+    _link(e, "subsection", href, NAV_TYPE)
+    return e
+
+
+def book_entry(title: str, entry_id: str, href: str, mime: str, updated: float, size: int) -> ET.Element:
+    e = ET.Element(_q("entry"))
+    _text(e, "title", title)
+    _text(e, "id", entry_id)
+    _text(e, "updated", _iso(updated))
+    ET.SubElement(e, "{%s}format" % DC).text = mime
+    ET.SubElement(e, _q("link"), {"rel": ACQUISITION_REL, "href": href, "type": mime,
+                                  "length": str(size)})
+    return e
+
+
+def build_feed(*, title: str, feed_id: str, self_href: str, start_href: str, updated: float,
+               entries: list, up_href: str | None = None, next_href: str | None = None,
+               prev_href: str | None = None) -> bytes:
+    has_books = any(e.find(_q("link")).get("rel") == ACQUISITION_REL for e in entries)
+    kind = ACQ_TYPE if has_books else NAV_TYPE
+    feed = ET.Element(_q("feed"))
+    _text(feed, "id", feed_id)
+    _text(feed, "title", title)
+    _text(feed, "updated", _iso(updated))
+    _link(feed, "self", self_href, kind)
+    _link(feed, "start", start_href, NAV_TYPE)
+    if up_href:
+        _link(feed, "up", up_href, NAV_TYPE)
+    if prev_href:
+        _link(feed, "previous", prev_href, kind)
+    if next_href:
+        _link(feed, "next", next_href, kind)
+    for e in entries:
+        feed.append(e)
+    return ET.tostring(feed, encoding="utf-8", xml_declaration=True)
+
+
+def paginate(items: list, page: int, size: int):
+    """Return (slice, page, pages) with page clamped into range."""
+    pages = max(1, -(-len(items) // size))
+    page = min(max(1, page), pages)
+    return items[(page - 1) * size: page * size], page, pages
