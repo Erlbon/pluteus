@@ -69,6 +69,17 @@ paging, display names, exclusions, the adult marker, path traversal, Range downl
 whose name ends in a dot. A read-only smoke test against the real libraries over SMB showed
 feed times of 10-40 ms, including a 476-file folder.
 
+## Hard requirements from the owner (to shape every later phase)
+
+- **Skinnable readers.** The EPUB reader and the comic/page reader must be restyled by CSS, not only the
+  library pages (in Ubooquity the readers ignore its theme system). Build the readers with CSS variables,
+  replaceable assets and themeable menus from the first line.
+- **Themes hot-reload** and are not cached for an hour.
+- **Crash-safe store.** Ubooquity's embedded database corrupted on this library. The planned cache is
+  SQLite in WAL mode, disposable and rebuildable, scanned incrementally, never held whole in memory.
+  Test with a very large synthetic library.
+- **Reading progress** per user, and **reverse-proxy base paths** (`base_path` already works).
+
 ## Not yet (planned)
 
 1. **Phase 1b**: filename search (background crawler, SQLite FTS5 cache keyed on path+size+mtime), OpenSearch link in feeds.
