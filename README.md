@@ -82,11 +82,16 @@ feed times of 10-40 ms, including a 476-file folder.
 
 ## Not yet (planned)
 
-1. **Phase 1b**: filename search (background crawler, SQLite FTS5 cache keyed on path+size+mtime), OpenSearch link in feeds.
-2. Reader-app compatibility pass (KOReader plus one iOS and one Android app): MIME type for CBZ,
+In priority order (search is only a nice-to-have, decided 2026-10-08):
+
+1. Reader-app compatibility pass (KOReader plus one iOS and one Android app): MIME type for CBZ,
    absolute vs relative links, auth behaviour.
-3. **Phase 2**: web login page and sessions, CBZ page streaming (OPDS-PSE), optional epub/cbz metadata.
-4. **Phase 3**: per-user upload/download areas, quotas, WebDAV (wsgidav).
-5. Docker image: the `Dockerfile` and compose file are written but **untested**.
-6. No covers by design (not wanted); no CBR support (not needed).
-7. No rate limiting on failed logins yet.
+2. **Phase 2**: web login page and sessions, the skinnable EPUB and comic readers (CSS variables,
+   hot-reloading themes), CBZ page streaming (OPDS-PSE), reading progress per user (this is where the
+   crash-safe SQLite store first appears).
+3. **Phase 3**: per-user upload/download areas, quotas, WebDAV (wsgidav).
+4. Docker image: the `Dockerfile` and compose file are written but **untested**; benchmark native vs Docker on the server first.
+5. No rate limiting on failed logins yet.
+6. **Nice to have**: filename search (background crawler, SQLite FTS5 cache keyed on path+size+mtime),
+   OpenSearch link in feeds, epub/cbz metadata in feeds.
+7. No covers by design (not wanted); no CBR support (not needed).
