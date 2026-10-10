@@ -1,8 +1,12 @@
 # pluteus configuration. Copy to config.toml (git-ignored) and edit.
 # Check it with:  python -m pluteus check-config --config config.toml
+#
+# TOML rule worth knowing: a key belongs to the [table] header ABOVE it. Every setting below lives
+# in [server], so keep them there. A setting typed under [[roots]] or [[users]] is refused with an
+# error, never silently ignored.
 
 [server]
-host = "127.0.0.1"          # use "0.0.0.0" inside Docker or to serve the LAN
+host = "127.0.0.1"          # use "0.0.0.0" inside Docker or to serve the whole LAN
 port = 8080
 page_size = 50              # entries per OPDS / web page
 # base_path = "/library"    # only when served under a prefix by a reverse proxy
@@ -16,18 +20,8 @@ page_size = 50              # entries per OPDS / web page
 # metadata = true
 # cache_dir = 'D:\pluteus-cache'   # leave out to keep the cache in memory only (lost on restart)
 
-# Folders to serve. The folder tree is read live from disk; nothing is indexed up front.
-# Names appear in URLs, so use letters, digits, - and _ only.
-[[roots]]
-name = "books"
-path = 'D:\eLib\800 - Fiction'
-
-[[roots]]
-name = "comics"
-path = 'E:\eLib\741.59 - Comic Books'
-
-# Folder or file names to hide anywhere (case-insensitive), on top of the built-in
-# list (Recycle Bin, Thumbs.db, ...). Names starting with a dot are always hidden.
+# Folder or file names to hide anywhere (case-insensitive), on top of the built-in list
+# (Recycle Bin, Thumbs.db, ...). Names starting with a dot are always hidden.
 exclude = ["_incoming", "_Quarantine", "_sort", "_Trash Folder", "_Thrash"]
 
 # File types that are listed and downloadable.
@@ -41,7 +35,21 @@ extensions = [".epub", ".cbz", ".pdf"]
 # users who do not have adult = true. Hidden folders answer 404, like missing ones.
 adult_marker = ".adult"
 
-# Users. Make a password hash with:  python -m pluteus hash-password
+# Folders to serve. The folder tree is read live from disk; nothing is indexed up front.
+# Names appear in URLs, so use letters, digits, - and _ only.
+[[roots]]
+name = "books"
+path = 'D:\eLib\800 - Fiction'
+
+[[roots]]
+name = "comics"
+path = 'E:\eLib\741.59 - Comic Books'
+
+# Users. Manage them with the CLI instead of editing by hand:
+#   python -m pluteus user add NAME --config config.toml
+#   python -m pluteus user set NAME --adult | --roots books,comics | --password
+#   python -m pluteus user list | remove NAME
+# A running server picks up user changes within a few seconds.
 [[users]]
 name = "erlend"
 password_hash = "scrypt$16384$8$1$replace-with-output-of-hash-password"

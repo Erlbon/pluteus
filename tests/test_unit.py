@@ -76,6 +76,36 @@ def test_config_rejects_bad_input():
         parse_config(_base(roots=[{"name": "r", "path": "/no/such/folder/anywhere"}]))
 
 
+def test_misplaced_settings_are_errors_not_silently_ignored():
+    # a setting typed under [[roots]] / [[users]] belongs to that table in TOML and would do nothing
+    with pytest.raises(ConfigError, match="exclude.*\\[server\\]"):
+        parse_config(_base(roots=[{"name": "r", "path": ".", "exclude": ["x"]}]))
+    with pytest.raises(ConfigError, match="unknown key 'adulte'"):
+        parse_config(_base(users=[{"name": "u", "password_hash": "scrypt$1$2$3$4$5", "adulte": True}]))
+    with pytest.raises(ConfigError, match="unknown key 'bogus'"):
+        parse_config(_base(server={"bogus": 1}))
+    with pytest.raises(ConfigError, match="unknown key 'bogus'"):
+        parse_config(_base(bogus=1))
+
+
+def test_settings_work_in_server_or_at_the_top_level_and_server_wins():
+    top = parse_config(_base(exclude=["A"], cache_dir="top", metadata=False))
+    assert "a" in top.excludes and top.cache_dir == "top" and top.metadata is False
+    inside = parse_config(_base(server={"exclude": ["B"], "cache_dir": "srv", "adult_marker": ".x"}))
+    assert "b" in inside.excludes and inside.cache_dir == "srv" and inside.adult_marker == ".x"
+    both = parse_config(_base(cache_dir="top", server={"cache_dir": "srv"}))
+    assert both.cache_dir == "srv"
+
+
+def test_the_shipped_example_config_parses_and_applies_its_settings():
+    import tomllib
+    from pathlib import Path
+    data = tomllib.loads(Path(__file__).resolve().parent.parent.joinpath("config.example.toml").read_text("utf-8"))
+    cfg = parse_config(data, check_roots=False)
+    assert "_incoming" in cfg.excludes and cfg.adult_marker == ".adult"
+    assert cfg.extensions == (".epub", ".cbz", ".pdf")
+
+
 def test_config_defaults_and_extensions():
     cfg = parse_config(_base(extensions=["EPUB", ".cbz"], exclude=["Scratch"]))
     assert cfg.extensions == (".epub", ".cbz")

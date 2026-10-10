@@ -61,12 +61,34 @@ class Config:
     cache_dir: str = ""        # folder for the SQLite metadata cache; "" = in memory only
 
 
+# TOML puts every key written after a [table] header INTO that table, so a setting typed under
+# [[roots]] by mistake would silently do nothing. Every table's keys are therefore checked.
+_SERVER_KEYS = {"host", "port", "page_size", "base_path", "realm", "auth_cache_seconds", "anonymous_user"}
+_GLOBAL_KEYS = {"exclude", "extensions", "display_strip", "adult_marker", "metadata", "cache_dir"}
+_ROOT_KEYS = {"name", "path"}
+_USER_KEYS = {"name", "password_hash", "roots", "adult"}
+
+
+def _check_keys(table: dict, allowed: set, where: str) -> None:
+    for key in table:
+        if key not in allowed:
+            hint = ""
+            if key in _SERVER_KEYS | _GLOBAL_KEYS:
+                hint = " (it is a setting: put it in [server], or above the first [table] header)"
+            raise ConfigError("unknown key %r in %s%s" % (key, where, hint))
+
+
 def parse_config(data: dict, check_roots: bool = True) -> Config:
     from .fs import longpath
 
+    _check_keys(data, {"server", "roots", "users"} | _GLOBAL_KEYS, "the top level")
     server = data.get("server", {})
+    _check_keys(server, _SERVER_KEYS | _GLOBAL_KEYS, "[server]")
+    # Settings may live in [server] or above the first table header; [server] wins.
+    opts = {**{k: data[k] for k in _GLOBAL_KEYS if k in data}, **server}
     roots = {}
     for r in data.get("roots", []):
+        _check_keys(r, _ROOT_KEYS, "[[roots]] %r" % r.get("name", "?"))
         name, path = r.get("name", ""), r.get("path", "")
         if not _NAME_RE.match(name):
             raise ConfigError("root name %r must use only letters, digits, - and _" % name)
@@ -80,6 +102,7 @@ def parse_config(data: dict, check_roots: bool = True) -> Config:
 
     users = {}
     for u in data.get("users", []):
+        _check_keys(u, _USER_KEYS, "[[users]] %r" % u.get("name", "?"))
         name = u.get("name", "")
         if not name or ":" in name:
             raise ConfigError("user name %r must be non-empty and contain no colon" % name)
@@ -102,9 +125,9 @@ def parse_config(data: dict, check_roots: bool = True) -> Config:
     if base_path and not base_path.startswith("/"):
         raise ConfigError("base_path must start with /")
     extensions = tuple(e.lower() if e.startswith(".") else "." + e.lower()
-                       for e in data.get("extensions", DEFAULT_EXTENSIONS))
-    excludes = frozenset(n.lower() for n in (*DEFAULT_EXCLUDES, *data.get("exclude", ())))
-    strip = data.get("display_strip", DEFAULT_DISPLAY_STRIP)
+                       for e in opts.get("extensions", DEFAULT_EXTENSIONS))
+    excludes = frozenset(n.lower() for n in (*DEFAULT_EXCLUDES, *opts.get("exclude", ())))
+    strip = opts.get("display_strip", DEFAULT_DISPLAY_STRIP)
     try:
         re.compile(strip)
     except re.error as e:
@@ -114,16 +137,16 @@ def parse_config(data: dict, check_roots: bool = True) -> Config:
         host=str(server.get("host", "127.0.0.1")), port=int(server.get("port", 8080)),
         page_size=int(server.get("page_size", 50)), base_path=base_path,
         display_strip=strip, extensions=extensions, excludes=excludes,
-        adult_marker=str(data.get("adult_marker", ".adult")),
+        adult_marker=str(opts.get("adult_marker", ".adult")),
         realm=str(server.get("realm", "pluteus")),
         auth_cache_seconds=int(server.get("auth_cache_seconds", 300)),
         anonymous_user=anonymous_user,
-        metadata=bool(data.get("metadata", True)),
-        cache_dir=str(data.get("cache_dir", "")),
+        metadata=bool(opts.get("metadata", True)),
+        cache_dir=str(opts.get("cache_dir", "")),
     )
 
 
-def load_config(path: str) -> Config:
+def load_config(path: str, check_roots: bool = True) -> Config:
     try:
         with open(path, "rb") as f:
             data = tomllib.load(f)
@@ -131,4 +154,4 @@ def load_config(path: str) -> Config:
         raise ConfigError("cannot read %s: %s" % (path, e))
     except tomllib.TOMLDecodeError as e:
         raise ConfigError("%s is not valid TOML: %s" % (path, e))
-    return parse_config(data)
+    return parse_config(data, check_roots)
