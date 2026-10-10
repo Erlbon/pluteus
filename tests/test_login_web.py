@@ -113,11 +113,33 @@ def test_scheme_toggle_script_and_favicon(web):
     client, _ = web
     js = client.get("/static/scheme.js")
     assert js.status_code == 200 and "data-scheme" in js.text and "localStorage" in js.text
-    assert client.get("/static/favicon.svg").status_code == 200
     page = client.get("/login").text
     assert "pl-scheme" in page and "rel='icon'" in page
     assert "scheme.js' defer" not in page and "<script src='/static/scheme.js'></script>" in page   # runs before first paint
     assert page.index("scheme.js") < page.index("<body")
+
+
+def test_the_book_icon_is_served_as_favicon_home_screen_icon_and_manifest(web):
+    import json
+    client, _ = web
+    page = client.get("/login").text
+    for href in ("/static/icon/favicon.ico", "/static/icon/favicon-32.png", "/static/icon/apple-touch-icon.png",
+                 "/static/manifest.webmanifest"):
+        assert "href='%s'" % href in page, href
+    png, ico = b"\x89PNG\r\n\x1a\n", b"\x00\x00\x01\x00"
+    for url, magic in (("/static/icon/icon-512.png", png), ("/static/icon/icon-192.png", png),
+                       ("/static/icon/apple-touch-icon.png", png), ("/static/icon/favicon-32.png", png),
+                       ("/static/icon/favicon-16.png", png), ("/static/icon/favicon.ico", ico), ("/favicon.ico", ico)):
+        r = client.get(url)
+        assert r.status_code == 200 and r.content.startswith(magic), url
+    manifest = client.get("/static/manifest.webmanifest")
+    assert manifest.headers["content-type"].startswith("application/manifest+json")
+    data = json.loads(manifest.text)
+    assert data["name"] == "pluteus" and {i["sizes"] for i in data["icons"]} == {"192x192", "512x512"}
+    from PIL import Image
+    import io
+    assert Image.open(io.BytesIO(client.get("/static/icon/icon-512.png").content)).size == (512, 512)
+    assert "icon-192.png" in client.get("/theme/default/theme.css").text                    # the login-card logo
 
 
 def test_all_built_in_themes_are_selectable(web):

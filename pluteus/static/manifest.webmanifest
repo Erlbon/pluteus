@@ -1,0 +1,14 @@
+{
+  "name": "pluteus",
+  "short_name": "pluteus",
+  "description": "Filesystem-first book and comic server",
+  "start_url": "../",
+  "scope": "../",
+  "display": "standalone",
+  "background_color": "#14171f",
+  "theme_color": "#14171f",
+  "icons": [
+    { "src": "icon/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icon/icon-512.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}

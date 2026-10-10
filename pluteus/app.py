@@ -35,7 +35,7 @@ from .themes import DEFAULT, Themes
 from .urls import Urls, with_page
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
-STATIC_ALLOWED = {".css", ".js", ".svg", ".png", ".ico", ".woff2"}
+STATIC_ALLOWED = {".css", ".js", ".svg", ".png", ".ico", ".woff2", ".webmanifest"}
 SAFE_METHODS = {"GET", "HEAD", "OPTIONS"}
 CSP = ("default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; "
        "font-src 'self' data: blob:; connect-src 'self'; frame-src 'self' blob:; object-src 'none'; "
@@ -237,6 +237,10 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
             return PlainTextResponse("Not found", 404)
         return revalidated(request, path)
 
+    async def favicon(request: Request):
+        # Some clients ask for /favicon.ico whatever the page says.
+        return revalidated(request, STATIC_DIR / "icon" / "favicon.ico")
+
     async def theme_file(request: Request):
         name = request.path_params["name"]
         if name == "_":
@@ -370,6 +374,7 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
     routes = [
         Route("/healthz", healthz),
         Route("/static/{path:path}", static),
+        Route("/favicon.ico", favicon),
         Route("/theme/{name}/{path:path}", theme_file),
         Route("/login", login_form, methods=["GET"]),
         Route("/login", login_submit, methods=["POST"]),

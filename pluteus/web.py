@@ -36,10 +36,18 @@ def layout(title: str, body: str, ctx: Ctx, *, head: str = "", scripts: tuple = 
     # scheme.js is NOT deferred: it must run before the first paint so a saved dark/light choice never flashes.
     return ("<!doctype html><html lang='en'><head><meta charset='utf-8'>"
             "<meta name='viewport' content='width=device-width, initial-scale=1'>"
-            "<title>%s</title><link rel='icon' type='image/svg+xml' href='%s'>%s<script src='%s'></script>%s%s</head>"
+            "<title>%s</title>%s%s<script src='%s'></script>%s%s</head>"
             "<body class='%s'>%s%s</body></html>"
-            % (escape(title), escape(u.static("favicon.svg")), "".join(css), escape(u.static("scheme.js")), head, js,
+            % (escape(title), icon_links(u), "".join(css), escape(u.static("scheme.js")), head, js,
                escape(body_class), chrome, body))
+
+
+def icon_links(u: Urls) -> str:
+    """Browser tab icon, home-screen icon and web manifest (Android 'add to home screen')."""
+    return ("<link rel='icon' href='%s' sizes='any'><link rel='icon' type='image/png' sizes='32x32' href='%s'>"
+            "<link rel='apple-touch-icon' href='%s'><link rel='manifest' href='%s'><meta name='theme-color' content='#14171f'>"
+            % (escape(u.static("icon/favicon.ico")), escape(u.static("icon/favicon-32.png")),
+               escape(u.static("icon/apple-touch-icon.png")), escape(u.static("manifest.webmanifest"))))
 
 
 def scheme_button() -> str:

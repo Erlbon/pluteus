@@ -136,3 +136,13 @@ In priority order (search is only a nice-to-have, decided 2026-10-08):
 6. **Nice to have**: filename search (background crawler, SQLite FTS5 cache keyed on path+size+mtime),
    OpenSearch link in feeds, epub/cbz metadata in feeds.
 7. No covers by design (not wanted); no CBR support (not needed).
+
+## Icon
+
+The book icon (browser tab, home-screen icon, web manifest, sign-in card) is made from the owner's artwork of an
+antique leather book, with a gold-foil "P" stamped on the cover in perspective. `tools/make_icon.py` rebuilds all
+sizes from the original picture (needs Pillow; run with `--debug` to see where the stamp lands):
+
+    python tools/make_icon.py path/to/pluteus.jpg pluteus/static/icon
+
+A theme can hide the logo on the sign-in card with `.pl-logo { display: none; }`.
