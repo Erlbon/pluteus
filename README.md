@@ -40,6 +40,15 @@ Put it behind HTTPS (a reverse proxy such as Caddy) before exposing it beyond yo
 | `/dl/{root}/{path}` | download, with `Range` support |
 | `/healthz` | unauthenticated, for Docker health checks |
 
+## Reader apps (tested)
+
+| App | Result |
+|---|---|
+| **PocketBook Reader, Android** (2026-10-08/10) | Browses nested folder feeds, downloads EPUBs, logs in. **Login must be entered in the app's own username/password fields.** Credentials embedded in the URL (`http://user:pw@host/opds`) are NOT sent by the app, so the server answers 401. Anonymous access (`anonymous_user`) also worked. CBZ and title/author display not yet checked. |
+| KOReader, other Android/iOS apps | Not tested yet. |
+
+Apps that drop URL credentials and have no login fields can use `anonymous_user` (LAN only, restricted user).
+
 ## EPUB metadata
 
 EPUB is the main use, so OPDS entries and web pages show what is inside each book: title, authors,
