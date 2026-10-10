@@ -1,0 +1,16 @@
+/* Sepia: a warm paper look. Only variables are overridden; icons and layout come from the default theme. */
+:root {
+  color-scheme: light;
+  --pl-bg: #f4ecd8;
+  --pl-fg: #433422;
+  --pl-dim: #8a7660;
+  --pl-line: #ddd0b3;
+  --pl-card: #ede2c8;
+  --pl-accent: #9a5b13;
+  --pl-accent-fg: #fffaf0;
+  --pl-danger: #a33a2a;
+  --pl-book-bg: #f4ecd8;
+  --pl-book-fg: #433422;
+  --pl-book-link: #9a5b13;
+  --pl-reader-stage-bg: #e8dcc0;
+}

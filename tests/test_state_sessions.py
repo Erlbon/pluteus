@@ -1,0 +1,175 @@
+"""State store, sessions, login throttling and the theme resolver (no HTTP involved)."""
+import os
+import time
+
+import pytest
+
+from pluteus.config import User
+from pluteus.ratelimit import FailureLimiter
+from pluteus.sessions import SessionManager, hash_token, new_token
+from pluteus.state import StateDB
+from pluteus.themes import Themes
+
+
+# ---- state: sessions ---------------------------------------------------------------
+def test_session_roundtrip_expiry_and_delete():
+    s = StateDB()
+    s.create_session("h1", "alice", "fp", ttl=100, now=1000)
+    assert s.get_session("h1", now=1050)["username"] == "alice"
+    assert s.get_session("h1", now=1101) is None          # expired sessions are deleted on sight
+    assert s.get_session("h1", now=1050) is None
+    s.create_session("h2", "alice", "fp", 100, now=1000)
+    s.create_session("h3", "bob", "fp", 100, now=1000)
+    assert s.delete_user_sessions("alice") == 1 and s.get_session("h3", now=1001)
+    s.touch_session("h3", ttl=500, now=1090)
+    assert s.get_session("h3", now=1500)["expires"] == 1590
+    assert s.purge_expired(now=2000) == 1
+
+
+# ---- state: progress and prefs ----------------------------------------------------------
+def test_progress_upsert_clamp_recent_and_badges():
+    s = StateDB()
+    s.put_progress("alice", "books", "a/b.epub", "epubcfi(/6/4)", 0.25, now=10)
+    s.put_progress("alice", "books", "a/b.epub", "epubcfi(/6/8)", 0.5, now=20)        # replaces
+    s.put_progress("alice", "books", "c.epub", "x", 7.0, now=30)                       # clamped to 1
+    s.put_progress("bob", "books", "a/b.epub", "other", 0.9, now=40)
+    assert s.get_progress("alice", "books", "a/b.epub") == {"locator": "epubcfi(/6/8)", "percent": 0.5, "updated": 20}
+    assert s.get_progress("alice", "books", "nope") is None
+    assert [r["path"] for r in s.recent_progress("alice")] == ["c.epub", "a/b.epub"]
+    assert s.recent_progress("alice", limit=1)[0]["percent"] == 1.0
+    assert s.progress_for("alice", "books", ["a/b.epub", "c.epub", "zzz"]) == {"a/b.epub": 0.5, "c.epub": 1.0}
+    many = ["f%d" % i for i in range(1000)]
+    s.put_progress("alice", "books", "f999", "l", 0.1)
+    assert s.progress_for("alice", "books", many) == {"f999": 0.1}                    # more than one query chunk
+
+
+def test_prefs_roundtrip():
+    s = StateDB()
+    assert s.get_prefs("alice") == {}
+    s.set_prefs("alice", {"theme": "sepia", "größe": 3})
+    assert s.get_prefs("alice") == {"theme": "sepia", "größe": 3}
+
+
+# ---- state: persistence, backups, damage -----------------------------------------------------
+def test_state_persists_and_backups_are_made_and_pruned(tmp_path):
+    d = str(tmp_path / "data")
+    s = StateDB(d)
+    s.put_progress("alice", "books", "x.epub", "loc", 0.3)
+    s.close()
+    s2 = StateDB(d)
+    assert s2.get_progress("alice", "books", "x.epub")["percent"] == 0.3
+    backups = str(tmp_path / "bk")
+    for i in range(9):
+        s2.backup(backups, keep=7, now=1_700_000_000 + i)
+    names = sorted(os.listdir(backups))
+    assert len(names) == 7
+    import sqlite3
+    copy = sqlite3.connect(os.path.join(backups, names[-1]))
+    assert copy.execute("SELECT percent FROM progress").fetchone()[0] == 0.3
+    copy.close()
+    assert StateDB().backup(backups) is None                                           # in-memory: nothing to back up
+
+
+def test_housekeeping_backs_up_only_when_the_newest_backup_is_old(tmp_path):
+    s = StateDB(str(tmp_path / "data"))
+    backups = str(tmp_path / "data" / "backups")
+    s.housekeeping(backups, now=time.time())
+    assert len(os.listdir(backups)) == 1
+    s.housekeeping(backups, now=time.time() + 60)
+    assert len(os.listdir(backups)) == 1                                               # fresh enough
+    s.housekeeping(backups, now=time.time() + 25 * 3600)
+    assert len(os.listdir(backups)) == 2
+
+
+def test_a_damaged_state_file_is_kept_aside_and_a_new_one_started(tmp_path):
+    d = tmp_path / "data"
+    d.mkdir()
+    (d / "state.sqlite3").write_bytes(b"not a database at all " * 200)
+    s = StateDB(str(d))
+    s.put_progress("alice", "books", "x", "l", 0.1)
+    assert s.get_progress("alice", "books", "x")["percent"] == 0.1
+    assert any(n.startswith("state.sqlite3.corrupt-") for n in os.listdir(d))          # never deleted
+    s.close()
+
+
+# ---- sessions ---------------------------------------------------------------------------------------
+def users():
+    return {"alice": User("alice", "scrypt$1$1$1$aa$bb"), "bob": User("bob", "scrypt$1$1$1$cc$dd")}
+
+
+def test_session_manager_validates_token_user_and_password():
+    state = StateDB()
+    sm = SessionManager(state, days=30)
+    us = users()
+    token = sm.start(us["alice"])
+    assert len(token) >= 40 and hash_token(token) != token                              # only the hash is stored
+    assert state.get_session(token) is None
+    assert sm.user_for(token, us).name == "alice"
+    assert sm.user_for("garbage", us) is None and sm.user_for(None, us) is None and sm.user_for("", us) is None
+    changed = dict(us, alice=User("alice", "scrypt$1$1$1$NEW$HASH"))
+    assert sm.user_for(token, changed) is None                                          # password change logs out
+    assert sm.user_for(token, us) is None                                               # and the session is gone for good
+    t2 = sm.start(us["bob"])
+    assert sm.user_for(t2, {"alice": us["alice"]}) is None                              # user removed
+    t3 = sm.start(us["bob"])
+    sm.end(t3)
+    assert sm.user_for(t3, us) is None
+    assert new_token() != new_token()
+
+
+# ---- throttling ----------------------------------------------------------------------------------------
+def test_limiter_locks_a_name_after_five_failures_and_recovers():
+    lim = FailureLimiter(max_per_user=5, max_per_ip=30, window=300)
+    for i in range(4):
+        lim.failure("Alice", "1.1.1.1", now=100 + i)
+    assert lim.wait_seconds("alice", "9.9.9.9", now=110) == 0
+    lim.failure("alice", "2.2.2.2", now=111)
+    assert 0 < lim.wait_seconds("ALICE", "9.9.9.9", now=112) <= 300                      # any address, any case
+    assert lim.wait_seconds("bob", "9.9.9.9", now=112) == 0                               # other users unaffected
+    assert lim.wait_seconds("alice", "9.9.9.9", now=100 + 301) == 0                       # window passed
+    lim.failure("alice", "1.1.1.1", now=500)
+    lim.success("alice")
+    assert lim.wait_seconds("alice", "9.9.9.9", now=501) == 0
+
+
+def test_limiter_has_a_looser_per_address_limit():
+    lim = FailureLimiter(max_per_user=5, max_per_ip=30, window=300)
+    for i in range(30):
+        lim.failure("user%d" % i, "3.3.3.3", now=100)                                    # many names, one address
+    assert lim.wait_seconds("fresh", "3.3.3.3", now=101) > 0
+    assert lim.wait_seconds("fresh", "4.4.4.4", now=101) == 0
+
+
+# ---- themes ------------------------------------------------------------------------------------------------
+@pytest.fixture
+def themes(tmp_path):
+    mine = tmp_path / "themes"
+    (mine / "ocean" / "icons").mkdir(parents=True)
+    (mine / "ocean" / "theme.css").write_text(":root{--pl-accent:#08c}", encoding="utf-8")
+    (mine / "ocean" / "icons" / "next.svg").write_text("<svg/>", encoding="utf-8")
+    (mine / "ocean" / "notes.txt").write_text("not allowed", encoding="utf-8")
+    (tmp_path / "secret.css").write_text("outside", encoding="utf-8")
+    return Themes(str(mine))
+
+
+def test_theme_names_and_existence(themes):
+    names = themes.names()
+    assert names[0] == "default" and {"sepia", "night", "ocean"} <= set(names)
+    assert themes.exists("ocean") and not themes.exists("nope") and not themes.exists("../x")
+
+
+def test_theme_files_fall_back_to_the_default_theme(themes):
+    assert themes.resolve("ocean", "icons/next.svg").read_text("utf-8") == "<svg/>"               # overridden
+    assert themes.resolve("ocean", "icons/prev.svg").parts[-3:] == ("default", "icons", "prev.svg")  # inherited
+    assert themes.resolve("sepia", "icons/menu.svg") is not None
+    assert themes.resolve("ocean", "nothing.css") is None
+
+
+@pytest.mark.parametrize("rel", ["../secret.css", "icons/../../secret.css", "/etc/passwd.css", "a\\b.css",
+                                 "C:/x.css", "notes.txt", "", "icons//next.svg", "theme.css\x00.png"])
+def test_theme_resolver_refuses_unsafe_or_disallowed_paths(themes, rel):
+    assert themes.resolve("ocean", rel) is None
+
+
+def test_theme_names_are_validated(themes):
+    assert themes.resolve("../themes", "theme.css") is None and themes.resolve("", "theme.css") is None

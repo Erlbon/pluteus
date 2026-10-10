@@ -58,13 +58,21 @@ class Config:
     auth_cache_seconds: int = 300
     anonymous_user: str = ""   # requests with NO credentials act as this user (off by default)
     metadata: bool = True      # read title/author/series from inside EPUBs
-    cache_dir: str = ""        # folder for the SQLite metadata cache; "" = in memory only
+    cache_dir: str = ""        # folder for the SQLite metadata cache; "" = data_dir, else in memory only
+    data_dir: str = ""         # folder for state.sqlite3 (sessions, reading progress); "" = in memory only
+    themes_dir: str = ""       # folder holding user themes (themes_dir/<name>/theme.css)
+    theme: str = "default"     # theme used until a user picks another
+    session_days: int = 30     # login sessions last this long, renewed while in use
+    cookie_secure: str = "auto"   # "auto": Secure cookie when the request is HTTPS; or "always" / "never"
+    trust_proxy: bool = False  # believe X-Forwarded-For / X-Forwarded-Proto (only behind your own proxy)
 
 
 # TOML puts every key written after a [table] header INTO that table, so a setting typed under
 # [[roots]] by mistake would silently do nothing. Every table's keys are therefore checked.
-_SERVER_KEYS = {"host", "port", "page_size", "base_path", "realm", "auth_cache_seconds", "anonymous_user"}
-_GLOBAL_KEYS = {"exclude", "extensions", "display_strip", "adult_marker", "metadata", "cache_dir"}
+_SERVER_KEYS = {"host", "port", "page_size", "base_path", "realm", "auth_cache_seconds", "anonymous_user",
+                "session_days", "cookie_secure", "trust_proxy"}
+_GLOBAL_KEYS = {"exclude", "extensions", "display_strip", "adult_marker", "metadata", "cache_dir",
+                "data_dir", "themes_dir", "theme"}
 _ROOT_KEYS = {"name", "path"}
 _USER_KEYS = {"name", "password_hash", "roots", "adult"}
 
@@ -132,8 +140,20 @@ def parse_config(data: dict, check_roots: bool = True) -> Config:
         re.compile(strip)
     except re.error as e:
         raise ConfigError("display_strip is not a valid regex: %s" % e)
+    theme = str(opts.get("theme", "default"))
+    if not re.match(r"^[A-Za-z0-9_-]{1,40}$", theme):
+        raise ConfigError("theme %r must use only letters, digits, - and _" % theme)
+    session_days = int(server.get("session_days", 30))
+    if session_days < 1:
+        raise ConfigError("session_days must be at least 1")
+    secure = server.get("cookie_secure", "auto")
+    secure = {True: "always", False: "never"}.get(secure, secure)
+    if secure not in ("auto", "always", "never"):
+        raise ConfigError('cookie_secure must be "auto", "always" or "never" (or true/false)')
     return Config(
         roots=roots, users=users,
+        data_dir=str(opts.get("data_dir", "")), themes_dir=str(opts.get("themes_dir", "")), theme=theme,
+        session_days=session_days, cookie_secure=secure, trust_proxy=bool(server.get("trust_proxy", False)),
         host=str(server.get("host", "127.0.0.1")), port=int(server.get("port", 8080)),
         page_size=int(server.get("page_size", 50)), base_path=base_path,
         display_strip=strip, extensions=extensions, excludes=excludes,

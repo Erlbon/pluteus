@@ -46,30 +46,50 @@ class Authenticator:
         self.users = users
         self._cache = {}
 
-    def authenticate(self, header):
-        """Return the User for an Authorization header value, or None."""
+    @staticmethod
+    def parse_basic(header):
+        """(name, password) from an Authorization header, or None when it is not valid Basic."""
         if not header or header[:6].lower() != "basic ":
             return None
-        token = header[6:].strip()
-        key = hashlib.sha256(token.encode("utf-8")).hexdigest()
-        now = time.monotonic()
-        hit = self._cache.get(key)
-        if hit and hit[1] > now:
-            return self.users.get(hit[0])
         try:
-            raw = base64.b64decode(token, validate=True).decode("utf-8")
+            raw = base64.b64decode(header[6:].strip(), validate=True).decode("utf-8")
         except (ValueError, UnicodeDecodeError):
             return None
         name, sep, password = raw.partition(":")
-        if not sep:
-            return None
+        return (name, password) if sep else None
+
+    def check(self, name: str, password: str):
+        """The User when name and password match, else None. Unknown names cost the same time as wrong passwords."""
         user = self.users.get(name)
         if user is None:
             verify_password(password, self._dummy)
             return None
-        if not verify_password(password, user.password_hash):
+        return user if verify_password(password, user.password_hash) else None
+
+    def cached_user(self, header):
+        """The User for credentials that were verified recently (no password hashing), else None."""
+        if not header or header[:6].lower() != "basic ":
+            return None
+        key = hashlib.sha256(header[6:].strip().encode("utf-8")).hexdigest()
+        hit = self._cache.get(key)
+        if hit and hit[1] > time.monotonic():
+            return self.users.get(hit[0])
+        return None
+
+    def authenticate(self, header):
+        """Return the User for an Authorization header value, or None."""
+        if not header or header[:6].lower() != "basic ":
+            return None
+        key = hashlib.sha256(header[6:].strip().encode("utf-8")).hexdigest()
+        now = time.monotonic()
+        hit = self._cache.get(key)
+        if hit and hit[1] > now:
+            return self.users.get(hit[0])
+        creds = self.parse_basic(header)
+        user = self.check(*creds) if creds else None
+        if user is None:
             return None
         if len(self._cache) > 1000:
             self._cache = {k: v for k, v in self._cache.items() if v[1] > now}
-        self._cache[key] = (name, now + self.cache_seconds)
+        self._cache[key] = (user.name, now + self.cache_seconds)
         return user

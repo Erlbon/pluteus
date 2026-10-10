@@ -12,13 +12,15 @@ import os
 import re
 import sqlite3
 import threading
-import time
 import zipfile
 import xml.etree.ElementTree as ET
 from concurrent.futures import ThreadPoolExecutor
 from urllib.parse import unquote
 
+from .dbutil import open_database
+
 log = logging.getLogger("pluteus.meta")
+_SCHEMA = "CREATE TABLE IF NOT EXISTS meta (path TEXT PRIMARY KEY, size INTEGER, mtime REAL, data TEXT);"
 
 NS = {"c": "urn:oasis:names:tc:opendocument:xmlns:container",
       "opf": "http://www.idpf.org/2007/opf",
@@ -114,36 +116,8 @@ class MetaCache:
     def __init__(self, cache_dir: str = ""):
         self._lock = threading.Lock()
         self._path = os.path.join(cache_dir, "metadata.sqlite3") if cache_dir else ":memory:"
-        if cache_dir:
-            os.makedirs(cache_dir, exist_ok=True)
-        self._db = self._open()
-
-    def _connect(self) -> sqlite3.Connection:
-        db = sqlite3.connect(self._path, check_same_thread=False, timeout=10)
-        try:
-            if self._path != ":memory:":
-                db.execute("PRAGMA journal_mode=WAL")
-                db.execute("PRAGMA synchronous=NORMAL")
-            db.execute("CREATE TABLE IF NOT EXISTS meta (path TEXT PRIMARY KEY, size INTEGER, "
-                       "mtime REAL, data TEXT)")
-            db.execute("SELECT count(*) FROM meta").fetchone()      # fails early on a damaged file
-        except sqlite3.Error:
-            db.close()          # Windows cannot move a file that is still open
-            raise
-        return db
-
-    def _open(self) -> sqlite3.Connection:
-        try:
-            return self._connect()
-        except sqlite3.DatabaseError:
-            # Disposable by design: set the damaged file aside and start again.
-            log.warning("metadata cache damaged, rebuilding: %s", self._path)
-            for suffix in ("", "-wal", "-shm"):
-                try:
-                    os.replace(self._path + suffix, "%s.corrupt-%d%s" % (self._path, time.time(), suffix))
-                except OSError:
-                    pass
-            return self._connect()
+        # Disposable by design: a damaged file is set aside and a new cache started.
+        self._db = open_database(self._path, _SCHEMA, log=log)
 
     def get(self, path: str, size: int, mtime: float):
         """Cached dict, None for a miss. A cached 'unreadable' result comes back as {}."""

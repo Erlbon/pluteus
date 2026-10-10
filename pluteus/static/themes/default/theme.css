@@ -1,0 +1,17 @@
+/* The built-in default theme. It is always loaded first, so every other theme inherits these icon
+   definitions and only needs to override what it changes (variables, rules, or an icon file).
+
+   To replace an icon: put your own SVG at themes/<yourtheme>/icons/<name>.svg (the server falls back to
+   this theme's file for anything you leave out), or point the variable somewhere else:
+       .pl-i-next { --pl-icon: url(my-arrow.svg); }
+   URLs in a theme.css are relative to that theme's folder. */
+
+.pl-i-prev       { --pl-icon: url(icons/prev.svg); }
+.pl-i-next       { --pl-icon: url(icons/next.svg); }
+.pl-i-menu       { --pl-icon: url(icons/menu.svg); }
+.pl-i-back       { --pl-icon: url(icons/back.svg); }
+.pl-i-settings   { --pl-icon: url(icons/settings.svg); }
+.pl-i-fullscreen { --pl-icon: url(icons/fullscreen.svg); }
+.pl-i-plus       { --pl-icon: url(icons/plus.svg); }
+.pl-i-minus      { --pl-icon: url(icons/minus.svg); }
+.pl-i-fit        { --pl-icon: url(icons/fit.svg); }

@@ -1,0 +1,140 @@
+/* pluteus base stylesheet. Themes restyle everything by overriding the --pl-* variables below and/or
+   adding rules for the .pl-* classes; see docs/themes.md. Loaded before the theme's own theme.css. */
+
+:root {
+  color-scheme: light dark;
+  --pl-font: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --pl-font-reading: Georgia, "Iowan Old Style", "Times New Roman", serif;
+  --pl-bg: #ffffff;
+  --pl-fg: #1d2330;
+  --pl-dim: #6b7385;
+  --pl-line: #d9dde7;
+  --pl-card: #f5f6fa;
+  --pl-accent: #2b5fd9;
+  --pl-accent-fg: #ffffff;
+  --pl-danger: #b3382c;
+  --pl-radius: 8px;
+  --pl-gap: 12px;
+  /* reader: the page itself (book text) and the chrome around it */
+  --pl-book-bg: #fbfaf7;
+  --pl-book-fg: #1d1d1b;
+  --pl-book-link: #2b5fd9;
+  --pl-book-font: var(--pl-font-reading);
+  --pl-book-size: 100;            /* percent */
+  --pl-book-line: 1.55;
+  --pl-book-margin: 6%;
+  --pl-reader-bar-bg: var(--pl-bg);
+  --pl-reader-bar-fg: var(--pl-fg);
+  --pl-reader-stage-bg: var(--pl-card);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --pl-bg: #14171f;
+    --pl-fg: #e6e9f2;
+    --pl-dim: #9aa3b8;
+    --pl-line: #2b3140;
+    --pl-card: #1c212c;
+    --pl-accent: #7aa2ff;
+    --pl-accent-fg: #0e1220;
+    --pl-danger: #ef7b6f;
+    --pl-book-bg: #191c24;
+    --pl-book-fg: #d8dce6;
+    --pl-book-link: #8db0ff;
+  }
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; }
+body {
+  font: 15px/1.5 var(--pl-font);
+  background: var(--pl-bg);
+  color: var(--pl-fg);
+}
+a { color: var(--pl-accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+/* ---- page chrome ---- */
+.pl-bar {
+  display: flex; align-items: center; gap: var(--pl-gap);
+  padding: 8px 16px; border-bottom: 1px solid var(--pl-line); background: var(--pl-bg);
+}
+.pl-brand { font-weight: 700; letter-spacing: .02em; color: var(--pl-fg); }
+.pl-spacer { flex: 1; }
+.pl-bar form { margin: 0; }
+.pl-main { max-width: 900px; margin: 0 auto; padding: 16px; }
+.pl-main h1 { font-size: 20px; margin: 4px 0; }
+.pl-crumbs, .pl-muted { color: var(--pl-dim); font-size: 13px; }
+.pl-card { background: var(--pl-card); border: 1px solid var(--pl-line); border-radius: var(--pl-radius); padding: 16px; }
+.pl-error { color: var(--pl-danger); margin: 8px 0; }
+
+/* ---- lists ---- */
+.pl-list { list-style: none; padding: 0; margin: 12px 0; }
+.pl-row {
+  display: flex; gap: 10px; justify-content: space-between; align-items: baseline;
+  padding: 7px 0; border-bottom: 1px solid var(--pl-line);
+}
+.pl-row .pl-title { overflow-wrap: anywhere; }
+.pl-badge { font-size: 12px; color: var(--pl-accent); white-space: nowrap; }
+.pl-pager { display: flex; gap: 16px; margin: 12px 0; align-items: center; }
+
+/* ---- forms and buttons ---- */
+.pl-field { display: block; margin: 10px 0; }
+.pl-field span { display: block; font-size: 13px; color: var(--pl-dim); margin-bottom: 3px; }
+.pl-field input[type=text], .pl-field input[type=password], .pl-field select {
+  width: 100%; padding: 8px 10px; font: inherit; color: inherit;
+  border: 1px solid var(--pl-line); border-radius: var(--pl-radius); background: var(--pl-bg);
+}
+.pl-btn {
+  font: inherit; padding: 6px 12px; cursor: pointer; color: var(--pl-fg);
+  border: 1px solid var(--pl-line); border-radius: var(--pl-radius); background: var(--pl-card);
+}
+.pl-btn:hover { border-color: var(--pl-accent); }
+.pl-btn-primary { background: var(--pl-accent); color: var(--pl-accent-fg); border-color: var(--pl-accent); }
+.pl-login { max-width: 360px; margin: 12vh auto 0; }
+
+/* ---- icons: a mask painted with currentColor; each icon's file is set by the theme ---- */
+.pl-icon {
+  display: inline-block; width: 1.35em; height: 1.35em; vertical-align: -.25em;
+  background-color: currentColor;
+  -webkit-mask: var(--pl-icon) center / contain no-repeat;
+  mask: var(--pl-icon) center / contain no-repeat;
+}
+
+/* ---- reader chrome (EPUB and comic readers share it) ---- */
+.pl-reader { display: flex; flex-direction: column; height: 100vh; height: 100dvh; background: var(--pl-reader-stage-bg); }
+.pl-reader-bar {
+  display: flex; align-items: center; gap: 6px; padding: 6px 10px; z-index: 5;
+  background: var(--pl-reader-bar-bg); color: var(--pl-reader-bar-fg); border-bottom: 1px solid var(--pl-line);
+}
+.pl-reader-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; }
+.pl-reader-btn {
+  font: inherit; color: inherit; background: none; border: 1px solid transparent; border-radius: var(--pl-radius);
+  padding: 6px 8px; cursor: pointer; line-height: 1;
+}
+.pl-reader-btn:hover, .pl-reader-btn:focus-visible { border-color: var(--pl-line); background: var(--pl-card); }
+.pl-reader-stage { position: relative; flex: 1; min-height: 0; overflow: hidden; background: var(--pl-book-bg); }
+.pl-reader-foot {
+  display: flex; align-items: center; gap: 10px; padding: 4px 12px; font-size: 12px; color: var(--pl-dim);
+  background: var(--pl-reader-bar-bg); border-top: 1px solid var(--pl-line);
+}
+.pl-progress { flex: 1; height: 4px; background: var(--pl-line); border-radius: 2px; overflow: hidden; }
+.pl-progress > i { display: block; height: 100%; width: 0; background: var(--pl-accent); }
+.pl-menu {
+  position: absolute; top: 0; bottom: 0; width: min(88vw, 340px); z-index: 6; overflow: auto; padding: 12px;
+  background: var(--pl-bg); color: var(--pl-fg); border-right: 1px solid var(--pl-line);
+}
+.pl-menu[hidden] { display: none; }
+.pl-menu-right { right: 0; border-right: 0; border-left: 1px solid var(--pl-line); }
+.pl-menu h2 { font-size: 14px; margin: 4px 0 8px; color: var(--pl-dim); text-transform: uppercase; letter-spacing: .06em; }
+.pl-menu ul { list-style: none; padding: 0; margin: 0; }
+.pl-menu li a { display: block; padding: 6px 4px; border-radius: 6px; color: inherit; overflow-wrap: anywhere; }
+.pl-menu li a:hover { background: var(--pl-card); text-decoration: none; }
+.pl-menu .pl-sub { padding-left: 14px; }
+.pl-tap { position: absolute; top: 0; bottom: 0; width: 18%; z-index: 3; cursor: pointer; }
+.pl-tap-left { left: 0; } .pl-tap-right { right: 0; }
+.pl-page { max-width: 100%; max-height: 100%; user-select: none; -webkit-user-drag: none; }
+.pl-toast {
+  position: absolute; left: 50%; bottom: 24px; transform: translateX(-50%); z-index: 8; padding: 6px 12px;
+  background: var(--pl-fg); color: var(--pl-bg); border-radius: 999px; font-size: 13px; opacity: .92;
+}

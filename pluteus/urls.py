@@ -1,7 +1,7 @@
 """Builds the server's own URLs (percent-encoded, honouring a reverse-proxy base path)."""
 from __future__ import annotations
 
-from urllib.parse import quote
+from urllib.parse import quote, urlencode
 
 
 class Urls:
@@ -26,6 +26,31 @@ class Urls:
 
     def download(self, root: str, parts) -> str:
         return self._build("dl", root, parts)
+
+    def read(self, root: str, parts) -> str:
+        return self._build("read", root, parts)
+
+    def api(self, kind: str, root: str, parts) -> str:
+        return self.base + "/api/" + kind + "/" + "/".join(quote(s, safe="") for s in (root, *parts))
+
+    def cbz(self, root: str, parts, tail: str = "") -> str:
+        url = self.base + "/cbz/" + "/".join(quote(s, safe="") for s in (root, *parts))
+        return url + ("/" + tail if tail else "")
+
+    def static(self, path: str) -> str:
+        return self.base + "/static/" + path
+
+    def theme(self, name: str, path: str) -> str:
+        return "%s/theme/%s/%s" % (self.base, quote(name, safe=""), path)
+
+    def login(self, next_url: str = "") -> str:
+        return self.base + "/login" + ("?" + urlencode({"next": next_url}) if next_url else "")
+
+    def logout(self) -> str:
+        return self.base + "/logout"
+
+    def settings(self) -> str:
+        return self.base + "/settings"
 
 
 def with_page(href: str, page: int) -> str:

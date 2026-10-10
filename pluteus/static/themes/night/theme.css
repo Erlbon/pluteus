@@ -1,0 +1,16 @@
+/* Night: dark with no blue light accent, for reading in bed. Only variables are overridden. */
+:root {
+  color-scheme: dark;
+  --pl-bg: #0d0d0f;
+  --pl-fg: #cfc8bd;
+  --pl-dim: #8b857b;
+  --pl-line: #26262b;
+  --pl-card: #16161a;
+  --pl-accent: #d9a05b;
+  --pl-accent-fg: #1a1208;
+  --pl-danger: #e0796b;
+  --pl-book-bg: #0d0d0f;
+  --pl-book-fg: #b9b2a6;
+  --pl-book-link: #d9a05b;
+  --pl-reader-stage-bg: #050506;
+}
