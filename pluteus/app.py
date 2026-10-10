@@ -16,6 +16,7 @@ from .auth import Authenticator
 from .config import MIME_TYPES, Config
 from .fs import Library, NotFound, PathError
 from .meta import MetaCache, MetaService
+from .reload import UsersReloader
 from .urls import Urls, with_page
 
 
@@ -31,20 +32,23 @@ def _page_number(request: Request) -> int:
         return 1
 
 
-def create_app(cfg: Config) -> Starlette:
+def create_app(cfg: Config, config_path: str | None = None, reload_interval: float = 2.0) -> Starlette:
     lib = Library(cfg)
     meta = MetaService(MetaCache(cfg.cache_dir), enabled=cfg.metadata)
     auth = Authenticator(cfg.users, cfg.auth_cache_seconds)
+    reloader = UsersReloader(config_path, auth, reload_interval) if config_path else None
     urls = Urls(cfg.base_path)
     challenge = {"WWW-Authenticate": 'Basic realm="%s", charset="UTF-8"' % cfg.realm}
 
     def authed(fn):
         @functools.wraps(fn)
         async def wrapper(request: Request):
+            if reloader:
+                reloader.maybe_reload()
             header = request.headers.get("authorization")
             user = auth.authenticate(header)
             if user is None and not header and cfg.anonymous_user:
-                user = cfg.users[cfg.anonymous_user]     # no credentials sent at all
+                user = auth.users.get(cfg.anonymous_user)     # no credentials sent at all
             if user is None:
                 return PlainTextResponse("Authentication required", 401, headers=challenge)
             try:

@@ -41,6 +41,11 @@ class Authenticator:
         # Burned on unknown user names so they cost the same time as a wrong password.
         self._dummy = hash_password("dummy")
 
+    def set_users(self, users: dict) -> None:
+        """Swap the user table (config reload). Cached logins are dropped so removed or changed users stop at once."""
+        self.users = users
+        self._cache = {}
+
     def authenticate(self, header):
         """Return the User for an Authorization header value, or None."""
         if not header or header[:6].lower() != "basic ":

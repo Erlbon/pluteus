@@ -31,6 +31,28 @@ Then open `http://localhost:8080/` in a browser, or add `http://<host>:8080/opds
 an OPDS reader (KOReader, Panels, Moon+ Reader, Librera...). Credentials use HTTP Basic.
 Put it behind HTTPS (a reverse proxy such as Caddy) before exposing it beyond your LAN.
 
+## Users (command line)
+
+No admin web page is needed for a household: manage users with the CLI, which edits `config.toml` in
+place (your comments are kept, the old file is saved as `config.toml.bak`, and an edit that would make
+the config invalid is refused before anything is written).
+
+```powershell
+python -m pluteus user list   --config config.toml
+python -m pluteus user add    erlend --config config.toml --adult              # asks for a password (min 8 chars)
+python -m pluteus user add    guest  --config config.toml --roots books
+python -m pluteus user set    guest  --config config.toml --roots books,comics   # or --all-roots
+python -m pluteus user set    erlend --config config.toml --password / --adult / --no-adult
+python -m pluteus user remove guest  --config config.toml                      # asks to confirm (or --yes)
+```
+
+A running server picks up **user** changes within about two seconds, with no restart, and a removed
+or changed user stops working immediately. Other settings (roots, port, ...) still need a restart.
+`--password-stdin` reads the password from stdin for scripts.
+
+**TOML scoping:** a key belongs to the `[table]` header above it. Keep all settings in `[server]`; a setting
+typed under `[[roots]]` or `[[users]]` is refused with an error instead of being silently ignored.
+
 ## Endpoints
 
 | URL | What |
