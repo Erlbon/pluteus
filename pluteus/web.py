@@ -30,13 +30,21 @@ def layout(title: str, body: str, ctx: Ctx, *, head: str = "", scripts: tuple = 
             who = ("<a href='%s'>Settings</a>"
                    "<form method='post' action='%s'><button class='pl-btn' type='submit'>Sign out (%s)</button></form>"
                    % (escape(u.settings()), escape(u.logout()), escape(ctx.user)))
-        chrome = ("<header class='pl-bar'><a class='pl-brand' href='%s'>pluteus</a><span class='pl-spacer'></span>%s</header>"
-                  % (escape(u.home()), who))
+        chrome = ("<header class='pl-bar'><a class='pl-brand' href='%s'>pluteus</a><span class='pl-spacer'></span>%s%s</header>"
+                  % (escape(u.home()), scheme_button(), who))
     js = "".join("<script src='%s' defer></script>" % escape(s) for s in scripts)
+    # scheme.js is NOT deferred: it must run before the first paint so a saved dark/light choice never flashes.
     return ("<!doctype html><html lang='en'><head><meta charset='utf-8'>"
             "<meta name='viewport' content='width=device-width, initial-scale=1'>"
-            "<title>%s</title>%s%s%s</head><body class='%s'>%s%s</body></html>"
-            % (escape(title), "".join(css), head, js, escape(body_class), chrome, body))
+            "<title>%s</title><link rel='icon' type='image/svg+xml' href='%s'>%s<script src='%s'></script>%s%s</head>"
+            "<body class='%s'>%s%s</body></html>"
+            % (escape(title), escape(u.static("favicon.svg")), "".join(css), escape(u.static("scheme.js")), head, js,
+               escape(body_class), chrome, body))
+
+
+def scheme_button() -> str:
+    return ("<button class='pl-btn pl-scheme' type='button' title='Toggle dark / light' "
+            "aria-label='Toggle dark / light'><span class='pl-icon pl-i-contrast'></span></button>")
 
 
 def _size(n: float) -> str:
@@ -49,6 +57,7 @@ def _size(n: float) -> str:
 def login_page(ctx: Ctx, next_url: str = "", error: str = "", username: str = "") -> str:
     err = "<p class='pl-error' role='alert'>%s</p>" % escape(error) if error else ""
     body = ("<main class='pl-main'><form class='pl-card pl-login' method='post' action='%s'>"
+            "<div class='pl-login-tools'>%s</div><div class='pl-logo'></div>"
             "<h1>Sign in</h1>%s"
             "<label class='pl-field'><span>User name</span>"
             "<input type='text' name='username' value='%s' autocomplete='username' autocapitalize='off' autofocus required></label>"
@@ -56,21 +65,22 @@ def login_page(ctx: Ctx, next_url: str = "", error: str = "", username: str = ""
             "<input type='password' name='password' autocomplete='current-password' required></label>"
             "<input type='hidden' name='next' value='%s'>"
             "<button class='pl-btn pl-btn-primary' type='submit'>Sign in</button></form></main>"
-            % (escape(ctx.urls.login()), err, escape(username), escape(next_url)))
-    return layout("Sign in", body, ctx, bar=False)
+            % (escape(ctx.urls.login()), scheme_button(), err, escape(username), escape(next_url)))
+    return layout("Sign in", body, ctx, bar=False, body_class="pl-login-page")
 
 
 def roots_page(roots: list, ctx: Ctx, recent: list | None = None) -> str:
     items = "".join("<li class='pl-row'><a href='%s'>%s</a></li>"
                     % (escape(ctx.urls.browse(r.name)), escape(r.name)) for r in roots)
+    # (the two lists below carry .pl-roots / .pl-recent so a theme can style them as cards)
     cont = ""
     if recent:
         rows = "".join("<li class='pl-row'><a href='%s'>%s</a><span class='pl-badge'>%d%%</span></li>"
                        % (escape(href), escape(label), round(pct * 100)) for href, label, pct in recent)
-        cont = "<h2>Continue reading</h2><ul class='pl-list'>%s</ul>" % rows
+        cont = "<h2>Continue reading</h2><ul class='pl-list pl-recent'>%s</ul>" % rows
     body = ("<main class='pl-main'><h1>Library</h1>"
             "<div class='pl-muted'><a href='%s'>OPDS catalogue</a> for reader apps</div>%s"
-            "<h2>Browse</h2><ul class='pl-list'>%s</ul></main>"
+            "<h2>Browse</h2><ul class='pl-list pl-roots'>%s</ul></main>"
             % (escape(ctx.urls.opds()), cont, items))
     return layout("Library", body, ctx)
 

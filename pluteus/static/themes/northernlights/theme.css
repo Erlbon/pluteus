@@ -1,0 +1,213 @@
+/* NorthernLights for pluteus.
+   The design (aurora gradients, frosted glass, pill buttons, gradient title, dark default + light scheme)
+   comes from the owner's own NorthernLights theme for Ubooquity; this file expresses it with pluteus's
+   --pl-* variables and .pl-* classes. No images or icon files are copied from the Ubooquity theme (some
+   of those are third-party artwork); icons come from the default theme and can be replaced one by one.
+
+   Dark is the default whatever the system says; the light scheme is switched on with the toggle button
+   (html[data-scheme="light"], remembered in the browser).
+
+   Optional logo: put a logo.png in this theme's folder and add under "Login" below:
+       .pl-logo { display: block; width: 150px; height: 150px; margin: 0 auto 6px;
+                  background: url(logo.png) center / contain no-repeat; } */
+
+:root {
+  color-scheme: dark;
+
+  /* the palette (names follow the Ubooquity theme) */
+  --nl-gradient: linear-gradient(90deg, #020024 0%, #26263c 35%, #05282f 100%);
+  --nl-page: radial-gradient(55% 45% at 18% 20%, rgba(46, 232, 139, 0.2), transparent 70%),
+             radial-gradient(50% 45% at 84% 16%, rgba(138, 92, 255, 0.22), transparent 70%),
+             radial-gradient(60% 40% at 55% 92%, rgba(63, 208, 255, 0.15), transparent 70%),
+             linear-gradient(90deg, #020024 0%, #26263c 35%, #05282f 100%);
+  --nl-login: radial-gradient(55% 45% at 18% 28%, rgba(46, 232, 139, 0.22), transparent 70%),
+              radial-gradient(50% 45% at 82% 24%, rgba(138, 92, 255, 0.24), transparent 70%),
+              radial-gradient(60% 40% at 55% 85%, rgba(63, 208, 255, 0.16), transparent 70%),
+              linear-gradient(90deg, #020024 0%, #26263c 35%, #05282f 100%);
+  --nl-title: linear-gradient(90deg, #7dffb8, #3fd0ff 55%, #b45cff);
+  --nl-icon: #c3e6de;
+  --nl-icon-hover: #7dffb8;
+  --nl-link: #9fe6ff;
+  --nl-muted: #8fd9cc;
+  --nl-label: #cfe9e4;
+  --nl-glass-fallback: rgba(18, 24, 48, 0.78);
+  --nl-pill: rgba(255, 255, 255, 0.08);
+  --nl-pill-border: rgba(255, 255, 255, 0.2);
+  --nl-pill-hover: rgba(125, 255, 184, 0.7);
+  --nl-pill-on: rgba(47, 217, 196, 0.18);
+  --nl-btn: linear-gradient(180deg, rgba(255, 255, 255, 0.28) 0%, rgba(255, 255, 255, 0.06) 49%, rgba(0, 0, 0, 0.1) 51%, rgba(0, 0, 0, 0.22) 100%),
+            linear-gradient(135deg, #2f9c8c, #3a74ad);
+  --nl-btn-drop: 0 6px 14px rgba(0, 0, 0, 0.38);
+  --nl-badge: linear-gradient(135deg, rgba(6, 38, 48, 0.9), rgba(28, 22, 70, 0.9));
+  --nl-badge-border: rgba(125, 255, 184, 0.6);
+  --nl-badge-glow: 0 0 10px rgba(63, 208, 255, 0.45), 0 0 22px rgba(138, 92, 255, 0.3);
+
+  /* mapped onto pluteus */
+  --pl-bg: #0d1230;
+  --pl-fg: #e6f4f1;
+  --pl-dim: #aaaaaa;
+  --pl-line: rgba(255, 255, 255, 0.14);
+  --pl-card: rgba(255, 255, 255, 0.07);
+  --pl-accent: #7dffb8;
+  --pl-accent-fg: #052a1e;
+  --pl-danger: #ff8a7d;
+  --pl-focus: #ff2d95;
+  --pl-page-bg: var(--nl-page);
+  --pl-bar-bg: var(--nl-gradient);
+  --pl-bar-shadow: 0 0 10px #0006;
+  --pl-card-bg: rgba(255, 255, 255, 0.07);
+  --pl-card-border: 1px solid rgba(255, 255, 255, 0.14);
+  --pl-card-shadow: 0 0 22px rgba(63, 208, 255, 0.22), 0 0 60px rgba(138, 92, 255, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.22);
+  --pl-card-radius: 20px;
+  --pl-card-blur: blur(16px) saturate(140%);
+  --pl-field-bg: rgba(255, 255, 255, 0.1);
+  --pl-field-border: 1px solid rgba(255, 255, 255, 0.28);
+  --pl-field-radius: 999px;
+  --pl-field-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.35);
+  --pl-btn-bg: var(--nl-pill);
+  --pl-btn-fg: #e6f4f1;
+  --pl-btn-border: 1px solid var(--nl-pill-border);
+  --pl-btn-radius: 999px;
+  --pl-btn-primary-bg: var(--nl-btn);
+  --pl-btn-primary-fg: #f2fffb;
+  --pl-btn-primary-border: 1px solid rgba(255, 255, 255, 0.3);
+  --pl-book-bg: #0d1230;
+  --pl-book-fg: #cfe9e4;
+  --pl-book-link: #9fe6ff;
+  --pl-reader-stage-bg: #070a1c;
+}
+
+:root:where([data-scheme="light"]) {
+  color-scheme: light;
+  --nl-gradient: linear-gradient(120deg, #cdf6e3 0%, #cfe6ff 50%, #e4d6ff 100%);
+  --nl-page: radial-gradient(60% 50% at 10% 14%, rgba(46, 232, 139, 0.6), transparent 70%),
+             radial-gradient(55% 50% at 90% 10%, rgba(138, 92, 255, 0.5), transparent 70%),
+             radial-gradient(65% 55% at 72% 96%, rgba(63, 208, 255, 0.55), transparent 72%),
+             radial-gradient(45% 40% at 14% 92%, rgba(255, 120, 200, 0.3), transparent 70%),
+             linear-gradient(120deg, #cdf6e3 0%, #cfe6ff 50%, #e4d6ff 100%);
+  --nl-login: radial-gradient(55% 45% at 18% 28%, rgba(46, 232, 139, 0.62), transparent 70%),
+              radial-gradient(50% 45% at 82% 24%, rgba(138, 92, 255, 0.5), transparent 70%),
+              radial-gradient(60% 40% at 55% 85%, rgba(63, 208, 255, 0.55), transparent 70%),
+              radial-gradient(40% 35% at 12% 88%, rgba(255, 120, 200, 0.3), transparent 70%),
+              linear-gradient(120deg, #cdf6e3 0%, #cfe6ff 50%, #e4d6ff 100%);
+  --nl-title: linear-gradient(90deg, #0f9d63, #0a84c6 55%, #6b4bd6);
+  --nl-icon: #2d5560;
+  --nl-icon-hover: #0f9d63;
+  --nl-link: #0a6fa8;
+  --nl-muted: #2a7a6c;
+  --nl-label: #2d4a55;
+  --nl-glass-fallback: rgba(255, 255, 255, 0.88);
+  --nl-pill: rgba(30, 60, 80, 0.06);
+  --nl-pill-border: rgba(30, 60, 80, 0.22);
+  --nl-pill-hover: rgba(15, 157, 99, 0.7);
+  --nl-pill-on: rgba(47, 217, 196, 0.24);
+  --nl-btn-drop: 0 6px 14px rgba(30, 60, 80, 0.3);
+  --nl-badge-glow: 0 2px 10px rgba(30, 60, 80, 0.35);
+
+  --pl-bg: #eef6f4;
+  --pl-fg: #1d3a45;
+  --pl-dim: #4d6a75;
+  --pl-line: rgba(30, 60, 80, 0.18);
+  --pl-card: rgba(255, 255, 255, 0.55);
+  --pl-accent: #0f9d63;
+  --pl-accent-fg: #ffffff;
+  --pl-danger: #a33a2a;
+  --pl-bar-bg: linear-gradient(90deg, #a9ecd0 0%, #b3d4ff 50%, #cdb9ff 100%);
+  --pl-bar-shadow: 0 2px 12px rgba(30, 60, 80, 0.3);
+  --pl-card-bg: rgba(255, 255, 255, 0.55);
+  --pl-card-border: 1px solid rgba(30, 60, 80, 0.16);
+  --pl-card-shadow: 0 0 22px rgba(10, 132, 198, 0.16), 0 10px 34px rgba(30, 60, 80, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  --pl-field-bg: rgba(255, 255, 255, 0.75);
+  --pl-field-border: 1px solid rgba(30, 60, 80, 0.28);
+  --pl-field-shadow: inset 0 1px 3px rgba(30, 60, 80, 0.2);
+  --pl-btn-fg: #1d3a45;
+  --pl-book-bg: #f4f9f7;
+  --pl-book-fg: #1d3a45;
+  --pl-book-link: #0a6fa8;
+  --pl-reader-stage-bg: #dcebf0;
+}
+
+body { font-family: "Segoe UI", system-ui, -apple-system, Roboto, "Helvetica Neue", Arial, sans-serif; font-weight: 500; }
+a { color: var(--nl-link); }
+
+/* ---- top bar: calm icons, the accent colour only on hover ---- */
+.pl-brand {
+  font-weight: 800; letter-spacing: 0.16em; text-transform: uppercase;
+  background: var(--nl-title); -webkit-background-clip: text; background-clip: text;
+  -webkit-text-fill-color: transparent; color: transparent;
+}
+.pl-bar a:not(.pl-brand) { color: var(--nl-icon); }
+.pl-bar a:not(.pl-brand):hover { color: var(--nl-icon-hover); text-decoration: none; text-shadow: 0 0 10px currentColor; }
+.pl-bar .pl-btn, .pl-reader-btn { color: var(--nl-icon); }
+.pl-bar .pl-btn:hover, .pl-reader-btn:hover { color: var(--nl-icon-hover); border-color: var(--nl-pill-hover); box-shadow: 0 0 12px rgba(125, 255, 184, 0.3); }
+
+/* ---- headings, rows, badges ---- */
+.pl-main h2 { font-size: 12px; font-weight: 600; letter-spacing: 0.16em; text-transform: uppercase; color: var(--nl-muted); }
+.pl-main h1 { color: var(--pl-fg); font-weight: 600; }
+.pl-row { border-bottom-color: var(--pl-line); }
+.pl-title { color: var(--pl-fg); }
+.pl-badge {
+  padding: 1px 9px; border: 1px solid var(--nl-badge-border); border-radius: 999px;
+  background: var(--nl-badge); box-shadow: var(--nl-badge-glow); color: #eafff6;
+}
+
+/* the home page lists become frosted-glass cards */
+.pl-roots, .pl-recent { display: flex; flex-direction: column; gap: 12px; max-width: 520px; }
+.pl-roots .pl-row, .pl-recent .pl-row {
+  padding: 16px 20px; font-size: 18px; font-weight: 600; border-radius: 16px;
+  background: var(--pl-card-bg); border: var(--pl-card-border); box-shadow: var(--pl-card-shadow);
+  -webkit-backdrop-filter: blur(14px) saturate(140%); backdrop-filter: blur(14px) saturate(140%);
+  transition: border-color 0.15s, box-shadow 0.15s, transform 0.15s;
+}
+.pl-roots .pl-row:hover, .pl-recent .pl-row:hover {
+  border-color: var(--nl-pill-hover); transform: translateY(-1px);
+  box-shadow: 0 0 18px rgba(125, 255, 184, 0.3), var(--pl-card-shadow);
+}
+.pl-roots .pl-row a, .pl-recent .pl-row a { color: var(--pl-fg); flex: 1; }
+.pl-roots .pl-row a:hover, .pl-recent .pl-row a:hover { text-decoration: none; }
+
+/* ---- buttons ---- */
+.pl-btn:hover { border-color: var(--nl-pill-hover); }
+.pl-btn-primary {
+  font-weight: 600; letter-spacing: 0.05em; text-shadow: 0 1px 1px rgba(0, 0, 0, 0.45);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5), inset 0 -2px 5px rgba(0, 0, 0, 0.3), var(--nl-btn-drop);
+  transition: filter 0.15s, transform 0.15s;
+}
+.pl-btn-primary:hover { filter: brightness(1.1); transform: translateY(-1px); border-color: rgba(255, 255, 255, 0.3); }
+.pl-btn-primary:active { filter: brightness(0.95); transform: translateY(1px); }
+.pl-field input:focus, .pl-field select:focus {
+  outline: none; border-color: rgba(125, 255, 184, 0.8);
+  box-shadow: var(--pl-field-shadow), 0 0 0 2px rgba(125, 255, 184, 0.25), 0 0 14px rgba(125, 255, 184, 0.35);
+}
+.pl-field span { color: var(--nl-label); font-size: 14px; font-weight: 600; letter-spacing: 0.05em; }
+
+/* ---- login: aurora glow behind a frosted-glass panel with a glowing gradient edge ---- */
+.pl-login-page { background: var(--nl-login); background-attachment: fixed; }
+.pl-login { text-align: center; padding: 22px 20px 20px; }
+.pl-login h1 {
+  font-size: clamp(17px, 2.8vw, 24px); font-weight: 800; letter-spacing: 0.16em; text-transform: uppercase;
+  background: var(--nl-title); -webkit-background-clip: text; background-clip: text;
+  -webkit-text-fill-color: transparent; color: transparent; filter: drop-shadow(0 0 8px rgba(63, 208, 255, 0.35));
+}
+.pl-login .pl-field { max-width: 320px; margin: 6px auto 14px; }
+.pl-login .pl-field input { height: 38px; padding: 0 16px; text-align: center; }
+.pl-login .pl-btn-primary { min-width: 130px; height: 40px; margin-top: 12px; }
+.pl-login::before {
+  content: ""; position: absolute; inset: 0; padding: 1px; border-radius: inherit; pointer-events: none;
+  background: linear-gradient(135deg, rgba(125, 255, 184, 0.95), rgba(63, 208, 255, 0.55) 45%, rgba(180, 92, 255, 0.95));
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
+}
+.pl-login-tools .pl-btn { border-color: transparent; background: none; }
+
+/* no backdrop-filter support: a more opaque panel keeps the text readable */
+@supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
+  .pl-card, .pl-menu, .pl-roots .pl-row, .pl-recent .pl-row { background: var(--nl-glass-fallback); }
+}
+
+/* ---- reader ---- */
+.pl-progress { background: var(--nl-pill-border); }
+.pl-progress > i { background: var(--nl-btn); }
+.pl-menu li a:hover { background: var(--nl-pill); }
+.pl-toast { background: rgba(8, 12, 28, 0.88); color: #e6f4f1; border: 1px solid rgba(255, 255, 255, 0.2); }

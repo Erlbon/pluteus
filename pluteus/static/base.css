@@ -1,5 +1,9 @@
 /* pluteus base stylesheet. Themes restyle everything by overriding the --pl-* variables below and/or
-   adding rules for the .pl-* classes; see docs/themes.md. Loaded before the theme's own theme.css. */
+   adding rules for the .pl-* classes; see docs/themes.md. Loaded before the theme's own theme.css.
+
+   Light/dark: the light values are the default; the dark values apply when the system prefers dark OR
+   the user toggled to dark (html[data-scheme=dark], set by scheme.js), and not when toggled to light.
+   A theme that offers both schemes repeats the same three blocks with its own values. */
 
 :root {
   color-scheme: light dark;
@@ -15,6 +19,31 @@
   --pl-danger: #b3382c;
   --pl-radius: 8px;
   --pl-gap: 12px;
+
+  /* richer hooks, all optional: each falls back to the plain values above */
+  --pl-page-bg: var(--pl-bg);                         /* any CSS background: colour, gradients */
+  --pl-bar-bg: var(--pl-bg);
+  --pl-bar-shadow: none;
+  --pl-card-bg: var(--pl-card);                       /* cards, login panel, settings panel */
+  --pl-card-border: 1px solid var(--pl-line);
+  --pl-card-shadow: none;
+  --pl-card-radius: var(--pl-radius);
+  --pl-card-blur: none;                               /* e.g. blur(16px) saturate(140%) for frosted glass */
+  --pl-field-bg: var(--pl-bg);
+  --pl-field-border: 1px solid var(--pl-line);
+  --pl-field-radius: var(--pl-radius);
+  --pl-field-shadow: none;
+  --pl-btn-bg: var(--pl-card);
+  --pl-btn-fg: var(--pl-fg);
+  --pl-btn-border: 1px solid var(--pl-line);
+  --pl-btn-radius: var(--pl-radius);
+  --pl-btn-shadow: none;
+  --pl-btn-primary-bg: var(--pl-accent);
+  --pl-btn-primary-fg: var(--pl-accent-fg);
+  --pl-btn-primary-border: 1px solid var(--pl-accent);
+  --pl-focus: var(--pl-accent);
+  --pl-title-fill: var(--pl-fg);                      /* heading colour or gradient (see .pl-login h1) */
+
   /* reader: the page itself (book text) and the chrome around it */
   --pl-book-bg: #fbfaf7;
   --pl-book-fg: #1d1d1b;
@@ -23,13 +52,14 @@
   --pl-book-size: 100;            /* percent */
   --pl-book-line: 1.55;
   --pl-book-margin: 6%;
-  --pl-reader-bar-bg: var(--pl-bg);
+  --pl-reader-bar-bg: var(--pl-bar-bg);
   --pl-reader-bar-fg: var(--pl-fg);
   --pl-reader-stage-bg: var(--pl-card);
 }
 
+/* :where() keeps these as weak as a plain :root, so a theme's own :root block (loaded later) always wins. */
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:where(:not([data-scheme="light"])) {
     --pl-bg: #14171f;
     --pl-fg: #e6e9f2;
     --pl-dim: #9aa3b8;
@@ -43,29 +73,57 @@
     --pl-book-link: #8db0ff;
   }
 }
+:root:where([data-scheme="dark"]) {
+  --pl-bg: #14171f;
+  --pl-fg: #e6e9f2;
+  --pl-dim: #9aa3b8;
+  --pl-line: #2b3140;
+  --pl-card: #1c212c;
+  --pl-accent: #7aa2ff;
+  --pl-accent-fg: #0e1220;
+  --pl-danger: #ef7b6f;
+  --pl-book-bg: #191c24;
+  --pl-book-fg: #d8dce6;
+  --pl-book-link: #8db0ff;
+}
+:root[data-scheme="light"] { color-scheme: light; }
+:root[data-scheme="dark"] { color-scheme: dark; }
 
 * { box-sizing: border-box; }
-html, body { margin: 0; height: 100%; }
+html, body { margin: 0; }
+html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
 body {
+  min-height: 100vh;
   font: 15px/1.5 var(--pl-font);
   background: var(--pl-bg);
+  background: var(--pl-page-bg);
+  background-attachment: fixed;
   color: var(--pl-fg);
 }
 a { color: var(--pl-accent); text-decoration: none; }
 a:hover { text-decoration: underline; }
+a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible {
+  outline: 2px solid var(--pl-focus); outline-offset: 2px;
+}
 
 /* ---- page chrome ---- */
 .pl-bar {
   display: flex; align-items: center; gap: var(--pl-gap);
-  padding: 8px 16px; border-bottom: 1px solid var(--pl-line); background: var(--pl-bg);
+  padding: 8px 16px; border-bottom: 1px solid var(--pl-line);
+  background: var(--pl-bar-bg); box-shadow: var(--pl-bar-shadow);
 }
 .pl-brand { font-weight: 700; letter-spacing: .02em; color: var(--pl-fg); }
 .pl-spacer { flex: 1; }
 .pl-bar form { margin: 0; }
 .pl-main { max-width: 900px; margin: 0 auto; padding: 16px; }
 .pl-main h1 { font-size: 20px; margin: 4px 0; }
+.pl-main h2 { font-size: 16px; margin: 18px 0 4px; }
 .pl-crumbs, .pl-muted { color: var(--pl-dim); font-size: 13px; }
-.pl-card { background: var(--pl-card); border: 1px solid var(--pl-line); border-radius: var(--pl-radius); padding: 16px; }
+.pl-card {
+  background: var(--pl-card-bg); border: var(--pl-card-border); border-radius: var(--pl-card-radius);
+  box-shadow: var(--pl-card-shadow); padding: 16px;
+  -webkit-backdrop-filter: var(--pl-card-blur); backdrop-filter: var(--pl-card-blur);
+}
 .pl-error { color: var(--pl-danger); margin: 8px 0; }
 
 /* ---- lists ---- */
@@ -82,23 +140,32 @@ a:hover { text-decoration: underline; }
 .pl-field { display: block; margin: 10px 0; }
 .pl-field span { display: block; font-size: 13px; color: var(--pl-dim); margin-bottom: 3px; }
 .pl-field input[type=text], .pl-field input[type=password], .pl-field select {
-  width: 100%; padding: 8px 10px; font: inherit; color: inherit;
-  border: 1px solid var(--pl-line); border-radius: var(--pl-radius); background: var(--pl-bg);
+  width: 100%; padding: 8px 12px; font: inherit; color: var(--pl-fg);
+  border: var(--pl-field-border); border-radius: var(--pl-field-radius);
+  background: var(--pl-field-bg); box-shadow: var(--pl-field-shadow);
 }
 .pl-btn {
-  font: inherit; padding: 6px 12px; cursor: pointer; color: var(--pl-fg);
-  border: 1px solid var(--pl-line); border-radius: var(--pl-radius); background: var(--pl-card);
+  font: inherit; padding: 6px 14px; cursor: pointer; color: var(--pl-btn-fg);
+  border: var(--pl-btn-border); border-radius: var(--pl-btn-radius);
+  background: var(--pl-btn-bg); box-shadow: var(--pl-btn-shadow);
 }
 .pl-btn:hover { border-color: var(--pl-accent); }
-.pl-btn-primary { background: var(--pl-accent); color: var(--pl-accent-fg); border-color: var(--pl-accent); }
-.pl-login { max-width: 360px; margin: 12vh auto 0; }
+.pl-btn-primary {
+  background: var(--pl-btn-primary-bg); color: var(--pl-btn-primary-fg); border: var(--pl-btn-primary-border);
+}
+.pl-login { max-width: 400px; margin: 12vh auto 0; position: relative; }
+.pl-login h1 { font-size: 20px; }
+.pl-logo { display: none; }                          /* a theme shows it: .pl-logo { display:block; background:url(logo.png) ... } */
+.pl-scheme { padding: 6px 8px; line-height: 1; }
+.pl-login-tools { position: absolute; top: 10px; right: 12px; }
 
-/* ---- icons: a mask painted with currentColor; each icon's file is set by the theme ---- */
+/* ---- icons: a mask painted with currentColor; the image of each .pl-i-<name> is set in a theme.css ---- */
 .pl-icon {
   display: inline-block; width: 1.35em; height: 1.35em; vertical-align: -.25em;
   background-color: currentColor;
-  -webkit-mask: var(--pl-icon) center / contain no-repeat;
-  mask: var(--pl-icon) center / contain no-repeat;
+  -webkit-mask-repeat: no-repeat; mask-repeat: no-repeat;
+  -webkit-mask-position: center; mask-position: center;
+  -webkit-mask-size: contain; mask-size: contain;
 }
 
 /* ---- reader chrome (EPUB and comic readers share it) ---- */
@@ -106,10 +173,11 @@ a:hover { text-decoration: underline; }
 .pl-reader-bar {
   display: flex; align-items: center; gap: 6px; padding: 6px 10px; z-index: 5;
   background: var(--pl-reader-bar-bg); color: var(--pl-reader-bar-fg); border-bottom: 1px solid var(--pl-line);
+  box-shadow: var(--pl-bar-shadow);
 }
 .pl-reader-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; }
 .pl-reader-btn {
-  font: inherit; color: inherit; background: none; border: 1px solid transparent; border-radius: var(--pl-radius);
+  font: inherit; color: inherit; background: none; border: 1px solid transparent; border-radius: var(--pl-btn-radius);
   padding: 6px 8px; cursor: pointer; line-height: 1;
 }
 .pl-reader-btn:hover, .pl-reader-btn:focus-visible { border-color: var(--pl-line); background: var(--pl-card); }
@@ -122,7 +190,8 @@ a:hover { text-decoration: underline; }
 .pl-progress > i { display: block; height: 100%; width: 0; background: var(--pl-accent); }
 .pl-menu {
   position: absolute; top: 0; bottom: 0; width: min(88vw, 340px); z-index: 6; overflow: auto; padding: 12px;
-  background: var(--pl-bg); color: var(--pl-fg); border-right: 1px solid var(--pl-line);
+  background: var(--pl-card-bg); color: var(--pl-fg); border-right: 1px solid var(--pl-line);
+  -webkit-backdrop-filter: var(--pl-card-blur); backdrop-filter: var(--pl-card-blur);
 }
 .pl-menu[hidden] { display: none; }
 .pl-menu-right { right: 0; border-right: 0; border-left: 1px solid var(--pl-line); }

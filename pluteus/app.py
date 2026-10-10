@@ -35,7 +35,7 @@ from .themes import DEFAULT, Themes
 from .urls import Urls, with_page
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
-STATIC_ALLOWED = {".css", ".js", ".svg", ".png", ".ico", ".woff2", ".map"}
+STATIC_ALLOWED = {".css", ".js", ".svg", ".png", ".ico", ".woff2"}
 SAFE_METHODS = {"GET", "HEAD", "OPTIONS"}
 CSP = ("default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; "
        "font-src 'self' data: blob:; connect-src 'self'; frame-src 'self' blob:; object-src 'none'; "
@@ -238,10 +238,18 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
         return revalidated(request, path)
 
     async def theme_file(request: Request):
-        path = themes.resolve(request.path_params["name"], request.path_params["path"])
+        name = request.path_params["name"]
+        if name == "_":
+            # "_" means: the theme this browser's user has chosen (so icon rules need no theme name in them)
+            who = sessions.user_for(request.cookies.get(COOKIE), auth.users)
+            name = theme_for(who.name) if who else (cfg.theme if themes.exists(cfg.theme) else DEFAULT)
+        path = themes.resolve(name, request.path_params["path"])
         if path is None:
             return PlainTextResponse("Not found", 404)
-        return revalidated(request, path)
+        response = revalidated(request, path)
+        if request.path_params["name"] == "_":
+            response.headers["Vary"] = "Cookie"
+        return response
 
     def login_ctx() -> web.Ctx:
         return web.Ctx(urls, "", cfg.theme if themes.exists(cfg.theme) else DEFAULT)

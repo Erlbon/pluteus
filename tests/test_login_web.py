@@ -78,6 +78,59 @@ def test_themes_can_be_edited_and_reloaded_without_a_restart(web, tmp_path):
     assert second.status_code == 200 and "#ff00aa" in second.text
 
 
+def test_the_underscore_alias_serves_the_users_own_theme_with_fallback(web, tmp_path):
+    client, app = web
+    icons = tmp_path / "themes" / "ocean" / "icons"
+    icons.mkdir()
+    (icons / "next.svg").write_text("<svg>ocean-next</svg>", encoding="utf-8")
+    assert "ocean-next" not in client.get("/theme/_/icons/next.svg").text            # signed out: the server theme
+    login(client)
+    post(client, "/settings", {"theme": "ocean"})
+    mine = client.get("/theme/_/icons/next.svg")
+    assert "ocean-next" in mine.text and mine.headers["vary"] == "Cookie"           # per-user answer, so Vary
+    assert client.get("/theme/_/icons/prev.svg").status_code == 200                  # not overridden: default's file
+    assert "vary" not in client.get("/theme/ocean/icons/next.svg").headers           # a named theme is the same for all
+    other = TestClient(app, follow_redirects=False)
+    login(other, "bob", "pw-bob")
+    assert "ocean-next" not in other.get("/theme/_/icons/next.svg").text             # bob has the default theme
+    assert client.get("/theme/_/../../app.py").status_code == 404
+
+
+def test_icon_rules_never_hide_a_url_inside_a_css_variable():
+    # Browsers resolve a relative url() in a custom property against the file that USES the variable,
+    # not the one that defines it: the icons were all 404 until the rules carried their own URLs.
+    from pathlib import Path
+    root = Path(__file__).resolve().parent.parent / "pluteus" / "static"
+    default_css = (root / "themes" / "default" / "theme.css").read_text(encoding="utf-8")
+    assert "--pl-icon" not in default_css and "url(../_/icons/next.svg)" in default_css
+    for css in root.rglob("*.css"):
+        text = css.read_text(encoding="utf-8")
+        code = "\n".join(line for line in text.splitlines() if not line.lstrip().startswith(("/*", "*", "Do not")))
+        assert "--pl-icon:" not in code, css
+
+
+def test_scheme_toggle_script_and_favicon(web):
+    client, _ = web
+    js = client.get("/static/scheme.js")
+    assert js.status_code == 200 and "data-scheme" in js.text and "localStorage" in js.text
+    assert client.get("/static/favicon.svg").status_code == 200
+    page = client.get("/login").text
+    assert "pl-scheme" in page and "rel='icon'" in page
+    assert "scheme.js' defer" not in page and "<script src='/static/scheme.js'></script>" in page   # runs before first paint
+    assert page.index("scheme.js") < page.index("<body")
+
+
+def test_all_built_in_themes_are_selectable(web):
+    client, _ = web
+    login(client)
+    options = client.get("/settings", headers=HTML).text
+    for name in ("default", "night", "northernlights", "ocean", "sepia"):
+        assert "<option value='%s'" % name in options
+        assert client.get("/theme/%s/theme.css" % name).status_code == 200
+    css = client.get("/theme/northernlights/theme.css").text
+    assert "backdrop-filter" in css and 'data-scheme="light"' in css
+
+
 # ---- redirects versus reader-app challenges ------------------------------------------------------------------
 def test_browsers_are_redirected_to_login_but_apps_get_a_challenge(web):
     client, _ = web
