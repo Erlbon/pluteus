@@ -1,14 +1,15 @@
-# bookshelf
+# pluteus
 
 A small, filesystem-first book and comic server: browse your real folder tree, read it from an
 OPDS app, download files, with per-user logins. Python, no Java, low memory, no scanning step.
 
-**Status: Phase 1 prototype (0.1.0).** Working name; rename freely.
+**Status: Phase 1 prototype (0.1.0).** Named after the *pluteus*, the sloping shelf or bookcase of a
+medieval library. Pronounced "PLOO-tee-us".
 
 ## Why filesystem-first
 
 Library servers that index everything into a database flatten the folder tree and need long
-rescans on a multi-terabyte library. bookshelf does the opposite:
+rescans on a multi-terabyte library. pluteus does the opposite:
 
 - the **folder tree is the catalogue**: every folder is one OPDS feed and one web page, read live
   with `os.scandir()` when you open it, so it works the moment it starts and never needs a rescan;
@@ -21,9 +22,9 @@ rescans on a multi-terabyte library. bookshelf does the opposite:
 python -m venv .venv
 .\.venv\Scripts\python -m pip install -e ".[dev]"
 copy config.example.toml config.toml
-.\.venv\Scripts\python -m bookshelf hash-password          # paste the output into config.toml
-.\.venv\Scripts\python -m bookshelf check-config --config config.toml
-.\.venv\Scripts\python -m bookshelf serve --config config.toml
+.\.venv\Scripts\python -m pluteus hash-password          # paste the output into config.toml
+.\.venv\Scripts\python -m pluteus check-config --config config.toml
+.\.venv\Scripts\python -m pluteus serve --config config.toml
 ```
 
 Then open `http://localhost:8080/` in a browser, or add `http://<host>:8080/opds` as a catalogue in

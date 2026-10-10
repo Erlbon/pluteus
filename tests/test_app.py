@@ -43,8 +43,8 @@ def test_anonymous_user_is_opt_in_and_never_overrides_bad_credentials(cfg):
 
     from starlette.testclient import TestClient
 
-    from bookshelf.app import create_app
-    from bookshelf.config import ConfigError, parse_config
+    from pluteus.app import create_app
+    from pluteus.config import ConfigError, parse_config
     from conftest import basic
 
     anon = TestClient(create_app(dataclasses.replace(cfg, anonymous_user="carol")))

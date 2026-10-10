@@ -76,8 +76,8 @@ def create_app(cfg: Config) -> Starlette:
     async def opds_root(request: Request, user):
         roots = lib.roots_for(user)
         now = time.time()
-        entries = [opds.nav_entry(r.name, "urn:bookshelf:" + r.name, urls.opds(r.name), now) for r in roots]
-        body = opds.build_feed(title="Library", feed_id="urn:bookshelf:root", self_href=urls.opds(),
+        entries = [opds.nav_entry(r.name, "urn:pluteus:" + r.name, urls.opds(r.name), now) for r in roots]
+        body = opds.build_feed(title="Library", feed_id="urn:pluteus:root", self_href=urls.opds(),
                                start_href=urls.opds(), updated=now, entries=entries)
         return Response(body, media_type=opds.NAV_TYPE)
 
@@ -91,7 +91,7 @@ def create_app(cfg: Config) -> Starlette:
         metas = await run_in_threadpool(meta.lookup_many, shown)
         entries = []
         for e in shown:
-            eid = "urn:bookshelf:" + root + ":" + "/".join(e.parts)
+            eid = "urn:pluteus:" + root + ":" + "/".join(e.parts)
             if e.is_dir:
                 entries.append(opds.nav_entry(e.display, eid, urls.opds(root, e.parts), e.mtime))
             else:
@@ -103,7 +103,7 @@ def create_app(cfg: Config) -> Starlette:
         updated = max((e.mtime for e in listing), default=time.time())
         body = opds.build_feed(
             title=lib.display_name(parts[-1]) if parts else root,
-            feed_id="urn:bookshelf:" + root + ":" + "/".join(parts),
+            feed_id="urn:pluteus:" + root + ":" + "/".join(parts),
             self_href=with_page(here, page), start_href=urls.opds(), updated=updated,
             entries=entries, up_href=up,
             next_href=with_page(here, page + 1) if page < pages else None,

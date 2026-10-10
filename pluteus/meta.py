@@ -18,7 +18,7 @@ import xml.etree.ElementTree as ET
 from concurrent.futures import ThreadPoolExecutor
 from urllib.parse import unquote
 
-log = logging.getLogger("bookshelf.meta")
+log = logging.getLogger("pluteus.meta")
 
 NS = {"c": "urn:oasis:names:tc:opendocument:xmlns:container",
       "opf": "http://www.idpf.org/2007/opf",

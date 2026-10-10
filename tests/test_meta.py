@@ -7,9 +7,9 @@ import pytest
 from epub_factory import make_epub
 from starlette.testclient import TestClient
 
-import bookshelf.meta as meta
-from bookshelf.app import create_app
-from bookshelf.fs import Entry
+import pluteus.meta as meta
+from pluteus.app import create_app
+from pluteus.fs import Entry
 
 ATOM = "{http://www.w3.org/2005/Atom}"
 DC = "{http://purl.org/dc/terms/}"

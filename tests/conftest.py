@@ -6,10 +6,10 @@ import pytest
 from epub_factory import make_epub
 from starlette.testclient import TestClient
 
-from bookshelf.app import create_app
-from bookshelf.auth import hash_password
-from bookshelf.config import parse_config
-from bookshelf.fs import longpath
+from pluteus.app import create_app
+from pluteus.auth import hash_password
+from pluteus.config import parse_config
+from pluteus.fs import longpath
 
 FAST = dict(n=2 ** 4)   # tiny scrypt cost, tests only
 

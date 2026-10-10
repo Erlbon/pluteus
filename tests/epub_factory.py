@@ -3,7 +3,7 @@ import os
 import zipfile
 from xml.sax.saxutils import escape
 
-from bookshelf.fs import longpath
+from pluteus.fs import longpath
 
 CONTAINER = """<?xml version="1.0"?>
 <container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">

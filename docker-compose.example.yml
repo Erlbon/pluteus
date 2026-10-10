@@ -1,9 +1,9 @@
 # UNTESTED example. In config.toml use host = "0.0.0.0" and the container paths below.
 # On Windows, bind-mounting a Windows drive into Docker Desktop goes through the WSL2
 # file-sharing layer, which is slow for folder walks: benchmark before choosing Docker
-# over running bookshelf natively (see README).
+# over running pluteus natively (see README).
 services:
-  bookshelf:
+  pluteus:
     build: .
     ports:
       - "8080:8080"

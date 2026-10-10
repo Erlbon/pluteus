@@ -1,5 +1,5 @@
-# bookshelf configuration. Copy to config.toml (git-ignored) and edit.
-# Check it with:  python -m bookshelf check-config --config config.toml
+# pluteus configuration. Copy to config.toml (git-ignored) and edit.
+# Check it with:  python -m pluteus check-config --config config.toml
 
 [server]
 host = "127.0.0.1"          # use "0.0.0.0" inside Docker or to serve the LAN
@@ -14,7 +14,7 @@ page_size = 50              # entries per OPDS / web page
 # EPUB metadata (title, authors, series, language, year) is read from inside each book, only for the
 # books on the page being shown, and cached in a disposable SQLite file (safe to delete at any time).
 # metadata = true
-# cache_dir = 'D:\bookshelf-cache'   # leave out to keep the cache in memory only (lost on restart)
+# cache_dir = 'D:\pluteus-cache'   # leave out to keep the cache in memory only (lost on restart)
 
 # Folders to serve. The folder tree is read live from disk; nothing is indexed up front.
 # Names appear in URLs, so use letters, digits, - and _ only.
@@ -41,7 +41,7 @@ extensions = [".epub", ".cbz", ".pdf"]
 # users who do not have adult = true. Hidden folders answer 404, like missing ones.
 adult_marker = ".adult"
 
-# Users. Make a password hash with:  python -m bookshelf hash-password
+# Users. Make a password hash with:  python -m pluteus hash-password
 [[users]]
 name = "erlend"
 password_hash = "scrypt$16384$8$1$replace-with-output-of-hash-password"

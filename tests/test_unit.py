@@ -1,9 +1,9 @@
 """Pure-function tests: sorting, display names, passwords, config validation."""
 import pytest
 
-from bookshelf.auth import Authenticator, hash_password, verify_password
-from bookshelf.config import ConfigError, parse_config
-from bookshelf.fs import Library, PathError, check_segment, natural_key
+from pluteus.auth import Authenticator, hash_password, verify_password
+from pluteus.config import ConfigError, parse_config
+from pluteus.fs import Library, PathError, check_segment, natural_key
 
 
 def test_natural_key_orders_numbers_numerically():

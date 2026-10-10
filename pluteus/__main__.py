@@ -11,8 +11,8 @@ from .config import ConfigError, load_config
 
 
 def main(argv=None) -> int:
-    ap = argparse.ArgumentParser(prog="bookshelf", description="Filesystem-first book and comic server.")
-    ap.add_argument("--version", action="version", version="bookshelf " + __version__)
+    ap = argparse.ArgumentParser(prog="pluteus", description="Filesystem-first book and comic server.")
+    ap.add_argument("--version", action="version", version="pluteus " + __version__)
     sub = ap.add_subparsers(dest="cmd", required=True)
     serve = sub.add_parser("serve", help="run the server")
     serve.add_argument("--config", required=True, help="path to config.toml")

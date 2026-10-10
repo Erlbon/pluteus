@@ -54,7 +54,7 @@ class Config:
     extensions: tuple = DEFAULT_EXTENSIONS
     excludes: frozenset = frozenset(DEFAULT_EXCLUDES)
     adult_marker: str = ".adult"
-    realm: str = "bookshelf"
+    realm: str = "pluteus"
     auth_cache_seconds: int = 300
     anonymous_user: str = ""   # requests with NO credentials act as this user (off by default)
     metadata: bool = True      # read title/author/series from inside EPUBs
@@ -86,7 +86,7 @@ def parse_config(data: dict, check_roots: bool = True) -> Config:
         if name in users:
             raise ConfigError("duplicate user %r" % name)
         if not str(u.get("password_hash", "")).startswith("scrypt$"):
-            raise ConfigError("user %r needs a password_hash (run: python -m bookshelf hash-password)" % name)
+            raise ConfigError("user %r needs a password_hash (run: python -m pluteus hash-password)" % name)
         allowed = tuple(u.get("roots", ()))
         for ar in allowed:
             if ar not in roots:
@@ -115,7 +115,7 @@ def parse_config(data: dict, check_roots: bool = True) -> Config:
         page_size=int(server.get("page_size", 50)), base_path=base_path,
         display_strip=strip, extensions=extensions, excludes=excludes,
         adult_marker=str(data.get("adult_marker", ".adult")),
-        realm=str(server.get("realm", "bookshelf")),
+        realm=str(server.get("realm", "pluteus")),
         auth_cache_seconds=int(server.get("auth_cache_seconds", 300)),
         anonymous_user=anonymous_user,
         metadata=bool(data.get("metadata", True)),
