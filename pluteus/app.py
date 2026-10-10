@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import functools
 import hashlib
+import json
 import os
 import time
 from pathlib import Path
@@ -176,7 +177,7 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
         return DEFAULT
 
     def ctx_for(user) -> web.Ctx:
-        return web.Ctx(urls, user.name, theme_for(user.name), readers=False)
+        return web.Ctx(urls, user.name, theme_for(user.name), readers=True)
 
     def unauthorized(request: Request, mode: str, wait: int) -> Response:
         if wait:
@@ -299,9 +300,20 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
         return response
 
     # ---- browser pages ------------------------------------------------------------
+    def continue_reading(user) -> list:
+        """(link, label, fraction) for the books this user left unfinished, newest first."""
+        out = []
+        for r in state.recent_progress(user.name, 20):
+            if r["root"] in cfg.roots and user.may_use(r["root"]) and r["percent"] < 0.98 \
+                    and r["path"].lower().endswith(".epub"):
+                parts = tuple(r["path"].split("/"))
+                out.append((urls.read(r["root"], parts), os.path.splitext(parts[-1])[0], r["percent"]))
+        return out[:6]
+
     @guarded("web")
     async def home(request: Request, user):
-        return HTMLResponse(web.roots_page(lib.roots_for(user), ctx_for(user)))
+        recent = await run_in_threadpool(continue_reading, user)
+        return HTMLResponse(web.roots_page(lib.roots_for(user), ctx_for(user), recent))
 
     @guarded("web")
     async def browse(request: Request, user):
@@ -323,6 +335,44 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
                 state.set_prefs(user.name, {**state.get_prefs(user.name), "theme": choice})
             return RedirectResponse(urls.settings() + "?saved=1", 303)
         return HTMLResponse(web.settings_page(ctx_for(user), themes.names(), "saved" in request.query_params))
+
+    @guarded("web")
+    async def read(request: Request, user):
+        root = request.path_params["root"]
+        parts = _parts(request.path_params["path"])
+        info = await run_in_threadpool(lib.file_info, user, root, parts)      # exists, allowed, not hidden
+        if not info.name.lower().endswith(".epub"):
+            return PlainTextResponse("There is no in-browser reader for this file type.", 404)
+        book = await run_in_threadpool(meta.for_file, info)
+        title = book.get("title") or os.path.splitext(info.name)[0]
+        key = hashlib.sha1(("%s-%s" % (info.size, info.mtime)).encode()).hexdigest()[:12]
+        return HTMLResponse(web.epub_reader_page(
+            ctx_for(user), title, ", ".join(book.get("authors", ())),
+            book_url=urls.download(root, parts), progress_url=urls.api("progress", root, parts),
+            back_url=urls.browse(root, parts[:-1]), content_css_url=urls.theme("_", "reader-content.css"), key=key))
+
+    @guarded("api")
+    async def progress(request: Request, user):
+        root = request.path_params["root"]
+        parts = _parts(request.path_params["path"])
+        await run_in_threadpool(lib.file_info, user, root, parts)             # no progress for files you cannot see
+        path = "/".join(parts)
+        if request.method == "PUT":
+            if "application/json" not in request.headers.get("content-type", ""):
+                return JSONResponse({"error": "a JSON body is required"}, 415)
+            raw = await request.body()
+            if len(raw) > 8192:
+                return JSONResponse({"error": "body too large"}, 413)
+            try:
+                data = json.loads(raw)
+                locator, percent = data["locator"], float(data["percent"])
+            except (ValueError, KeyError, TypeError):
+                return JSONResponse({"error": "expected {locator, percent}"}, 400)
+            if not isinstance(locator, str) or not locator or len(locator) > 2048 or percent != percent:
+                return JSONResponse({"error": "invalid locator or percent"}, 400)
+            state.put_progress(user.name, root, path, locator, percent)
+            return JSONResponse({"ok": True})
+        return JSONResponse(state.get_progress(user.name, root, path) or {})
 
     # ---- OPDS and downloads (reader apps) ---------------------------------------------
     @guarded("basic")
@@ -383,6 +433,8 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
         Route("/settings", settings, methods=["GET", "POST"]),
         Route("/browse/{root}", browse),
         Route("/browse/{root}/{path:path}", browse),
+        Route("/read/{root}/{path:path}", read),
+        Route("/api/progress/{root}/{path:path}", progress, methods=["GET", "PUT"]),
         Route("/opds", opds_root),
         Route("/opds/", opds_root),
         Route("/opds/{root}", opds_folder),

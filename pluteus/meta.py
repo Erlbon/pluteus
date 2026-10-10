@@ -157,6 +157,10 @@ class MetaService:
         self.cache.put(entry.path, entry.size, entry.mtime, data)
         return data
 
+    def for_file(self, info) -> dict:
+        """Metadata for one file (anything with path, size and mtime), through the same cache."""
+        return self._one(info) if self.enabled else {}
+
     def lookup_many(self, entries) -> dict:
         """{entry.path: metadata dict} for the EPUB entries given ({} for other types)."""
         if not self.enabled:

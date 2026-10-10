@@ -12,6 +12,12 @@ for f in $(git diff --cached --name-only --diff-filter=ACM); do
     *.js|*.mjs)
       node --check "$f" || { echo "pre-commit: syntax error in $f" >&2; fail=1; } ;;
   esac
+  # Vendored third-party files are committed byte for byte as published (the minified JSZip legitimately contains
+  # control bytes). They are protected by the npm integrity hashes recorded in pluteus/static/vendor/README.md
+  # instead; the syntax check above still applies to them.
+  case "$f" in
+    pluteus/static/vendor/*) continue ;;
+  esac
   case "$f" in
     *.py|*.js|*.mjs|*.gs|*.css|*.html|*.md|*.sql|*.toml|*.json|*.sh|*.bat|*.yml|*.yaml|*.txt)
       python - "$f" <<'PYEOF' || { echo "pre-commit: control character in $f (a backslash escape was turned into a real character?)" >&2; fail=1; }

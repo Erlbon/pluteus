@@ -51,7 +51,6 @@
   --pl-book-font: var(--pl-font-reading);
   --pl-book-size: 100;            /* percent */
   --pl-book-line: 1.55;
-  --pl-book-margin: 6%;
   --pl-reader-bar-bg: var(--pl-bar-bg);
   --pl-reader-bar-fg: var(--pl-fg);
   --pl-reader-stage-bg: var(--pl-card);
@@ -182,6 +181,7 @@ a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible
 }
 .pl-reader-btn:hover, .pl-reader-btn:focus-visible { border-color: var(--pl-line); background: var(--pl-card); }
 .pl-reader-stage { position: relative; flex: 1; min-height: 0; overflow: hidden; background: var(--pl-book-bg); }
+.pl-reader-stage iframe { border: 0; background: var(--pl-book-bg); }    /* no white flash before the book's page arrives */
 .pl-reader-foot {
   display: flex; align-items: center; gap: 10px; padding: 4px 12px; font-size: 12px; color: var(--pl-dim);
   background: var(--pl-reader-bar-bg); border-top: 1px solid var(--pl-line);

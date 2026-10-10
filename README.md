@@ -146,3 +146,20 @@ sizes from the original picture (needs Pillow; run with `--debug` to see where t
     python tools/make_icon.py path/to/pluteus.jpg pluteus/static/icon
 
 A theme can hide the logo on the sign-in card with `.pl-logo { display: none; }`.
+
+## Reading in the browser (EPUB)
+
+Every EPUB in a folder listing has a **Read** link. The reader is epub.js (BSD-2-Clause, vendored with its licence
+in `pluteus/static/vendor/`, no CDN) with an interface built from the theme's own variables and classes:
+
+- contents menu, text size, font, line spacing, paged or scrolling layout, full screen, dark/light toggle;
+- keys (arrows, page up/down, space), edge taps and swipes on a phone;
+- **reading progress is saved per user on the server**, so a book opens where you stopped, on any device, and
+  the home page shows "Continue reading" for unfinished books;
+- the book text follows the theme: `--pl-book-bg/-fg/-link/-font/-line` feed a `reader-content.css` that is loaded
+  into the book's page. A theme replaces that file to restyle the text itself, and it is re-applied live when the
+  scheme changes. Book scripts never run (the book's page is sandboxed), and the page counting used for the
+  percentage starts only after the first page is shown.
+
+The reader is a convenience: the OPDS feed and plain downloads for Android reader apps are the main way to read.
+The progress API is `GET/PUT /api/progress/{root}/{path}` (JSON `{locator, percent}`; same-site writes only).

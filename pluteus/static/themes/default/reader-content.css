@@ -1,0 +1,33 @@
+/* Loaded INTO the book's own page (an iframe), so these rules can restyle the book text itself.
+   A theme overrides it by providing themes/<theme>/reader-content.css (the whole file replaces this one);
+   the variables below are set by the reader from the theme's --pl-book-* values and the reader's settings,
+   and are re-set when the dark/light scheme changes.
+
+   !important is used because books ship their own colours and fonts, and a dark scheme must stay readable. */
+
+html {
+  background: var(--pl-book-bg) !important;
+}
+
+body {
+  background: var(--pl-book-bg) !important;
+  color: var(--pl-book-fg) !important;
+  font-family: var(--pl-book-font) !important;
+  line-height: var(--pl-book-line) !important;
+  -webkit-text-size-adjust: 100%;
+  overflow-wrap: break-word;
+}
+
+/* book styles often hard-code text colours; follow the reader's instead */
+body p, body div, body span, body li, body td, body th, body blockquote, body em, body strong, body i, body b,
+body h1, body h2, body h3, body h4, body h5, body h6 {
+  color: inherit !important;
+}
+body p, body div, body span, body section, body blockquote { background-color: transparent !important; }
+
+a, a * { color: var(--pl-book-link) !important; }
+
+img, svg, video, canvas {
+  max-width: 100% !important;
+  height: auto !important;
+}

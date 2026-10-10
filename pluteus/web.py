@@ -122,7 +122,7 @@ def listing_page(root: str, parts: tuple, entries: list, page: int, pages: int, 
         pct = progress.get("/".join(e.parts))
         badge = "<span class='pl-badge'>%d%%</span> " % round(pct * 100) if pct else ""
         read = ""
-        if ctx.readers and e.name.lower().endswith((".epub", ".cbz")):
+        if ctx.readers and e.name.lower().endswith(".epub"):
             read = "<a href='%s'>Read</a> &middot; " % escape(urls.read(root, e.parts))
         rows.append("<li class='pl-row'><span class='pl-title'>%s</span><span class='pl-muted'>%s%s"
                     "<a href='%s'>Download</a> &middot; %s</span></li>"
@@ -139,6 +139,49 @@ def listing_page(root: str, parts: tuple, entries: list, page: int, pages: int, 
             % (" / ".join(crumbs), escape(title), total, escape(urls.opds(root, parts)),
                pager, "".join(rows), pager))
     return layout(title, body, ctx)
+
+
+def _icon_button(ident: str, icon: str, label: str, extra: str = "") -> str:
+    return ("<button class='pl-reader-btn %s' id='%s' type='button' title='%s' aria-label='%s'>"
+            "<span class='pl-icon pl-i-%s'></span></button>" % (extra, ident, escape(label), escape(label), icon))
+
+
+def epub_reader_page(ctx: Ctx, title: str, subtitle: str, *, book_url: str, progress_url: str, back_url: str,
+                     content_css_url: str, key: str) -> str:
+    """The EPUB reader shell. The page is styled by the theme; epub.js and reader-epub.js do the rest."""
+    u = ctx.urls
+    data = " ".join("data-%s='%s'" % (k, escape(v)) for k, v in (
+        ("book", book_url), ("progress", progress_url), ("content-css", content_css_url), ("key", key)))
+    body = (
+        "<div class='pl-reader' id='reader' %s>"
+        "<header class='pl-reader-bar'>"
+        "<a class='pl-reader-btn' id='back' href='%s' title='Back to the folder' aria-label='Back to the folder'>"
+        "<span class='pl-icon pl-i-back'></span></a>"
+        "%s<div class='pl-reader-title' title='%s'>%s</div>%s%s%s</header>"
+        "<div class='pl-reader-stage'><div id='viewer' style='position:absolute;inset:0'></div>"
+        "<div class='pl-tap pl-tap-left' id='tap-prev'></div><div class='pl-tap pl-tap-right' id='tap-next'></div>"
+        "<nav class='pl-menu' id='toc' hidden aria-label='Contents'><h2>Contents</h2><ul id='toc-list'></ul></nav>"
+        "<aside class='pl-menu pl-menu-right' id='settings' hidden aria-label='Reading settings'>"
+        "<h2>Text size</h2><div><button class='pl-btn' id='size-down' type='button'>A&minus;</button> "
+        "<span id='size-value'>100%%</span> <button class='pl-btn' id='size-up' type='button'>A+</button></div>"
+        "<label class='pl-field'><span>Font</span><select id='font'><option value='theme'>Theme default</option>"
+        "<option value='serif'>Serif</option><option value='sans'>Sans-serif</option></select></label>"
+        "<label class='pl-field'><span>Line spacing</span><select id='line'><option value='1.3'>Tight</option>"
+        "<option value='1.55'>Normal</option><option value='1.8'>Loose</option></select></label>"
+        "<label class='pl-field'><span>Layout</span><select id='flow'><option value='paginated'>Pages</option>"
+        "<option value='scrolled-doc'>Scrolling</option></select></label></aside>"
+        "<div class='pl-toast' id='status'>Loading the book&hellip;</div></div>"
+        "<footer class='pl-reader-foot'>%s<div class='pl-progress'><i id='bar'></i></div>"
+        "<span id='pct'>&ndash;</span>%s</footer></div>"
+        % (data, escape(back_url),
+           _icon_button("toc-btn", "menu", "Contents"), escape(subtitle), escape(title),
+           "<button class='pl-reader-btn pl-scheme' type='button' title='Toggle dark / light' aria-label='Toggle dark / light'>"
+           "<span class='pl-icon pl-i-contrast'></span></button>",
+           _icon_button("settings-btn", "settings", "Reading settings"),
+           _icon_button("fs-btn", "fullscreen", "Full screen"),
+           _icon_button("prev", "prev", "Previous page"), _icon_button("next", "next", "Next page")))
+    return layout(title, body, ctx, bar=False, body_class="pl-reader-page",
+                  scripts=(u.static("vendor/jszip.min.js"), u.static("vendor/epub.min.js"), u.static("reader-epub.js")))
 
 
 def settings_page(ctx: Ctx, themes: list, saved: bool = False) -> str:
