@@ -27,6 +27,9 @@ CREATE TABLE IF NOT EXISTS progress (
     PRIMARY KEY (username, root, path));
 CREATE INDEX IF NOT EXISTS progress_recent ON progress (username, updated DESC);
 CREATE TABLE IF NOT EXISTS prefs (username TEXT PRIMARY KEY, data TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS dismissed (
+    username TEXT NOT NULL, root TEXT NOT NULL, path TEXT NOT NULL, at REAL NOT NULL,
+    PRIMARY KEY (username, root, path));
 CREATE TABLE IF NOT EXISTS devices (
     token_hash TEXT PRIMARY KEY, username TEXT NOT NULL, pwfp TEXT NOT NULL,
     first_seen REAL NOT NULL, last_seen REAL NOT NULL, last_ip TEXT NOT NULL);
@@ -119,9 +122,18 @@ class StateDB:
                     (username, root, path, locator, min(1.0, max(0.0, float(percent))), now))
 
     def recent_progress(self, username: str, limit: int = 20) -> list:
-        rows = self._all("SELECT root, path, locator, percent, updated FROM progress WHERE username=? "
-                         "ORDER BY updated DESC LIMIT ?", (username, limit))
+        """The files this user has a saved position in, newest first, leaving out the ones they removed from the home
+        page list (see dismiss_progress) unless they have been opened again since."""
+        rows = self._all("SELECT p.root, p.path, p.locator, p.percent, p.updated FROM progress p "
+                         "LEFT JOIN dismissed d ON d.username=p.username AND d.root=p.root AND d.path=p.path "
+                         "WHERE p.username=? AND (d.at IS NULL OR p.updated > d.at) "
+                         "ORDER BY p.updated DESC LIMIT ?", (username, limit))
         return [{"root": r[0], "path": r[1], "locator": r[2], "percent": r[3], "updated": r[4]} for r in rows]
+
+    def dismiss_progress(self, username: str, root: str, path: str, now=None) -> None:
+        """Take a file off the home page list. Its saved position is kept; it comes back when it is opened again."""
+        now = time.time() if now is None else now
+        self._write("INSERT OR REPLACE INTO dismissed VALUES (?,?,?,?)", (username, root, path, now))
 
     def progress_for(self, username: str, root: str, paths: list) -> dict:
         """{path: percent} for the given paths (used for the badges in a folder listing)."""

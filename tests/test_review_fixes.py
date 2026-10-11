@@ -271,7 +271,7 @@ def test_home_page_icons_where_a_started_book_lives_and_the_opds_link_in_the_foo
     assert me.put("/api/progress/comics/3%20-%20Marvel%20%281961-2012%29/Spider-Man%20%281963-%29/Amazing%20001.cbz",
                   json={"locator": "page:2", "percent": 0.1}, headers=h).status_code == 200
     html = me.get("/", headers=HTML).text
-    assert "&#128214;" in html and "&#128172;" in html                           # a book icon and a comic icon in "Continue reading"
+    assert "&#128214;" in html and "&#128172;" in html                           # a book icon and a comic icon in the list
     assert "books / Good Author" in html and "comics / Spider-Man (1963-)" in html   # which library, which folder
     assert html.count("class='pl-kind'>&#128193;") == 2 and "class='pl-kind'>&#128228;" in html   # folder icons; uploads has its own
     assert "OPDS catalogue" not in html
@@ -285,12 +285,12 @@ def test_home_page_is_two_boxes_and_a_footer(cfg, tmp_path, library):
             headers={"content-type": "application/x-www-form-urlencoded", "origin": "http://testserver"})
     html = me.get("/", headers=HTML).text
     assert html.count("class='pl-card pl-home-box'") == 1                         # nothing started yet: only the Browse box
-    assert "aria-label='Browse'" in html and "Continue reading" not in html
+    assert "aria-label='Browse'" in html and "Pick up where you left off" not in html
     me.put("/api/progress/books/Good%20Author/Real%20Book.epub", json={"locator": "x", "percent": 0.3},
            headers={"origin": "http://testserver"})
     html = me.get("/", headers=HTML).text
     assert html.count("class='pl-card pl-home-box'") == 2
-    assert html.index("aria-label='Continue reading'") < html.index("aria-label='Browse'") < html.index("pl-foot")
+    assert html.index("aria-label='Pick up where you left off'") < html.index("aria-label='Browse'") < html.index("pl-foot")
     assert html.rindex("</section>") < html.index("pl-foot")                       # the small print sits below both boxes
 
 
@@ -304,3 +304,50 @@ def test_every_file_row_in_a_listing_has_its_type_icon(cfg, tmp_path, library):
     plain = client.get("/browse/comics/Plain", headers=h).text
     assert "<span class='pl-kind'>&#128196;</span>" in plain                                         # a text file: a plain page
     assert "&#128193;" in client.get("/browse/comics", headers=h).text                                # folders keep their folder icon
+
+
+def test_a_file_can_be_taken_off_the_home_list_and_comes_back_when_opened_again(cfg, tmp_path, library):
+    client, app = make(cfg, tmp_path)
+    form = {"content-type": "application/x-www-form-urlencoded", "origin": "http://testserver"}
+    alice, bob = TestClient(app, follow_redirects=False), TestClient(app, follow_redirects=False)
+    alice.post("/login", content="username=alice&password=pw-alice", headers=form)
+    bob.post("/login", content="username=bob&password=pw-bob", headers=form)
+    path = "/books/Good%20Author/Real%20Book.epub"
+    for who in (alice, bob):
+        assert who.put("/api/progress" + path, json={"locator": "x", "percent": 0.3}, headers={"origin": "http://testserver"}).status_code == 200
+        assert "Real%20Book.epub" in who.get("/", headers=HTML).text
+    home = alice.get("/", headers=HTML).text
+    assert "class='pl-dismiss-form' method='post' action='/dismiss/books/Good%20Author/Real%20Book.epub'" in home
+    assert "aria-label='Remove Real Book from this list'" in home
+    r = alice.post("/dismiss" + path, headers={"origin": "http://testserver"})
+    assert r.status_code == 303 and r.headers["location"] == "/"
+    assert "Real%20Book.epub" not in alice.get("/", headers=HTML).text                 # gone from alice's list
+    assert "Real%20Book.epub" in bob.get("/", headers=HTML).text                       # bob's list is his own
+    assert alice.get("/api/progress" + path).json()["locator"] == "x"                  # the saved position is kept
+    alice.put("/api/progress" + path, json={"locator": "y", "percent": 0.4}, headers={"origin": "http://testserver"})
+    assert "Real%20Book.epub" in alice.get("/", headers=HTML).text                     # opened again: it is back
+
+
+def test_dismissing_needs_a_same_site_post_a_login_and_a_root_you_may_use(cfg, tmp_path):
+    client, app = make(cfg, tmp_path)
+    alice = TestClient(app, follow_redirects=False)
+    alice.post("/login", content="username=alice&password=pw-alice",
+               headers={"content-type": "application/x-www-form-urlencoded", "origin": "http://testserver"})
+    assert alice.post("/dismiss/books/x.epub", headers={"origin": "http://evil.example"}).status_code == 403
+    assert alice.get("/dismiss/books/x.epub").status_code == 405
+    assert TestClient(app, follow_redirects=False).post("/dismiss/books/x.epub", headers={"origin": "http://testserver"}).status_code in (303, 401)
+    assert alice.post("/dismiss/nosuchroot/x.epub", headers={"origin": "http://testserver"}).status_code == 404
+    carol = TestClient(app, follow_redirects=False)                                    # carol may only use the comics root
+    carol.post("/login", content="username=carol&password=pw-carol",
+               headers={"content-type": "application/x-www-form-urlencoded", "origin": "http://testserver"})
+    assert carol.post("/dismiss/books/x.epub", headers={"origin": "http://testserver"}).status_code == 404
+    assert alice.post("/dismiss/books/gone%20file.epub", headers={"origin": "http://testserver"}).status_code == 303  # a missing file can be removed too
+
+
+def test_the_home_page_is_called_file_library_and_the_list_has_a_neutral_title(cfg, tmp_path):
+    client, _ = make(cfg, tmp_path)
+    client.post("/login", content="username=alice&password=pw-alice",
+                headers={"content-type": "application/x-www-form-urlencoded", "origin": "http://testserver"})
+    html = client.get("/", headers=HTML).text
+    assert "<h1>File Library</h1>" in html and "<title>File Library</title>" in html
+    assert "File Library</a>" in client.get("/browse/books", headers=HTML).text           # the first breadcrumb

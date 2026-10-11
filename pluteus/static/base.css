@@ -348,3 +348,11 @@ body.pl-reader-page, .pl-reader-stage { overscroll-behavior: contain; }
 .pl-file .pl-title { display: flex; align-items: baseline; }
 .pl-file .pl-title .pl-kind { flex: none; }
 .pl-title-text { min-width: 0; overflow-wrap: anywhere; }
+
+/* the small "x" that takes a file off the home page list: a real touch target, quiet until needed */
+.pl-dismiss-form { margin: 0; display: inline-flex; }
+.pl-dismiss {
+  width: 40px; height: 40px; margin-left: 6px; font-size: 24px; line-height: 1; cursor: pointer; border-radius: 12px;
+  color: var(--pl-dim); background: none; border: 1px solid transparent;
+}
+.pl-dismiss:hover, .pl-dismiss:focus-visible { color: var(--pl-fg); border-color: var(--pl-line); }

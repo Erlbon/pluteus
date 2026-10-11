@@ -210,8 +210,8 @@ def test_comic_progress_roundtrip_and_continue_reading(comic_app):
     assert r.status_code == 200
     assert client.get(api).json()["locator"] == "page:2"
     home = client.get("/", headers=HTML).text
-    assert "Continue reading" in home and "75%" in home and "href='/read/comics/Plain/Comic%20One.cbz'" in home
+    assert "Pick up where you left off" in home and "75%" in home and "href='/read/comics/Plain/Comic%20One.cbz'" in home
     app.state.state.put_progress("alice", "comics", "Plain/Comic One.cbz", "page:3", 1.0)
-    assert "Continue reading" not in client.get("/", headers=HTML).text        # finished comics drop off the list
+    assert "Pick up where you left off" not in client.get("/", headers=HTML).text        # finished comics drop off the list
     listing = client.get("/browse/comics/Plain", headers=HTML).text
     assert "100%" in listing

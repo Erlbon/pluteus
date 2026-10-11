@@ -66,6 +66,10 @@ class Urls:
         """POST target for file operations in the upload folder: op is rename, delete or mkdir."""
         return self.base + "/files/" + op + "/" + "/".join(quote(s, safe="") for s in (root, *parts))
 
+    def dismiss(self, root: str, parts) -> str:
+        """POST target that takes a file off the home page list."""
+        return self.base + "/dismiss/" + "/".join(quote(s, safe="") for s in (root, *parts))
+
     def share(self) -> str:
         return self.base + "/share"
 

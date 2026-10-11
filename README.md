@@ -198,7 +198,7 @@ in `pluteus/static/vendor/`, no CDN) with an interface built from the theme's ow
   "Two pages" in the settings menu shows a spread on wide screens. The choice is remembered in the browser;
 - keys (arrows, page up/down, space), edge taps and swipes on a phone;
 - **reading progress is saved per user on the server**, so a book opens where you stopped, on any device, and
-  the home page shows "Continue reading" for unfinished books;
+  the home page shows "Pick up where you left off" for unfinished books;
 - the book text follows the theme: `--pl-book-bg/-fg/-link/-font/-line` feed a `reader-content.css` that is loaded
   into the book's page. A theme replaces that file to restyle the text itself, and it is re-applied live when the
   scheme changes. Book scripts never run (the book's page is sandboxed), and the page counting used for the
@@ -212,7 +212,7 @@ The progress API is `GET/PUT /api/progress/{root}/{path}` (JSON `{locator, perce
 Every `.cbz` has a **Read** link too: a deliberately simple one-page-at-a-time reader (no libraries, `reader-comic.js`).
 Fit to page or fit to width (scrolls down), arrows / space / page keys / Home / End, edge taps and swipes, click the
 progress bar to jump, full screen, dark/light. The page number is saved per user like an EPUB's position, so comics
-reopen where you stopped and appear under "Continue reading" until finished.
+reopen where you stopped and appear under "Pick up where you left off" until finished.
 
 The server never extracts anything: it reads the zip's central directory once to list the pages (images only, natural
 order, `__MACOSX`/dot files/`Thumbs.db` skipped; the list is cached in the SQLite cache), then serves one entry per
@@ -257,7 +257,7 @@ by its type at `/view/{root}/{path}`. Set `show_all_files = false` to go back to
 | text, code, logs, json, xml, html source, ... | server-rendered, always HTML-escaped; encoding detected (UTF-8/16/32 with BOM, UTF-8, Windows-1252, Latin-1) and named in the footer; text size and wrap; shows the first `text_view_kb` KB (default 1024) with a clear notice and a download link |
 | **anything else** | plainly-text files (a README, an unknown extension) open as text; binary files get an info page (type, size, date) with **Download** and **View as text**, which opens even binary data as text |
 
-Progress (position, page, time) is kept for books, PDFs, audio and video and feeds "Continue reading".
+Progress (position, page, time) is kept for books, PDFs, audio and video and feeds the **"Pick up where you left off"** box on the home page (a type icon, the library and folder, the percentage). A small **x** on a row takes the file off that list: its saved position is kept, and it comes back by itself the next time it is opened. The list is per user.
 
 ### How files are served safely
 

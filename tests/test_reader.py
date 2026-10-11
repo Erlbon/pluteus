@@ -195,7 +195,7 @@ def test_home_lists_unfinished_epubs_newest_first(signed_in):
     st.put_progress("alice", "comics", "Plain/notes.txt", "c", 0.2, now=300)                       # no progress kind: hidden
     st.put_progress("alice", "gone", "x.epub", "d", 0.2, now=400)                                  # root no longer exists
     html = client.get("/", headers=HTML).text
-    assert "Continue reading" in html and "50%" in html
+    assert "Pick up where you left off" in html and "50%" in html
     assert "href='/read/books/Good%20Author/Real%20Book.epub'" in html
     assert "Plain Filename" not in html and "notes" not in html and "x.epub" not in html
 
@@ -205,7 +205,7 @@ def test_home_hides_continue_reading_for_roots_a_user_lost(signed_in):
     app.state.state.put_progress("carol", "books", "Good Author/Real Book.epub", "a", 0.5)
     carol = TestClient(app, follow_redirects=False)
     login(carol, "carol", "pw-carol")
-    assert "Continue reading" not in carol.get("/", headers=HTML).text
+    assert "Pick up where you left off" not in carol.get("/", headers=HTML).text
 
 
 def test_epub_reader_defaults_to_one_centered_page_with_a_two_page_option():

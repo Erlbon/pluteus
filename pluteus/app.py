@@ -417,13 +417,25 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
                 link = urls.read(r["root"], parts) if kind in ("epub", "comic") else urls.view(r["root"], parts)
                 parent = lib.display_name(parts[-2]) if len(parts) > 1 else ""
                 out.append({"href": link, "label": os.path.splitext(parts[-1])[0], "percent": r["percent"], "kind": kind,
-                            "where": r["root"] + (" / " + parent if parent else "")})
+                            "where": r["root"] + (" / " + parent if parent else ""),
+                            "dismiss": urls.dismiss(r["root"], parts)})
         return out[:6]
 
     @guarded("web")
     async def home(request: Request, user):
         recent = await run_in_threadpool(continue_reading, user)
         return HTMLResponse(web.roots_page(lib.roots_for(user), ctx_for(user), recent))
+
+    @guarded("web")
+    async def dismiss(request: Request, user):
+        """Take a file off the home page list. No file is touched: only this user's list changes, and the saved position
+        stays (the file is listed again when it is next opened)."""
+        root = request.path_params["root"]
+        parts = _parts(request.path_params["path"])
+        if not parts or not lib.has_root(user, root):
+            raise NotFound("no such entry")
+        await run_in_threadpool(state.dismiss_progress, user.name, root, "/".join(parts))
+        return RedirectResponse(urls.home(), 303)
 
     @guarded("web")
     async def browse(request: Request, user):
@@ -857,6 +869,7 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
         Route("/login", login_submit, methods=["POST"]),
         Route("/logout", logout, methods=["POST"]),
         Route("/", home),
+        Route("/dismiss/{root}/{path:path}", dismiss, methods=["POST"]),
         Route("/settings", settings, methods=["GET", "POST"]),
         Route("/browse/{root}", browse),
         Route("/browse/{root}/{path:path}", browse),

@@ -85,6 +85,7 @@ def login_page(ctx: Ctx, next_url: str = "", error: str = "", username: str = ""
 KIND_ICONS = {"epub": "&#128214;", "comic": "&#128172;", "pdf": "&#128213;", "image": "&#128444;", "audio": "&#127925;",
               "video": "&#127902;", "markdown": "&#128221;", "table": "&#128202;", "archive": "&#128230;"}
 ROOT_ICON, UPLOADS_ICON, FILE_ICON = "&#128193;", "&#128228;", "&#128196;"
+RECENT_TITLE = "Pick up where you left off"       # books, comics, PDFs, audiobooks and videos all appear in this box
 
 
 def kind_icon(kind: str) -> str:
@@ -103,17 +104,21 @@ def roots_page(roots: list, ctx: Ctx, recent: list | None = None) -> str:
         rows = "".join(
             "<li class='pl-row pl-recent-row'><a class='pl-recent-link' href='%s'><span class='pl-kind'>%s</span>"
             "<span class='pl-recent-text'><span class='pl-title'>%s</span><span class='pl-where pl-muted'>%s</span></span></a>"
-            "<span class='pl-badge'>%d%%</span></li>"
-            % (escape(r["href"]), kind_icon(r["kind"]), escape(r["label"]), escape(r["where"]), round(r["percent"] * 100))
+            "<span class='pl-badge'>%d%%</span>"
+            "<form class='pl-dismiss-form' method='post' action='%s'><button class='pl-dismiss' type='submit' "
+            "title='Remove from this list' aria-label='Remove %s from this list'>&times;</button></form></li>"
+            % (escape(r["href"]), kind_icon(r["kind"]), escape(r["label"]), escape(r["where"]), round(r["percent"] * 100),
+               escape(r["dismiss"]), escape(r["label"]))
             for r in recent)
-        cont = ("<section class='pl-card pl-home-box' aria-label='Continue reading'><h2>Continue reading</h2>"
-                "<ul class='pl-list pl-recent'>%s</ul></section>" % rows)
-    body = ("<main class='pl-main'><h1>Library</h1>%s"
+        # not "Continue reading": the list also holds audiobooks, PDFs and videos
+        cont = ("<section class='pl-card pl-home-box' aria-label='%s'><h2>%s</h2>"
+                "<ul class='pl-list pl-recent'>%s</ul></section>" % (RECENT_TITLE, RECENT_TITLE, rows))
+    body = ("<main class='pl-main'><h1>File Library</h1>%s"
             "<section class='pl-card pl-home-box' aria-label='Browse'><h2>Browse</h2>"
             "<ul class='pl-list pl-roots'>%s</ul></section>"
             "<p class='pl-muted pl-foot'><a href='%s'>OPDS feed</a> for reader apps &middot; pluteus %s</p></main>"
             % (cont, items, escape(ctx.urls.opds()), escape(__version__)))
-    return layout("Library", body, ctx)
+    return layout("File Library", body, ctx)
 
 
 def _book_label(entry, meta: dict) -> str:
@@ -204,7 +209,7 @@ def listing_page(root: str, parts: tuple, entries: list, page: int, pages: int, 
     metas = metas or {}
     progress = progress or {}
     urls = ctx.urls
-    crumbs = ["<a href='%s'>Library</a>" % escape(urls.home()),
+    crumbs = ["<a href='%s'>File Library</a>" % escape(urls.home()),
               "<a href='%s'>%s</a>" % (escape(urls.browse(root)), escape(root))]
     for i, seg in enumerate(parts):
         crumbs.append("<a href='%s'>%s</a>" % (escape(urls.browse(root, parts[:i + 1])), escape(seg)))
