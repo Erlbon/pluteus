@@ -23,13 +23,20 @@
 
   var cfg = root.dataset;
   var SETTINGS_KEY = "pluteus-reader";
-  var settings = { size: 100, font: "theme", line: "1.55", flow: "paginated" };
+  // spread: "single" = one centered page (the default; pleasant to read and right for books with long tables of contents),
+  //         "double" = two pages side by side on a wide screen.
+  var settings = { size: 100, font: "theme", line: "1.55", flow: "paginated", spread: "single" };
   try { Object.assign(settings, JSON.parse(localStorage.getItem(SETTINGS_KEY) || "{}")); } catch (e) { /* defaults */ }
+  if (settings.spread !== "double") settings.spread = "single";
   function saveSettings() { try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch (e) { /* ignore */ } }
+
+  var SPREAD_MIN_WIDTH = 900;
+  function spreadMode() { return settings.spread === "double" ? "auto" : "none"; }
+  root.classList.toggle("pl-single", settings.spread !== "double");      // CSS limits and centers the page width
 
   var book = ePub(cfg.book, { openAs: "epub" });
   var rendition = book.renderTo("viewer", {
-    width: "100%", height: "100%", flow: settings.flow, spread: "auto", minSpreadWidth: 900,
+    width: "100%", height: "100%", flow: settings.flow, spread: spreadMode(), minSpreadWidth: SPREAD_MIN_WIDTH,
     allowScriptedContent: false              // book scripts never run
   });
   var rtl = false;
@@ -173,6 +180,7 @@
   function syncControls() {
     $("size-value").textContent = settings.size + "%";
     $("font").value = settings.font; $("line").value = settings.line; $("flow").value = settings.flow;
+    $("spread").value = settings.spread;
   }
   function changeSize(delta) {
     settings.size = Math.min(220, Math.max(60, settings.size + delta));
@@ -186,6 +194,14 @@
     settings.flow = this.value; saveSettings();
     var here = lastCfi;
     rendition.flow(settings.flow);
+    if (here) rendition.display(here);
+  });
+  $("spread").addEventListener("change", function () {
+    settings.spread = this.value === "double" ? "double" : "single"; saveSettings();
+    var here = lastCfi;
+    root.classList.toggle("pl-single", settings.spread !== "double");
+    rendition.spread(spreadMode(), SPREAD_MIN_WIDTH);
+    rendition.resize();                                  // the page column just changed width
     if (here) rendition.display(here);
   });
   syncControls();

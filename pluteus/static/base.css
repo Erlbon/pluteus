@@ -325,3 +325,9 @@ a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible
 .pl-media-controls { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; margin: 22px 0 6px; }
 .pl-media-controls .pl-btn { min-width: 92px; min-height: 54px; padding: 8px 16px; font-size: 17px; border-radius: 14px; }
 .pl-media-box { position: relative; }
+
+/* ---- EPUB reader: one centered page by default (a comfortable line length), two pages as an option ---- */
+.pl-reader.pl-single #viewer { width: min(100%, 50rem); margin: 0 auto; }
+@media (min-width: 900px) {
+  .pl-reader.pl-single #viewer { box-shadow: 0 0 0 1px var(--pl-line), 0 10px 34px rgba(0, 0, 0, .28); }
+}

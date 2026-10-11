@@ -46,8 +46,10 @@ def test_reader_page_carries_everything_the_script_needs(signed_in):
     scripts = [html.index("vendor/jszip.min.js"), html.index("vendor/epub.min.js"), html.index("reader-epub.js")]
     assert scripts == sorted(scripts)                                              # JSZip, then epub.js, then the reader
     assert "script-src 'self'" in r.headers["content-security-policy"]
-    for control in ("toc-btn", "settings-btn", "fs-btn", "size-up", "id='font'", "id='line'", "id='flow'", "pl-scheme"):
+    for control in ("toc-btn", "settings-btn", "fs-btn", "size-up", "id='font'", "id='line'", "id='flow'", "id='spread'",
+                    "pl-scheme"):
         assert control in html
+    assert "<option value='single'>One page, centered</option>" in html and "<option value='double'>" in html   # the page-width choice
 
 
 def test_a_book_without_metadata_is_titled_by_its_file_name(signed_in):
@@ -204,3 +206,14 @@ def test_home_hides_continue_reading_for_roots_a_user_lost(signed_in):
     carol = TestClient(app, follow_redirects=False)
     login(carol, "carol", "pw-carol")
     assert "Continue reading" not in carol.get("/", headers=HTML).text
+
+
+def test_epub_reader_defaults_to_one_centered_page_with_a_two_page_option():
+    from pathlib import Path
+    static = Path(__file__).resolve().parent.parent / "pluteus" / "static"
+    js = (static / "reader-epub.js").read_text(encoding="utf-8")
+    assert 'spread: "single"' in js                                          # the default
+    assert 'settings.spread === "double" ? "auto" : "none"' in js           # single page = no spread
+    assert "pl-single" in js and 'rendition.spread(' in js and '"spread"' in js
+    css = (static / "base.css").read_text(encoding="utf-8")
+    assert ".pl-reader.pl-single #viewer" in css and "min(100%, 50rem)" in css   # centered, a comfortable line length

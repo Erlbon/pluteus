@@ -194,6 +194,8 @@ Every EPUB in a folder listing has a **Read** link. The reader is epub.js (BSD-2
 in `pluteus/static/vendor/`, no CDN) with an interface built from the theme's own variables and classes:
 
 - contents menu, text size, font, line spacing, paged or scrolling layout, full screen, dark/light toggle;
+- **page width:** one centered page (about 50 rem, a comfortable line length) is the default, even on a wide screen;
+  "Two pages" in the settings menu shows a spread on wide screens. The choice is remembered in the browser;
 - keys (arrows, page up/down, space), edge taps and swipes on a phone;
 - **reading progress is saved per user on the server**, so a book opens where you stopped, on any device, and
   the home page shows "Continue reading" for unfinished books;
