@@ -12,6 +12,7 @@ import mimetypes
 import os
 import re
 import time
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 
 from .config import MIME_TYPES, Config, User
@@ -30,6 +31,7 @@ class Unavailable(OSError):
     """The storage itself failed (share offline, permission denied): a server problem, not a missing path."""
 
 
+_PROBES = ThreadPoolExecutor(max_workers=16, thread_name_prefix="probe")
 _NT = os.name == "nt"
 _SPLIT = re.compile(r"(\d+)")
 _MAX_TIME = 2 ** 31 - 1          # year 2038; Windows time functions refuse values far outside 1970..3000
@@ -137,6 +139,11 @@ class Library:
         self._markers[dirpath] = (found, now + 60)
         return found
 
+    def _markers_many(self, dirpaths: list) -> list:
+        if len(dirpaths) < 8:
+            return [self._has_marker(p) for p in dirpaths]
+        return list(_PROBES.map(self._has_marker, dirpaths))
+
     def _root(self, user: User, root_name: str):
         if root_name not in self.cfg.roots or not user.may_use(root_name):
             raise NotFound(root_name)
@@ -173,6 +180,17 @@ class Library:
             if seg and self._excluded(seg):
                 raise NotFound("excluded")
 
+    def canonical_parts(self, root_name: str, info, requested: tuple) -> tuple:
+        """The path below the root with the exact spelling on disk. Windows ignores letter case, so a request for
+        Plain/BOOK.epub and one for plain/book.epub are one file and must share one progress record."""
+        real = os.path.realpath(info.path)
+        top = self._real[root_name]
+        if os.path.normcase(real).startswith(os.path.normcase(top).rstrip(os.sep) + os.sep):
+            rel = real[len(top.rstrip(os.sep)) + 1:]
+            if rel:
+                return tuple(rel.split(os.sep))
+        return tuple(requested)
+
     # ---- public ----------------------------------------------------------
     def roots_for(self, user: User) -> list:
         return [r for r in self.cfg.roots.values() if user.may_use(r.name)]
@@ -195,8 +213,7 @@ class Library:
                     try:
                         is_dir = e.is_dir()
                         if is_dir:
-                            if not user.adult and self._has_marker(e.path):
-                                continue
+                            pass                                    # the marker check is done for all folders at once, below
                         elif (not all_files and os.path.splitext(name)[1].lower() not in self.cfg.extensions) \
                                 or not e.is_file():
                             continue
@@ -211,6 +228,11 @@ class Library:
             if err.errno in (errno.ENOENT, errno.ENOTDIR):
                 raise NotFound(str(err))
             raise Unavailable(err.errno, str(err))
+        if dirs and not user.adult:
+            # Each subfolder needs a "does .adult exist inside it" probe. Over SMB every probe is a network round
+            # trip, so a folder with hundreds of subfolders is probed in parallel (results are cached for a minute).
+            hidden = self._markers_many([os.path.join(path, d.name) for d in dirs])
+            dirs = [d for d, gone in zip(dirs, hidden) if not gone]
         dirs.sort(key=lambda x: natural_key(x.name))
         files.sort(key=lambda x: natural_key(x.name))
         return dirs + files

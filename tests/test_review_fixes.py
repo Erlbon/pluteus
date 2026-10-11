@@ -152,3 +152,56 @@ def test_sort_choice_survives_paging_and_links_flip_direction(cfg, tmp_path, lib
     assert "/browse/comics/Plain?sort=size&amp;dir=desc&amp;page=2" in text           # the pager keeps the sort
     assert "/browse/comics/Plain?sort=size'" in text                                   # the current column flips to ascending
     assert "/browse/comics/Plain?sort=date&amp;dir=desc'" in text                      # a new date column starts newest first
+
+
+# ---- progress case, base path, proxy host ------------------------------------------------------------------------------
+@pytest.mark.skipif(sys.platform != "win32", reason="letter case is ignored on Windows only")
+def test_progress_is_one_record_whatever_the_letter_case_of_the_url(cfg, tmp_path, library):
+    client, app = make(cfg, tmp_path)
+    me = TestClient(app, follow_redirects=False)
+    me.post("/login", content="username=alice&password=pw-alice",
+            headers={"content-type": "application/x-www-form-urlencoded", "origin": "http://testserver"})
+    h = {"origin": "http://testserver"}
+    assert me.put("/api/progress/books/Good%20Author/Real%20Book.epub", json={"locator": "a", "percent": 0.3}, headers=h).status_code == 200
+    assert me.put("/api/progress/books/good%20author/REAL%20BOOK.EPUB", json={"locator": "b", "percent": 0.4}, headers=h).status_code == 200
+    rows = app.state.state.recent_progress("alice", 10)
+    assert len(rows) == 1 and rows[0]["path"] == "Good Author/Real Book.epub" and rows[0]["locator"] == "b"
+
+
+def test_base_path_works_with_or_without_the_proxy_stripping_it(cfg, tmp_path):
+    client, _ = make(cfg, tmp_path, base_path="/lib")
+    h = dict(basic("alice", "pw-alice"))
+    assert client.get("/opds/books", headers=h).status_code == 200                 # proxy stripped the prefix
+    assert client.get("/lib/opds/books", headers=h).status_code == 200             # proxy passed it through
+    assert "/lib/opds/books" in client.get("/lib/opds", headers=h).text            # links carry the prefix
+    r = client.get("/browse/books", headers=HTML)                                  # not signed in: back to the login...
+    assert r.status_code == 303 and r.headers["location"] == "/lib/login?next=%2Flib%2Fbrowse%2Fbooks"
+    form = {"content-type": "application/x-www-form-urlencoded", "origin": "http://testserver"}
+    r = client.post("/login", content="username=alice&password=pw-alice&next=%2Flib%2Fbrowse%2Fbooks", headers=form)
+    assert r.status_code == 303 and r.headers["location"] == "/lib/browse/books"      # ...and on to the page asked for
+
+
+def test_a_proxy_that_rewrites_host_can_be_told_the_public_name(cfg, tmp_path):
+    form = {"content-type": "application/x-www-form-urlencoded", "origin": "https://books.example.org"}
+    body = "username=alice&password=pw-alice"
+    client, _ = make(cfg, tmp_path)
+    assert client.post("/login", content=body, headers=form).status_code == 403          # Host is "testserver"
+    client, _ = make(cfg, tmp_path, allowed_hosts=("books.example.org",))
+    assert client.post("/login", content=body, headers=form).status_code == 303
+    client, _ = make(cfg, tmp_path, trust_proxy=True)
+    assert client.post("/login", content=body, headers=dict(form, **{"x-forwarded-host": "books.example.org"})).status_code == 303
+    client, _ = make(cfg, tmp_path)                                                      # without trust the header is ignored
+    assert client.post("/login", content=body, headers=dict(form, **{"x-forwarded-host": "books.example.org"})).status_code == 403
+
+
+def test_a_folder_with_many_subfolders_hides_the_marked_ones_for_everyone_but_adults(cfg, tmp_path, library):
+    big = library / "comics" / "Big"
+    for i in range(40):
+        (big / ("sub%02d" % i)).mkdir(parents=True)
+    for i in (3, 17, 39):
+        (big / ("sub%02d" % i) / ".adult").write_bytes(b"")
+    client, _ = make(cfg, tmp_path, page_size=100)
+    import re
+    count = lambda who: len(re.findall(r"&#128193; sub\d\d", client.get(
+        "/browse/comics/Big", headers=dict(basic(*who), **HTML)).text))
+    assert count(("alice", "pw-alice")) == 37 and count(("bob", "pw-bob")) == 40

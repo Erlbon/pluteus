@@ -8,7 +8,7 @@ COPY pluteus ./pluteus
 RUN pip install --no-cache-dir .
 
 # A fixed user id keeps bind-mount permissions predictable on Linux hosts.
-RUN useradd --no-create-home --uid 10001 pluteus && mkdir /data /config && chown pluteus /data
+RUN useradd --no-create-home --uid 10001 pluteus && mkdir /data /config && chown pluteus /data /config
 USER pluteus
 
 # state.sqlite3 (sessions, reading progress, backups) and the metadata cache live here: mount a volume on it.

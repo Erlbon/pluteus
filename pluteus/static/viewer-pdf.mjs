@@ -19,6 +19,7 @@ function say(text, ms) {
 
 pdfjs.GlobalWorkerOptions.workerSrc = new URL("./vendor/pdfjs/pdf.worker.min.mjs", import.meta.url).href;
 const FONTS = new URL("./vendor/pdfjs/standard_fonts/", import.meta.url).href;
+const WASM = new URL("./vendor/pdfjs/wasm/", import.meta.url).href;       // JPEG 2000, JBIG2 and colour-profile decoders
 
 /* ---- settings remembered in this browser ---- */
 const KEY = "pluteus-pdf";
@@ -142,7 +143,7 @@ new ResizeObserver(() => { clearTimeout(resizeTimer); resizeTimer = setTimeout((
 /* ---- open the document, then go to where this user stopped ---- */
 (async () => {
   try {
-    pdf = await pdfjs.getDocument({ url: cfg.src, standardFontDataUrl: FONTS }).promise;
+    pdf = await pdfjs.getDocument({ url: cfg.src, standardFontDataUrl: FONTS, wasmUrl: WASM }).promise;
   } catch (e) {
     const locked = e && e.name === "PasswordException";
     say(locked ? "This PDF is password-protected. Download it to open it elsewhere."

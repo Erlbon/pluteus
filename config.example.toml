@@ -35,7 +35,11 @@ data_dir = 'D:\pluteus-data'
 # cookie_secure = "auto"     # "auto" (follow the request), "always" or "never". Use "always" behind HTTPS.
 # trust_proxy = false        # true ONLY behind a reverse proxy you control (Caddy, nginx): then X-Forwarded-For /
 #                            # X-Forwarded-Proto are believed, for the client address and the secure-cookie decision.
-# realm = "pluteus"          # the name shown in the browser's / app's login prompt
+# allowed_hosts = ["books.example.org"]   # only if logins/uploads answer 403 behind your proxy: the proxy rewrites the
+#                            # Host header, so list the public host name the browser really uses (trust_proxy = true
+#                            # also accepts X-Forwarded-Host)
+# base_path = "/library"     # (see above) works whether or not the proxy strips the prefix
+# realm = "pluteus"         # the name shown in the browser's / app's login prompt
 
 # EPUB metadata (title, authors, series, language, year) is read from inside each book, only for the
 # books on the page being shown, and cached in a disposable SQLite file (safe to delete at any time).

@@ -28,7 +28,8 @@ copy config.example.toml config.toml
 ```
 
 Then open `http://localhost:8080/` in a browser, or add `http://<host>:8080/opds` as a catalogue in
-an OPDS reader (KOReader, Panels, Moon+ Reader, Librera...). Credentials use HTTP Basic.
+an OPDS reader (KOReader, Panels, Moon+ Reader, Librera...). Reader apps log in with HTTP Basic; browsers
+get a login page and a session cookie.
 Put it behind HTTPS (a reverse proxy such as Caddy) before exposing it beyond your LAN.
 
 ## Users (command line)
@@ -126,37 +127,29 @@ Measured on 50 real EPUBs over SMB: about 1 s cold, 18 ms warm. Listing order is
 .\.venv\Scripts\python -m pytest
 ```
 
-29 tests build a fake library in pytest's `tmp_path`: login, per-user roots, natural order and
-paging, display names, exclusions, the adult marker, path traversal, Range downloads, and a folder
-whose name ends in a dot. A read-only smoke test against the real libraries over SMB showed
-feed times of 10-40 ms, including a 476-file folder.
+The tests (about 260) build a fake library in pytest's `tmp_path`: login and sessions, throttling, per-user
+roots, natural order and paging, sorting, display names, exclusions, the adult marker, path traversal (including
+Windows short names), Range downloads, the readers, the viewers, and a folder whose name ends in a dot. A
+read-only smoke test against the real libraries over SMB showed feed times of 10-40 ms, including a 476-file folder.
 
-## Hard requirements from the owner (to shape every later phase)
+## Design rules (from the owner)
 
-- **Skinnable readers.** The EPUB reader and the comic/page reader must be restyled by CSS, not only the
-  library pages (in Ubooquity the readers ignore its theme system). Build the readers with CSS variables,
-  replaceable assets and themeable menus from the first line.
-- **Themes hot-reload** and are not cached for an hour.
-- **Crash-safe store.** Ubooquity's embedded database corrupted on this library. The planned cache is
-  SQLite in WAL mode, disposable and rebuildable, scanned incrementally, never held whole in memory.
-  Test with a very large synthetic library.
-- **Reading progress** per user, and **reverse-proxy base paths** (`base_path` already works).
+- **Filesystem first.** Folders are read live from disk; there is no library-wide index, so nothing to rescan or
+  corrupt, and no feature that needs one (global search, "recently added", duplicate detection) is planned.
+  Folder listings can be sorted by name, type, size or modified date: that reorders the one folder being shown.
+- **Light.** No new daemons or heavy dependencies; state is a few small SQLite files that are safe to lose.
+- **Skinnable.** Every page and both readers are styled by CSS variables and replaceable theme files, which
+  reload without a restart.
+- **Behind a proxy.** `base_path` works whether the proxy strips the prefix or not; `trust_proxy`,
+  `allowed_hosts` and `cookie_secure` cover HTTPS termination in front of it.
 
 ## Not yet (planned)
 
-In priority order (search is only a nice-to-have, decided 2026-10-08):
-
-1. Reader-app compatibility pass (KOReader plus one iOS and one Android app): MIME type for CBZ,
-   absolute vs relative links, auth behaviour.
-2. **Phase 2**: web login page and sessions, the skinnable EPUB and comic readers (CSS variables,
-   hot-reloading themes), CBZ page streaming (OPDS-PSE), reading progress per user (this is where the
-   crash-safe SQLite store first appears).
-3. **Phase 3**: per-user upload/download areas, quotas, WebDAV (wsgidav).
-4. Docker: tested (see "Docker" below). Still to do: benchmark native vs Docker on the server's own disks.
-5. No rate limiting on failed logins yet.
-6. **Nice to have**: filename search (background crawler, SQLite FTS5 cache keyed on path+size+mtime),
-   OpenSearch link in feeds, epub/cbz metadata in feeds.
-7. No covers by design (not wanted); no CBR support (not needed).
+1. Reader-app compatibility pass on real devices (KOReader, an iOS app, Android comic apps with page streaming);
+   PocketBook is the only one tried so far.
+2. Per-user upload folder (`uploads/<user>/`), a plain upload form and Android "Share to pluteus".
+3. Benchmark native vs Docker on the server's own disks.
+4. No covers by design (not wanted); no CBR support (not needed).
 
 ## Icon
 

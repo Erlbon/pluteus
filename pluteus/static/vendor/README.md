@@ -20,6 +20,10 @@ Copied unchanged from the npm package, **legacy build** (broader browser support
 | pdfjs/pdf.worker.min.mjs | pdfjs-dist (legacy/build/pdf.worker.min.mjs) | 6.4.299 | Apache-2.0 | (same package) |
 | pdfjs/standard_fonts/ | pdfjs-dist (standard_fonts/) | 6.4.299 | Foxit and Liberation licences (LICENSE_FOXIT, LICENSE_LIBERATION inside) | (same package) |
 
-Left out on purpose: `cmaps/` (1.5 MB, only needed for some CJK/legacy-encoded PDFs), `wasm/` (JPEG 2000 and a few image
-decoders; also would need `wasm-unsafe-eval` in the CSP), the source maps and the full viewer UI. The minified files contain
-no `eval`; the worker has one `new Function` in a polyfill fallback that a current browser never reaches.
+Also copied unchanged from the same package: `pdfjs/wasm/` (openjpeg = JPEG 2000, jbig2, qcms colour profiles, their
+no-wasm fallbacks and licences; scanned PDFs use JPEG 2000 and JBIG2 heavily). The CSP carries `'wasm-unsafe-eval'` for
+them, which allows WebAssembly only, not `eval`. `quickjs-eval.*` (PDF form scripting) is left out on purpose.
+
+Left out on purpose: `cmaps/` (1.5 MB, only needed for some CJK/legacy-encoded PDFs), the source maps and the full viewer
+UI. The minified files contain no `eval`; the worker has one `new Function` in a polyfill fallback that a current browser
+never reaches.

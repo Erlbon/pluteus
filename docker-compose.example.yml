@@ -21,6 +21,18 @@ services:
       - /path/to/books:/library/books:ro
       - /path/to/comics:/library/comics:ro
     restart: unless-stopped
+    # Hardening: the app needs no privileges, no writable image and no more than a small, bounded share of the box.
+    # (SQLite and the metadata cache write to /data, which is a volume, so a read-only root filesystem is fine;
+    # /tmp is given as a tmpfs for libraries that want it.)
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 200
+    mem_limit: 1g
 
 volumes:
   pluteus-data:

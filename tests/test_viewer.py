@@ -370,3 +370,11 @@ def test_pdf_viewer_script_parses():
     if shutil.which("node"):
         done = subprocess.run(["node", "--check", str(STATIC / "viewer-pdf.mjs")], capture_output=True, text=True)
         assert done.returncode == 0, done.stderr
+
+
+def test_pdf_wasm_decoders_are_served_as_webassembly_and_the_csp_allows_only_wasm(signed_in):
+    client, _ = signed_in
+    r = client.get("/static/vendor/pdfjs/wasm/openjpeg.wasm")
+    assert r.status_code == 200 and r.headers["content-type"] == "application/wasm" and r.content[:4] == b"\0asm"
+    csp = client.get("/", headers=HTML).headers["content-security-policy"]
+    assert "'wasm-unsafe-eval'" in csp and "'unsafe-eval'" not in csp.replace("'wasm-unsafe-eval'", "")

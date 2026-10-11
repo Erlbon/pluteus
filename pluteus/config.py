@@ -65,6 +65,7 @@ class Config:
     session_days: int = 30     # login sessions last this long, renewed while in use
     cookie_secure: str = "auto"   # "auto": Secure cookie when the request is HTTPS; or "always" / "never"
     trust_proxy: bool = False  # believe X-Forwarded-For / X-Forwarded-Proto (only behind your own proxy)
+    allowed_hosts: tuple = ()  # extra host names a browser may use (CSRF check), e.g. when a proxy rewrites Host
     opds_pse: bool = True      # OPDS-PSE page streaming links for comics (reads each CBZ's page list once)
     show_all_files: bool = True    # list and open every file; False = only the types in `extensions` (book server)
     text_view_kb: int = 1024       # the text viewer shows at most this much of a file (the rest is a download)
@@ -73,7 +74,7 @@ class Config:
 # TOML puts every key written after a [table] header INTO that table, so a setting typed under
 # [[roots]] by mistake would silently do nothing. Every table's keys are therefore checked.
 _SERVER_KEYS = {"host", "port", "page_size", "base_path", "realm", "auth_cache_seconds", "anonymous_user",
-                "session_days", "cookie_secure", "trust_proxy", "opds_pse", "show_all_files", "text_view_kb"}
+                "session_days", "cookie_secure", "trust_proxy", "allowed_hosts", "opds_pse", "show_all_files", "text_view_kb"}
 _GLOBAL_KEYS = {"exclude", "extensions", "display_strip", "adult_marker", "metadata", "cache_dir",
                 "data_dir", "themes_dir", "theme"}
 _ROOT_KEYS = {"name", "path"}
@@ -183,6 +184,7 @@ def parse_config(data: dict, check_roots: bool = True) -> Config:
         roots=roots, users=users,
         data_dir=str(opts.get("data_dir", "")), themes_dir=str(opts.get("themes_dir", "")), theme=theme,
         session_days=session_days, cookie_secure=secure, trust_proxy=bool(server.get("trust_proxy", False)),
+        allowed_hosts=tuple(str(h).strip().lower() for h in server.get("allowed_hosts", ()) if str(h).strip()),
         opds_pse=bool(server.get("opds_pse", True)),
         show_all_files=bool(server.get("show_all_files", True)),
         text_view_kb=max(16, int(server.get("text_view_kb", 1024))),

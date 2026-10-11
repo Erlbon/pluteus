@@ -38,11 +38,12 @@ from .themes import DEFAULT, Themes
 from .urls import Urls, with_page
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
-STATIC_ALLOWED = {".css", ".js", ".mjs", ".svg", ".png", ".ico", ".woff2", ".webmanifest", ".pfb", ".ttf"}
-# Browsers refuse an ES module that is not served as JavaScript, and mimetypes does not know .mjs everywhere.
-STATIC_TYPES = {".mjs": "text/javascript", ".pfb": "application/octet-stream"}
+STATIC_ALLOWED = {".css", ".js", ".mjs", ".svg", ".png", ".ico", ".woff2", ".webmanifest", ".pfb", ".ttf", ".wasm"}
+# Browsers refuse an ES module that is not served as JavaScript, and WebAssembly only compiles when it is served as
+# application/wasm; mimetypes knows neither everywhere.
+STATIC_TYPES = {".mjs": "text/javascript", ".pfb": "application/octet-stream", ".wasm": "application/wasm"}
 SAFE_METHODS = {"GET", "HEAD", "OPTIONS"}
-CSP = ("default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' blob:; img-src 'self' data: blob:; "
+CSP = ("default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline' blob:; img-src 'self' data: blob:; "
        "font-src 'self' data: blob:; connect-src 'self'; frame-src 'self' blob:; object-src 'none'; "
        "base-uri 'self'; form-action 'self'; frame-ancestors 'self'")
 NO_CACHE = {"Cache-Control": "no-cache"}
@@ -69,6 +70,26 @@ class SecurityHeaders:
             await send(message)
 
         await self.app(scope, receive, wrapped)
+
+
+class StripBase:
+    """Serve under a URL prefix whether the reverse proxy removes it or not: a request that still carries the
+    prefix has it taken off, so routes always see plain paths and every link we emit carries the prefix."""
+
+    def __init__(self, app, base: str):
+        self.app, self.base = app, base
+        self.state = app.state
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] in ("http", "websocket") and self.base:
+            path = scope.get("path", "")
+            if path == self.base or path.startswith(self.base + "/"):
+                scope = dict(scope)
+                scope["path"] = path[len(self.base):] or "/"
+                raw = scope.get("raw_path")
+                if raw and raw.startswith(self.base.encode()):
+                    scope["raw_path"] = raw[len(self.base):] or b"/"
+        await self.app(scope, receive, send)
 
 
 def _parts(path: str) -> tuple:
@@ -148,8 +169,13 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
         if request.method in SAFE_METHODS:
             return True
         origin = request.headers.get("origin") or request.headers.get("referer") or ""
-        host = request.headers.get("host", "")
-        return bool(origin) and bool(host) and urlsplit(origin).netloc.lower() == host.lower()
+        if not origin:
+            return False
+        accepted = {request.headers.get("host", "").lower(), *cfg.allowed_hosts}
+        if cfg.trust_proxy:                       # a proxy that rewrote Host says what the browser really used
+            accepted.add(request.headers.get("x-forwarded-host", "").split(",")[0].strip().lower())
+        accepted.discard("")
+        return urlsplit(origin).netloc.lower() in accepted
 
     async def resolve(request: Request):
         """(user or None, seconds to wait when throttled). Password hashing and the hourly housekeeping run on
@@ -206,7 +232,7 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
             return JSONResponse({"error": "login required"}, 401,
                                 headers=challenge if mode == "media" and not request.cookies.get(COOKIE) else None)
         if mode == "web" and "text/html" in request.headers.get("accept", ""):
-            here = request.url.path + ("?" + request.url.query if request.url.query else "")
+            here = cfg.base_path + request.url.path + ("?" + request.url.query if request.url.query else "")
             return RedirectResponse(urls.login(here), 303)
         return PlainTextResponse("Authentication required", 401, headers=challenge)
 
@@ -501,8 +527,8 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
     async def progress(request: Request, user):
         root = request.path_params["root"]
         parts = _parts(request.path_params["path"])
-        await run_in_threadpool(lib.file_info, user, root, parts, cfg.show_all_files)   # none for files you cannot see
-        path = "/".join(parts)
+        info = await run_in_threadpool(lib.file_info, user, root, parts, cfg.show_all_files)   # none for files you cannot see
+        path = "/".join(await run_in_threadpool(lib.canonical_parts, root, info, parts))
         if request.method == "PUT":
             if "application/json" not in request.headers.get("content-type", ""):
                 return JSONResponse({"error": "a JSON body is required"}, 415)
@@ -621,4 +647,4 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
     app.state.limiter = limiter
     app.state.auth = auth
     app.state.guarded = guarded          # lets the reader modules register routes with the same identity rules
-    return app
+    return StripBase(app, cfg.base_path) if cfg.base_path else app
