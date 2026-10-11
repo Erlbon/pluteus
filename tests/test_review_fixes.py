@@ -205,3 +205,20 @@ def test_a_folder_with_many_subfolders_hides_the_marked_ones_for_everyone_but_ad
     count = lambda who: len(re.findall(r"&#128193; sub\d\d", client.get(
         "/browse/comics/Big", headers=dict(basic(*who), **HTML)).text))
     assert count(("alice", "pw-alice")) == 37 and count(("bob", "pw-bob")) == 40
+
+
+def test_behind_a_proxy_that_hides_clients_the_address_limit_does_not_lock_everyone_out(cfg, tmp_path):
+    client, _ = make(cfg, tmp_path, trust_proxy=True)
+    nat = {"x-forwarded-for": "192.168.16.1"}                    # what Docker Desktop shows for every visitor
+    for i in range(40):                                          # 40 guesses at 40 DIFFERENT names from "one address"
+        assert client.get("/opds", headers={**basic("nobody%d" % i, "x"), **nat}).status_code == 401
+    assert client.get("/opds", headers={**basic("alice", "pw-alice"), **nat}).status_code == 200   # real users still get in
+
+
+def test_a_real_public_address_behind_the_proxy_is_still_limited_per_address(cfg, tmp_path):
+    client, _ = make(cfg, tmp_path, trust_proxy=True)
+    real = {"x-forwarded-for": "8.8.8.8"}
+    for i in range(30):
+        client.get("/opds", headers={**basic("nobody%d" % i, "x"), **real})
+    assert client.get("/opds", headers={**basic("alice", "pw-alice"), **real}).status_code == 429
+    assert client.get("/opds", headers={**basic("alice", "pw-alice"), "x-forwarded-for": "8.8.4.4"}).status_code == 200

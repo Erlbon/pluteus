@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import functools
 import hashlib
+import ipaddress
 import json
 import logging
 import os
@@ -159,6 +160,20 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
                 return forwarded.split(",")[-1].strip()
         return request.client.host if request.client else "?"
 
+    def limiter_ip(request: Request) -> str:
+        """The address the login throttle counts against. Behind a proxy that hides the real client (Docker Desktop
+        makes every visitor look like one private address), counting by address would let a few bad guesses from
+        anywhere lock EVERYONE out, so a private address from a trusted proxy is not counted; the per-name limit
+        still protects every account."""
+        ip = client_ip(request)
+        if cfg.trust_proxy:
+            try:
+                if not ipaddress.ip_address(ip).is_global:
+                    return ""
+            except ValueError:
+                return ""
+        return ip
+
     def cookie_secure(request: Request) -> bool:
         if cfg.cookie_secure != "auto":
             return cfg.cookie_secure == "always"
@@ -200,7 +215,7 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
             if auth.known_bad(header):                  # the same wrong credentials again: no hashing, no new strike
                 return None, 0
             creds = auth.parse_basic(header)
-            name, ip = (creds[0] if creds else ""), client_ip(request)
+            name, ip = (creds[0] if creds else ""), limiter_ip(request)
             wait = limiter.wait_seconds(name, ip)
             if wait:
                 return None, wait
@@ -335,7 +350,7 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
         form = _form(await request.body())
         username, password = form.get("username", ""), form.get("password", "")
         next_url = _safe_next(form.get("next", ""), cfg.base_path, urls.home())
-        ip = client_ip(request)
+        ip = limiter_ip(request)
         wait = limiter.wait_seconds(username, ip)
         if wait:
             return HTMLResponse(web.login_page(login_ctx(), next_url,

@@ -109,3 +109,36 @@ On the phone, in Chrome open `chrome://flags`, search for **Insecure origins tre
 `http://192.168.x.x:8080` (the address of the machine running pluteus), tap **Relaunch**, then follow step 3 above using that
 address. This is a test shortcut for one phone: it does not make anything safer, and it is not a way to run pluteus.
 (`cookie_secure = "auto"` is needed for this test, since the page is HTTP.)
+
+## 5. A Caddy that runs in Docker Desktop and serves other apps under paths
+
+This is the shape of the owner's server: one Caddy container (Docker Desktop on Windows) with one public host name, other
+apps under `/appname*` and a catch-all at the end. pluteus is added as another path, **above the catch-all**:
+
+```caddyfile
+	handle /pluteus {
+		redir /pluteus/ 301
+	}
+	handle /pluteus/* {
+		reverse_proxy host.docker.internal:8100
+	}
+```
+
+pluteus settings on the machine that runs it (port 8100 is free in that setup; 8080 is taken):
+
+```toml
+host = "0.0.0.0"              # the Caddy container reaches the host through host.docker.internal, not 127.0.0.1
+port = 8100
+base_path = "/pluteus"
+trust_proxy = true
+cookie_secure = "always"
+```
+
+- Do **not** forward port 8100 on the router: only Caddy (443) should be reachable from outside. Allow 8100 through the
+  Windows firewall for the local network/Docker only.
+- Reload Caddy after editing its file: `docker exec caddy caddy reload --config /etc/caddy/Caddyfile` (validate first with
+  `docker exec caddy caddy validate --config /etc/caddy/Caddyfile`).
+- Docker Desktop makes every visitor look like one private address to Caddy. pluteus knows: with `trust_proxy` it does not
+  count failed logins per address when that address is private, only per user name, so a few bad guesses from the internet
+  cannot lock everybody out.
+- The app address is then `https://your-host/pluteus/`, and the installed app and the share target live under that path.

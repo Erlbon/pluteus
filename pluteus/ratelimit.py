@@ -17,6 +17,14 @@ class FailureLimiter:
         self._fails: dict = {}
         self._lock = threading.Lock()
 
+    @staticmethod
+    def _keys(username: str, ip: str):
+        """The buckets one attempt counts against. An empty ip (not trustworthy, see the app) skips the address bucket."""
+        keys = [("user", (username or "").lower())]
+        if ip:
+            keys.append(("ip", ip))
+        return keys
+
     def _recent(self, key, now):
         recent = [t for t in self._fails.get(key, ()) if now - t < self.window]
         if recent:
@@ -30,7 +38,7 @@ class FailureLimiter:
         now = time.time() if now is None else now
         wait = 0.0
         with self._lock:
-            for kind, name in (("user", (username or "").lower()), ("ip", ip)):
+            for kind, name in self._keys(username, ip):
                 recent = self._recent((kind, name), now)
                 if len(recent) >= self.max[kind]:
                     wait = max(wait, recent[0] + self.window - now)
@@ -39,7 +47,7 @@ class FailureLimiter:
     def failure(self, username: str, ip: str, now=None) -> None:
         now = time.time() if now is None else now
         with self._lock:
-            for kind, name in (("user", (username or "").lower()), ("ip", ip)):
+            for kind, name in self._keys(username, ip):
                 self._fails.setdefault((kind, name), []).append(now)
             if len(self._fails) > 5000:
                 for key in list(self._fails):
