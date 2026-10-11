@@ -43,7 +43,7 @@ It works in Docker, on Linux and on Windows alike, with nothing to install on th
 - **Who:** only users with `admin = true` (off for everyone by default; set it with `user add NAME --admin`,
   `user set NAME --admin`, in `config.toml`, or from the desktop app). Signing in is the browser's own login prompt; wrong
   passwords are counted by the same throttle as the main site, and every change needs a same-site request.
-- **Status:** version and uptime, every library (reachable? free disk), the upload folders and their sizes, where the
+- **Status:** version and uptime, every library (ok or not, free disk), the upload folders and their sizes, where the
   state lives and its backups, and counts of users, sessions, known devices and locked names.
 - **Security:** the accounts with wrong passwords or locks, with **Clear** to lift a lock at once; the **known devices**
   (browsers that have signed in, with first and last seen and the last address) with **Forget**; and **Sign out

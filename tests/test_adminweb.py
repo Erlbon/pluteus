@@ -136,11 +136,11 @@ def test_status_shows_libraries_uploads_and_state(admin, tmp_path):
     (tmp_path / "up" / "alice" / "f.bin").write_bytes(b"x" * 3000)
     html = client.get("/", headers=BOSS).text
     from pluteus import __version__
-    assert __version__ in html and "<h1>Status</h1>" in html and "reachable" in html and "NOT reachable" not in html
+    assert __version__ in html and "<h1>Status</h1>" in html and "pl-ok'>ok<" in html and "NOT available" not in html
     assert "books" in html and "comics" in html and "alice" in html and "2.9 KB" in html or "3000 B" in html
     assert "do not route or forward" in html                                                  # the standing warning
     (tmp_path / "comics").rmdir()
-    assert "NOT reachable" in client.get("/", headers=BOSS).text
+    assert "NOT available" in client.get("/", headers=BOSS).text
 
 
 # ---- security ----------------------------------------------------------------------------------------------------------------------
