@@ -13,6 +13,8 @@ from .config import User
 from .state import StateDB
 
 COOKIE = "pluteus_session"
+DEVICE_COOKIE = "pluteus_device"           # marks a browser that has logged in successfully (kept for a year)
+DEVICE_DAYS = 365
 _TOUCH_EVERY = 3600          # slide the expiry at most once an hour
 
 
@@ -57,3 +59,28 @@ class SessionManager:
     def end(self, token: str | None) -> None:
         if token:
             self.state.delete_session(hash_token(token))
+
+    # ---- known devices -------------------------------------------------------------------------------------------
+    def device_for(self, token: str | None, username: str, users: dict):
+        """(device id, last address) when this cookie belongs to a browser that logged in as `username` before and the
+        password has not changed since; else None. The id is the hash of the cookie (the cookie itself is never stored)."""
+        user = users.get(username)
+        if not token or user is None:
+            return None
+        key = hash_token(token)
+        row = self.state.get_device(key)
+        if row is None or row["username"] != username or row["pwfp"] != password_fingerprint(user):
+            return None
+        return key, row["last_ip"]
+
+    def remember_device(self, token: str | None, user: User, ip: str) -> tuple:
+        """Record a successful login from this browser. Returns (cookie token to set, id). A browser without a valid
+        device cookie for this user gets a new one."""
+        if not token or self.device_for(token, user.name, {user.name: user}) is None:
+            token = new_token()
+        key = hash_token(token)
+        self.state.remember_device(key, user.name, password_fingerprint(user), ip)
+        return token, key
+
+    def forget_devices(self, username: str) -> None:
+        self.state.delete_user_devices(username)

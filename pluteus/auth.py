@@ -14,7 +14,8 @@ import time
 
 DEFAULT_N, DEFAULT_R, DEFAULT_P = 2 ** 14, 8, 1
 MIN_PASSWORD = 8             # shortest password the tools (command line and admin app) accept
-BAD_SECONDS = 300          # how long an identical failed Authorization header is refused without re-checking
+TRUSTED_SECONDS = 14 * 86400   # how long a header that verified once is let through while its account is locked
+BAD_SECONDS = 300         # how long an identical failed Authorization header is refused without re-checking
 
 
 def hash_password(password: str, *, n: int = DEFAULT_N, r: int = DEFAULT_R, p: int = DEFAULT_P) -> str:
@@ -41,6 +42,7 @@ class Authenticator:
         self.cache_seconds = cache_seconds
         self._cache: dict = {}
         self._bad: dict = {}
+        self._trusted: dict = {}          # hash of a header that was verified -> (user name, when); see trusted_user()
         # Burned on unknown user names so they cost the same time as a wrong password.
         self._dummy = hash_password("dummy")
 
@@ -49,6 +51,19 @@ class Authenticator:
         self.users = users
         self._cache = {}
         self._bad = {}
+        self._trusted = {}
+
+    def trusted_user(self, header, max_age: float = TRUSTED_SECONDS):
+        """The User for credentials that were verified at some point in the last `max_age` seconds (default 14 days),
+        without hashing anything. Used only while an account is locked against strangers: a header that once verified can
+        only be sent by someone who knows the password, so it is let through; guesses are not."""
+        if not header or header[:6].lower() != "basic ":
+            return None
+        key = hashlib.sha256(header[6:].strip().encode("utf-8")).hexdigest()
+        hit = self._trusted.get(key)
+        if hit and time.monotonic() - hit[1] < max_age:
+            return self.users.get(hit[0])
+        return None
 
     @staticmethod
     def parse_basic(header):
@@ -108,4 +123,7 @@ class Authenticator:
         if len(self._cache) > 1000:
             self._cache = {k: v for k, v in self._cache.items() if v[1] > now}
         self._cache[key] = (user.name, now + self.cache_seconds)
+        if len(self._trusted) > 1000:
+            self._trusted = {k: v for k, v in self._trusted.items() if now - v[1] < TRUSTED_SECONDS}
+        self._trusted[key] = (user.name, now)
         return user

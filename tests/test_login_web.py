@@ -320,3 +320,95 @@ def test_reading_progress_shows_up_as_a_badge(web):
     app.state.state.put_progress("alice", "books", "Good Author/Real Book.epub", "loc", 0.42)
     html = client.get("/browse/books/Good%20Author", headers=HTML).text
     assert "42%" in html
+
+
+# ---- locks, known devices and reader apps -----------------------------------------------------------------------------
+def guess(client, user="alice", pw="wrong"):
+    return login(client, user, pw)
+
+
+def test_an_attacker_locks_the_name_but_the_owners_known_browser_still_gets_in(cfg, tmp_path):
+    owner, app = make(cfg, tmp_path)
+    assert login(owner).status_code == 303 and "pluteus_device" in owner.cookies          # the owner has logged in before
+    attacker = TestClient(app, follow_redirects=False)                                    # a different device: no cookie
+    for i in range(5):
+        assert guess(attacker, pw="guess%d" % i).status_code == 401
+    assert guess(attacker, pw="guess-again").status_code == 429                           # the name is locked for strangers
+    assert login(attacker).status_code == 429                                             # even the RIGHT password, from a stranger
+    owner.cookies.delete("pluteus_session")                                               # signed out: log in again from the known browser
+    r = login(owner)
+    assert r.status_code == 303 and "pluteus_session" in r.headers["set-cookie"]
+
+
+def test_a_known_browsers_typos_do_not_lock_the_account_for_everyone_else(cfg, tmp_path):
+    owner, app = make(cfg, tmp_path)
+    login(owner)
+    for i in range(4):
+        assert guess(owner, pw="typo%d" % i).status_code == 401
+    stranger = TestClient(app, follow_redirects=False)
+    assert login(stranger).status_code == 303                                             # the account is not locked
+    assert guess(owner, pw="typo5").status_code == 401                                    # the 5th typo is the owner's own limit
+    assert login(owner).status_code == 429                                                # that device waits ...
+    assert login(TestClient(app, follow_redirects=False)).status_code == 303              # ... everyone else does not
+
+
+def test_the_device_cookie_is_per_user_hardened_and_never_stored_in_clear(cfg, tmp_path):
+    client, app = make(cfg, tmp_path, trust_proxy=True)
+    r = client.post("/login", content=urlencode({"username": "alice", "password": "pw-alice"}),
+                    headers={**FORM, "origin": "http://testserver", "x-forwarded-proto": "https"})
+    device = [h for h in r.headers.get_list("set-cookie") if h.startswith("pluteus_device=")][0]
+    assert "HttpOnly" in device and "Secure" in device and "SameSite=lax" in device.replace("Lax", "lax") and "Max-Age=31536000" in device
+    token = device.split("=", 1)[1].split(";", 1)[0]
+    assert app.state.state.get_device(token) is None                                      # only its hash is stored
+    from pluteus.sessions import hash_token
+    assert app.state.state.get_device(hash_token(token))["username"] == "alice"
+    bob_attacker = TestClient(app, follow_redirects=False, cookies={"pluteus_device": token})
+    for i in range(5):
+        guess(bob_attacker, user="bob", pw="x%d" % i)
+    assert login(bob_attacker, "bob", "pw-bob").status_code == 429                        # alice's device is nobody's for bob
+
+
+def test_a_changed_password_makes_every_old_device_a_stranger_again(cfg, tmp_path):
+    owner, app = make(cfg, tmp_path)
+    login(owner)
+    users = dict(app.state.auth.users)
+    users["alice"] = dataclasses.replace(users["alice"], password_hash=hash_password("new-password-1", n=2 ** 4))
+    app.state.auth.set_users(users)
+    attacker = TestClient(app, follow_redirects=False)
+    for i in range(5):
+        guess(attacker, pw="g%d" % i)
+    assert login(owner, pw="new-password-1").status_code == 429                           # the old device is no longer trusted
+
+
+def test_known_devices_survive_a_restart(cfg, tmp_path):
+    owner, app = make(cfg, tmp_path)
+    login(owner)
+    cookies = dict(owner.cookies)
+    again, app2 = make(cfg, tmp_path)                                                    # same data dir: a restarted server
+    again.cookies.update({"pluteus_device": cookies["pluteus_device"]})
+    attacker = TestClient(app2, follow_redirects=False)
+    for i in range(5):
+        guess(attacker, pw="g%d" % i)
+    assert login(again).status_code == 303
+
+
+def test_a_reader_app_that_logged_in_before_keeps_working_while_guessers_are_locked_out(web):
+    client, app = web
+    assert client.get("/opds", headers=basic("alice", "pw-alice")).status_code == 200    # the app's credentials verify once
+    for i in range(5):
+        assert client.get("/opds", headers=basic("alice", "guess%d" % i)).status_code == 401
+    assert client.get("/opds", headers=basic("alice", "guess-more")).status_code == 429   # the name is locked
+    app.state.auth._cache.clear()                                                        # the 5 minute cache has run out
+    assert client.get("/opds", headers=basic("alice", "pw-alice")).status_code == 200    # the verified header still passes
+    app.state.auth._trusted.clear()
+    assert client.get("/opds", headers=basic("alice", "pw-alice")).status_code == 429    # a never-verified one does not
+
+
+def test_a_new_lock_is_logged_without_the_guesses(web, caplog):
+    import logging
+    client, _ = web
+    with caplog.at_level(logging.WARNING, logger="pluteus"):
+        for i in range(5):
+            guess(client, pw="secret-guess-%d" % i)
+    text = " ".join(r.getMessage() for r in caplog.records)
+    assert "login for 'alice' is locked for" in text and "lock number 1" in text and "secret-guess" not in text

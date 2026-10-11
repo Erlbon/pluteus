@@ -125,6 +125,17 @@ Measured on 50 real EPUBs over SMB: about 1 s cold, 18 ms warm. Listing order is
 - **Adult folders:** put an empty file named `.adult` (configurable) in any folder; it and everything
   below it is hidden from users without `adult = true`, in feeds, pages and direct URLs (404).
   Works at any depth, so an adult imprint can sit inside a mainstream publisher folder.
+- **Password guessing (for a server on the internet):** 5 wrong passwords for one user name within 5 minutes lock that name,
+  and every further lock of the same name is 6 times longer (5 minutes, 30 minutes, 3 hours, then 6 hours at most). A name
+  left alone for a day, or with a good login, starts again from the short lock. Every new lock is logged
+  (`login for 'name' is locked for ... s ... (lock number N)`), never the guesses.
+  - **Known devices:** a browser that has logged in as that user before keeps a device cookie (a year; only its hash is
+    stored; forgotten when the password changes). Its mistakes count only against that device (5 per 5 minutes) and a
+    locked account does not stop it, so someone hammering your name cannot keep you out of your own browser.
+  - **Reader apps:** credentials that verified once are let through (14 days) while the name is locked; new guesses are not.
+  - **Behind Docker Desktop's NAT** every visitor looks like one private address, so there is no per-address limit then; the
+    per-name lock and the device rule do the work. A restart of pluteus clears all locks.
+  - Use a long password for any account that is reachable from the internet: 8 characters is the minimum, not the goal.
 - **Hardening:** path segments are validated (no `..`, no `/`, and on Windows no `\` or `:`);
   the real path (symlinks, junctions) must stay inside the root; only configured file
   extensions are served; hidden and excluded items are indistinguishable from missing ones.

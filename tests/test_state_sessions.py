@@ -173,3 +173,62 @@ def test_theme_resolver_refuses_unsafe_or_disallowed_paths(themes, rel):
 
 def test_theme_names_are_validated(themes):
     assert themes.resolve("../themes", "theme.css") is None and themes.resolve("", "theme.css") is None
+
+
+# ---- escalating locks and known devices (login throttling for a server on the internet) ------------------------------
+def fill(lim, name="alice", start=0.0, n=5, ip="9.9.9.9", **kw):
+    last = (0, 0)
+    for i in range(n):
+        last = lim.failure(name, ip, now=start + i, **kw)
+    return last
+
+
+def test_each_lock_of_the_same_name_is_longer_up_to_a_cap():
+    lim = FailureLimiter(max_per_user=5, max_per_ip=999, window=300)
+    now, lengths = 0.0, []
+    for _ in range(6):
+        seconds, number = fill(lim, start=now)
+        lengths.append(seconds)
+        until = now + 4 + seconds
+        assert lim.wait_seconds("alice", "9.9.9.9", now=now + 10) > 0                    # locked
+        assert lim.wait_seconds("alice", "9.9.9.9", now=until + 1) == 0                  # and over again
+        now = until + 2
+    # 5 minutes (counted from the first failure, so a little less), then 30 minutes, 3 hours, then 6 hours for good
+    assert 290 <= lengths[0] <= 300 and lengths[1] == 1800 and lengths[2] == 10800 and lengths[3:] == [21600] * 3
+
+
+def test_other_names_are_not_affected_by_a_lock_and_more_guesses_do_not_stack_up(cfg_free=None):
+    lim = FailureLimiter(max_per_user=5, max_per_ip=999, window=300)
+    first = fill(lim)
+    assert first[1] == 1
+    assert lim.failure("alice", "9.9.9.9", now=20) == (0, 0)                              # a guess while locked: nothing new
+    assert lim.wait_seconds("bob", "9.9.9.9", now=20) == 0
+    assert fill(lim, name="alice", start=400)[1] == 2                                     # the next round is lock number two
+
+
+def test_a_good_login_or_a_quiet_day_starts_again_from_the_short_lock():
+    lim = FailureLimiter(max_per_user=5, max_per_ip=999, window=300)
+    fill(lim)
+    fill(lim, start=1000)
+    assert fill(lim, start=100000)[1] == 1                                                # a day later: forgiven
+    lim.success("alice")
+    fill(lim, start=200000)
+    assert lim.failure("alice", "9.9.9.9", now=200100) == (0, 0)
+    lim.success("alice")
+    assert lim.wait_seconds("alice", "9.9.9.9", now=200101) == 0                          # success clears the lock too
+
+
+def test_a_known_device_is_not_stopped_by_a_lock_and_its_typos_do_not_count_against_the_account():
+    lim = FailureLimiter(max_per_user=5, max_per_ip=999, window=300)
+    fill(lim)                                                                             # strangers lock the name
+    assert lim.wait_seconds("alice", "9.9.9.9", now=10) > 0
+    assert lim.wait_seconds("alice", "9.9.9.9", now=10, device="dev1", known=True) == 0   # the owner's browser still gets in
+    lim2 = FailureLimiter(max_per_user=5, max_per_ip=999, window=300)
+    for i in range(4):
+        lim2.failure("alice", "9.9.9.9", now=i, device="dev1", known=True)               # the owner mistyped four times
+    assert lim2.wait_seconds("alice", "8.8.8.8", now=5) == 0                              # a stranger is not locked out by that
+    lim2.failure("alice", "9.9.9.9", now=5, device="dev1", known=True)
+    assert lim2.wait_seconds("alice", "9.9.9.9", now=6, device="dev1", known=True) > 0    # but a device has its own limit
+    assert lim2.wait_seconds("alice", "8.8.8.8", now=6) == 0
+    lim2.success("alice", device="dev1")
+    assert lim2.wait_seconds("alice", "9.9.9.9", now=7, device="dev1", known=True) == 0

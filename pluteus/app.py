@@ -35,7 +35,7 @@ from .fs import SORTS, Library, NotFound, PathError, clamp_time, sort_entries
 from .meta import MetaCache, MetaService
 from .ratelimit import FailureLimiter
 from .reload import UsersReloader
-from .sessions import COOKIE, SessionManager
+from .sessions import COOKIE, DEVICE_COOKIE, DEVICE_DAYS, SessionManager
 from .state import StateDB
 from .themes import DEFAULT, Themes
 from .urls import Urls, with_page
@@ -195,6 +195,18 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
         accepted.discard("")
         return urlsplit(origin).netloc.lower() in accepted
 
+    def device_state(request: Request, username: str):
+        """(known, device id, last address): has this browser logged in as `username` before (it still has its device
+        cookie and the password has not changed since)? Known devices are not stopped by a lock on the account."""
+        found = sessions.device_for(request.cookies.get(DEVICE_COOKIE), username, auth.users)
+        return (True, found[0], found[1]) if found else (False, "", "")
+
+    def note_failure(name: str, ip: str, device_id: str, known: bool) -> None:
+        seconds, number = limiter.failure(name, ip, device=device_id, known=known)
+        if seconds:                                    # one line per new lock, so a guessing attack is visible in the log
+            log.warning("login for %r is locked for %d s after repeated wrong passwords (lock number %d)",
+                        (name or "")[:40], seconds, number)
+
     async def resolve(request: Request):
         """(user or None, seconds to wait when throttled). Password hashing and the hourly housekeeping run on
         worker threads, never on the event loop."""
@@ -216,14 +228,18 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
                 return None, 0
             creds = auth.parse_basic(header)
             name, ip = (creds[0] if creds else ""), limiter_ip(request)
-            wait = limiter.wait_seconds(name, ip)
+            known, device_id, _ = device_state(request, name)
+            wait = limiter.wait_seconds(name, ip, device=device_id, known=known)
             if wait:
-                return None, wait
+                # Locked for strangers. Credentials that were verified earlier (a reader app that has logged in before)
+                # still work: only someone who already knows the password can send them.
+                trusted = auth.trusted_user(header)
+                return (trusted, 0) if trusted else (None, wait)
             user = await run_in_threadpool(auth.authenticate, header)
             if user:
-                limiter.success(name)
+                limiter.success(name, device_id)
                 return user, 0
-            limiter.failure(name, ip)
+            note_failure(name, ip, device_id, known)
             return None, 0
         if cfg.anonymous_user:
             return auth.users.get(cfg.anonymous_user), 0
@@ -351,21 +367,29 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
         username, password = form.get("username", ""), form.get("password", "")
         next_url = _safe_next(form.get("next", ""), cfg.base_path, urls.home())
         ip = limiter_ip(request)
-        wait = limiter.wait_seconds(username, ip)
+        known, device_id, last_ip = device_state(request, username)
+        wait = limiter.wait_seconds(username, ip, device=device_id, known=known)
         if wait:
             return HTMLResponse(web.login_page(login_ctx(), next_url,
                                                 "Too many failed attempts. Try again in %d seconds." % wait,
                                                 username), 429, headers={"Retry-After": str(wait)})
         user = await run_in_threadpool(auth.check, username, password)
         if user is None:
-            limiter.failure(username, ip)
+            note_failure(username, ip, device_id, known)
             return HTMLResponse(web.login_page(login_ctx(), next_url, "Wrong user name or password.",
                                                username), 401)
-        limiter.success(username)
+        limiter.success(username, device_id)
         token = sessions.start(user)
+        real_ip = client_ip(request)
+        device_token, _ = sessions.remember_device(request.cookies.get(DEVICE_COOKIE), user, real_ip)
+        if known and last_ip and real_ip != last_ip:
+            log.info("a known device of %r signed in from a new address", user.name)
         response = RedirectResponse(next_url, 303)
+        secure = cookie_secure(request)
         response.set_cookie(COOKIE, token, max_age=cfg.session_days * 86400, path=cookie_path,
-                            httponly=True, samesite="lax", secure=cookie_secure(request))
+                            httponly=True, samesite="lax", secure=secure)
+        response.set_cookie(DEVICE_COOKIE, device_token, max_age=DEVICE_DAYS * 86400, path=cookie_path,
+                            httponly=True, samesite="lax", secure=secure)
         return response
 
     async def logout(request: Request):

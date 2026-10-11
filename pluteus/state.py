@@ -27,6 +27,9 @@ CREATE TABLE IF NOT EXISTS progress (
     PRIMARY KEY (username, root, path));
 CREATE INDEX IF NOT EXISTS progress_recent ON progress (username, updated DESC);
 CREATE TABLE IF NOT EXISTS prefs (username TEXT PRIMARY KEY, data TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS devices (
+    token_hash TEXT PRIMARY KEY, username TEXT NOT NULL, pwfp TEXT NOT NULL,
+    first_seen REAL NOT NULL, last_seen REAL NOT NULL, last_ip TEXT NOT NULL);
 """
 
 
@@ -83,6 +86,26 @@ class StateDB:
     def purge_expired(self, now=None) -> int:
         now = time.time() if now is None else now
         return self._write("DELETE FROM sessions WHERE expires<=?", (now,))
+
+    # ---- known devices: browsers that have logged in successfully before ----------------------------------------
+    def remember_device(self, token_hash: str, username: str, pwfp: str, ip: str, now=None) -> None:
+        now = time.time() if now is None else now
+        with self._lock, self._db:
+            row = self._db.execute("SELECT first_seen FROM devices WHERE token_hash=?", (token_hash,)).fetchone()
+            self._db.execute("INSERT OR REPLACE INTO devices VALUES (?,?,?,?,?,?)",
+                             (token_hash, username, pwfp, row[0] if row else now, now, ip or ""))
+
+    def get_device(self, token_hash: str):
+        """{'username','pwfp','last_seen','last_ip'} or None."""
+        row = self._one("SELECT username, pwfp, last_seen, last_ip FROM devices WHERE token_hash=?", (token_hash,))
+        return None if row is None else {"username": row[0], "pwfp": row[1], "last_seen": row[2], "last_ip": row[3]}
+
+    def delete_user_devices(self, username: str) -> int:
+        return self._write("DELETE FROM devices WHERE username=?", (username,))
+
+    def purge_old_devices(self, older_than: float = 400 * 86400, now=None) -> int:
+        now = time.time() if now is None else now
+        return self._write("DELETE FROM devices WHERE last_seen<?", (now - older_than,))
 
     # ---- reading progress -------------------------------------------------------
     def get_progress(self, username: str, root: str, path: str):
@@ -157,6 +180,7 @@ class StateDB:
         """Purge expired sessions and, when the newest backup is older than `every` seconds, make a new one."""
         now = time.time() if now is None else now
         self.purge_expired(now)
+        self.purge_old_devices(now=now)
         if not self.persistent:
             return
         try:
