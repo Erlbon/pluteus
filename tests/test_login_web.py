@@ -124,7 +124,7 @@ def test_the_book_icon_is_served_as_favicon_home_screen_icon_and_manifest(web):
     client, _ = web
     page = client.get("/login").text
     for href in ("/static/icon/favicon.ico", "/static/icon/favicon-32.png", "/static/icon/apple-touch-icon.png",
-                 "/static/manifest.webmanifest"):
+                 "/manifest.webmanifest"):
         assert "href='%s'" % href in page, href
     png, ico = b"\x89PNG\r\n\x1a\n", b"\x00\x00\x01\x00"
     for url, magic in (("/static/icon/icon-512.png", png), ("/static/icon/icon-192.png", png),
@@ -132,7 +132,7 @@ def test_the_book_icon_is_served_as_favicon_home_screen_icon_and_manifest(web):
                        ("/static/icon/favicon-16.png", png), ("/static/icon/favicon.ico", ico), ("/favicon.ico", ico)):
         r = client.get(url)
         assert r.status_code == 200 and r.content.startswith(magic), url
-    manifest = client.get("/static/manifest.webmanifest")
+    manifest = client.get("/manifest.webmanifest")
     assert manifest.headers["content-type"].startswith("application/manifest+json")
     data = json.loads(manifest.text)
     assert data["name"] == "pluteus" and {i["sizes"] for i in data["icons"]} == {"192x192", "512x512"}

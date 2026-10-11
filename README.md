@@ -147,7 +147,7 @@ read-only smoke test against the real libraries over SMB showed feed times of 10
 
 1. Reader-app compatibility pass on real devices (KOReader, an iOS app, Android comic apps with page streaming);
    PocketBook is the only one tried so far.
-2. Per-user upload folder (`uploads/<user>/`), a plain upload form and Android "Share to pluteus".
+2. Try "Share to pluteus" on a real phone over HTTPS (built, untested there).
 3. Benchmark native vs Docker on the server's own disks.
 4. No covers by design (not wanted); no CBR support (not needed).
 
@@ -240,3 +240,35 @@ Listing every file means serving files from the same web address as the login, s
 - Hidden folders, the `.adult` marker, excludes and per-user roots apply to every route, exactly as before.
 - With `show_all_files`, pluteus **refuses to start** if `data_dir`, `cache_dir`, `themes_dir` or the config file itself sit
   inside a library root (the sessions and password hashes would otherwise be listed and downloadable).
+
+## Uploads (personal folders)
+
+Set `uploads_dir` and every user gets a private folder, `uploads_dir/<user name>`, shown as the top-level folder **uploads**
+(web and OPDS, so a book you upload can be opened in a reader app straight away). There you can **upload** (several
+files, with a progress bar), **create folders**, **rename** and **delete** (a folder only when it is empty).
+
+- It is a **staging area**: pluteus never writes into the libraries. You sort what arrives into them on disk.
+- **Streamed, not buffered:** the upload goes straight to a hidden temp file in the user's folder (no memory, no system
+  temp folder, so it also works with a read-only container), then takes its final name. A name that already exists gets
+  ` (1)`, ` (2)`...; nothing is ever overwritten. A dropped connection leaves nothing behind.
+- **Names are made safe for Windows:** folders in a name are stripped, `< > : " | ? *` and control characters become `_`,
+  trailing dots/spaces and leading dots are removed (leading-dot names are hidden by pluteus), `CON`/`NUL`/`COM1`... get a
+  `_` in front, and the length is capped with the extension kept.
+- **Limits** (`upload_max_mb`, optional `upload_quota_mb`) are enforced while the bytes arrive, a refused file costs no disk
+  and does not stop the other files in the same request. The disk is also kept 512 MB from full.
+- **Separation:** nobody sees another user's folder; the anonymous user and users with `upload = false` have none;
+  rename/delete only work inside your own folder; the config refuses an `uploads_dir` that overlaps a library, `data_dir`,
+  `cache_dir`, `themes_dir` or the config file, and user names that cannot be folder names.
+- **Android "Share to pluteus":** when uploads are on, the web manifest declares a share target. Install pluteus from the
+  browser's menu ("Add to Home screen" / "Install app"), then Share from any app and pick pluteus; the files land in the top
+  of your upload folder. This needs **HTTPS** (browsers only install web apps from secure addresses, so put pluteus behind
+  Caddy or similar) and has **not been tried on a phone yet**. The server side is tested; browsers differ on what they send
+  with a share (no `Origin`), so the share route accepts a request the browser itself started (`Sec-Fetch-Site: none`).
+- Needs the small `python-multipart` package (installed with pluteus).
+
+| URL | What |
+|---|---|
+| `POST /upload/uploads[/{folder}]` | multipart upload into a folder of your upload area (`Accept: application/json` answers JSON) |
+| `POST /files/{mkdir,rename,delete}/uploads/{path}` | new folder (in `path`), rename (`name` field), delete |
+| `POST /share` | the Android share target |
+| `GET /manifest.webmanifest` | web app manifest (adds `share_target` when uploads are on) |

@@ -55,6 +55,19 @@ class Urls:
     def logout(self) -> str:
         return self.base + "/logout"
 
+    def upload(self, root: str, parts=()) -> str:
+        return self._build("upload", root, parts)
+
+    def files(self, op: str, root: str, parts=()) -> str:
+        """POST target for file operations in the upload folder: op is rename, delete or mkdir."""
+        return self.base + "/files/" + op + "/" + "/".join(quote(s, safe="") for s in (root, *parts))
+
+    def share(self) -> str:
+        return self.base + "/share"
+
+    def manifest(self) -> str:
+        return self.base + "/manifest.webmanifest"
+
     def settings(self) -> str:
         return self.base + "/settings"
 

@@ -13,8 +13,9 @@ import os
 import re
 import time
 from pathlib import Path
-from urllib.parse import parse_qs, urlsplit
+from urllib.parse import parse_qs, urlencode, urlsplit
 
+from python_multipart.exceptions import MultipartParseError
 from starlette.applications import Starlette
 from starlette.concurrency import run_in_threadpool
 from starlette.datastructures import MutableHeaders
@@ -24,10 +25,10 @@ from starlette.responses import (FileResponse, HTMLResponse, JSONResponse, Plain
                                  RedirectResponse, Response)
 from starlette.routing import Route
 
-from . import cbz, kinds, opds, textview, web
+from . import cbz, kinds, opds, textview, uploads, web
 from .auth import Authenticator
 from .cbz import CbzError
-from .config import MIME_TYPES, Config
+from .config import MIME_TYPES, UPLOADS_ROOT, Config
 from .fs import SORTS, Library, NotFound, PathError, clamp_time, sort_entries
 from .meta import MetaCache, MetaService
 from .ratelimit import FailureLimiter
@@ -236,15 +237,18 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
             return RedirectResponse(urls.login(here), 303)
         return PlainTextResponse("Authentication required", 401, headers=challenge)
 
-    def guarded(mode: str):
-        """mode: 'web' (browser pages), 'api' (JSON), 'basic' (reader apps and downloads)."""
+    def guarded(mode: str, from_browser_navigation: bool = False):
+        """mode: 'web' (browser pages), 'api' (JSON), 'basic' (reader apps and downloads).
+        from_browser_navigation: the POST may come from the browser itself, not a page of ours (the Android share
+        sheet), which sends no Origin; Sec-Fetch-Site then vouches that no other website started it."""
         def decorate(fn):
             @functools.wraps(fn)
             async def wrapper(request: Request):
                 user, wait = await resolve(request)
                 if user is None:
                     return unauthorized(request, mode, wait)
-                if not csrf_ok(request):
+                if not csrf_ok(request) and not (
+                        from_browser_navigation and request.headers.get("sec-fetch-site") in ("same-origin", "none")):
                     return PlainTextResponse("Cross-site request refused", 403)
                 try:
                     return await fn(request, user)
@@ -358,7 +362,7 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
         out = []
         for r in state.recent_progress(user.name, 40):
             kind = kinds.kind_of(r["path"])
-            if r["root"] in cfg.roots and user.may_use(r["root"]) and r["percent"] < 0.98 \
+            if lib.has_root(user, r["root"]) and r["percent"] < 0.98 \
                     and kind in kinds.KINDS_WITH_PROGRESS:
                 parts = tuple(r["path"].split("/"))
                 try:                                   # skip books that are now hidden, excluded or gone
@@ -388,8 +392,9 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
         metas = await run_in_threadpool(meta.lookup_many, shown)
         book_paths = ["/".join(e.parts) for e in shown if not e.is_dir]
         progress = await run_in_threadpool(state.progress_for, user.name, root, book_paths)
-        return HTMLResponse(web.listing_page(root, parts, shown, page, pages, len(entries), ctx_for(user),
-                                             metas, progress, sort=sort, desc=desc))
+        return HTMLResponse(web.listing_page(
+            root, parts, shown, page, pages, len(entries), ctx_for(user), metas, progress, sort=sort, desc=desc,
+            writable=root == UPLOADS_ROOT, flash=web.flash_text(request.query_params)))
 
     @guarded("web")
     async def settings(request: Request, user):
@@ -399,6 +404,80 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
                 state.set_prefs(user.name, {**state.get_prefs(user.name), "theme": choice})
             return RedirectResponse(urls.settings() + "?saved=1", 303)
         return HTMLResponse(web.settings_page(ctx_for(user), themes.names(), "saved" in request.query_params))
+
+    # ---- personal upload folder: upload, new folder, rename, delete -----------------------------------------------
+    def flash_url(parts: tuple, **query) -> str:
+        return urls.browse(UPLOADS_ROOT, parts) + "?" + urlencode({k: v for k, v in query.items() if v not in ("", None)})
+
+    async def accept_upload(request: Request, user, parts: tuple) -> Response:
+        """Stream the files of a multipart POST into the folder `parts` of the user's own upload area."""
+        folder = await run_in_threadpool(lib.upload_dir, user, parts)
+        max_bytes = cfg.upload_max_mb * 1024 * 1024
+        quota_left = None
+        if cfg.upload_quota_mb:
+            used = await run_in_threadpool(uploads.tree_size, lib.upload_base(user))
+            quota_left = max(0, cfg.upload_quota_mb * 1024 * 1024 - used)
+        if too_big(request, max_bytes * uploads.MAX_FILES):
+            return PlainTextResponse("Upload too large", 413)
+        wants_json = "application/json" in request.headers.get("accept", "")
+        try:
+            intake = await uploads.receive(request.stream(), request.headers.get("content-type", ""), folder,
+                                           max_bytes=max_bytes, quota_left=quota_left, is_hidden=lib.is_hidden_name)
+        except uploads.UploadError:
+            return PlainTextResponse("Send the files as multipart/form-data", 415)
+        except (MultipartParseError, ValueError):
+            return PlainTextResponse("The upload could not be read", 400)
+        first_bad = intake.failed[0][1] if intake.failed else ""
+        if wants_json:
+            return JSONResponse({
+                "saved": [{"name": n, "size": s} for n, s in intake.saved],
+                "failed": [{"name": n, "code": c, "message": web.UPLOAD_MESSAGES.get(c, "")} for n, c in intake.failed]})
+        return RedirectResponse(flash_url(parts, saved=len(intake.saved) or "", bad=first_bad), 303)
+
+    @guarded("web")
+    async def upload(request: Request, user):
+        if request.path_params["root"] != UPLOADS_ROOT:
+            raise NotFound("uploads go to the upload folder only")
+        return await accept_upload(request, user, _parts(request.path_params.get("path", "")))
+
+    @guarded("web", from_browser_navigation=True)
+    async def share(request: Request, user):
+        """Android 'Share to pluteus' (the PWA share target): files land in the top of the user's upload folder."""
+        return await accept_upload(request, user, ())
+
+    @guarded("web")
+    async def file_op(request: Request, user):
+        op = request.path_params["op"]
+        if request.path_params["root"] != UPLOADS_ROOT or op not in ("mkdir", "rename", "delete"):
+            raise NotFound("no such operation")
+        parts = _parts(request.path_params.get("path", ""))
+        if too_big(request, 16384):
+            return PlainTextResponse("Request too large", 413)
+        form = _form(await request.body())
+        try:
+            if op == "mkdir":
+                folder = await run_in_threadpool(lib.upload_dir, user, parts)
+                await run_in_threadpool(uploads.make_folder, folder, form.get("name", ""), lib.is_hidden_name)
+                return RedirectResponse(flash_url(parts, ok="folder"), 303)
+            folder, name = await run_in_threadpool(lib.upload_entry, user, parts)
+            if op == "rename":
+                await run_in_threadpool(uploads.rename_entry, folder, name, form.get("name", ""), lib.is_hidden_name)
+                return RedirectResponse(flash_url(parts[:-1], ok="renamed"), 303)
+            await run_in_threadpool(uploads.delete_entry, folder, name)
+            return RedirectResponse(flash_url(parts[:-1], ok="deleted"), 303)
+        except uploads.UploadError as e:
+            return RedirectResponse(flash_url(parts if op == "mkdir" else parts[:-1], bad=e.code), 303)
+
+    async def manifest(request: Request):
+        data = {"name": "pluteus", "short_name": "pluteus", "description": "Filesystem-first book and comic server",
+                "start_url": urls.home(), "scope": urls.home(), "display": "standalone",
+                "background_color": "#14171f", "theme_color": "#14171f",
+                "icons": [{"src": urls.static("icon/icon-192.png"), "sizes": "192x192", "type": "image/png"},
+                          {"src": urls.static("icon/icon-512.png"), "sizes": "512x512", "type": "image/png"}]}
+        if cfg.uploads_dir:           # installed on Android, pluteus then appears in the Share menu
+            data["share_target"] = {"action": urls.share(), "method": "POST", "enctype": "multipart/form-data",
+                                    "params": {"files": [{"name": "files", "accept": ["*/*"]}]}}
+        return JSONResponse(data, media_type="application/manifest+json", headers=NO_CACHE)
 
     @guarded("web")
     async def read(request: Request, user):
@@ -528,7 +607,7 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
         root = request.path_params["root"]
         parts = _parts(request.path_params["path"])
         info = await run_in_threadpool(lib.file_info, user, root, parts, cfg.show_all_files)   # none for files you cannot see
-        path = "/".join(await run_in_threadpool(lib.canonical_parts, root, info, parts))
+        path = "/".join(await run_in_threadpool(lib.canonical_parts, user, root, info, parts))
         if request.method == "PUT":
             if "application/json" not in request.headers.get("content-type", ""):
                 return JSONResponse({"error": "a JSON body is required"}, 415)
@@ -632,6 +711,12 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
         Route("/view/{root}/{path:path}", view),
         Route("/raw/{root}/{path:path}", raw),
         Route("/cbz/{root}/{path:path}", cbz_page),
+        Route("/manifest.webmanifest", manifest),
+        Route("/share", share, methods=["POST"]),
+        Route("/upload/{root}", upload, methods=["POST"]),
+        Route("/upload/{root}/{path:path}", upload, methods=["POST"]),
+        Route("/files/{op}/{root}", file_op, methods=["POST"]),
+        Route("/files/{op}/{root}/{path:path}", file_op, methods=["POST"]),
         Route("/api/progress/{root}/{path:path}", progress, methods=["GET", "PUT"]),
         Route("/opds", opds_root),
         Route("/opds/", opds_root),

@@ -49,7 +49,7 @@ def icon_links(u: Urls) -> str:
     return ("<link rel='icon' href='%s' sizes='any'><link rel='icon' type='image/png' sizes='32x32' href='%s'>"
             "<link rel='apple-touch-icon' href='%s'><link rel='manifest' href='%s'><meta name='theme-color' content='#14171f'>"
             % (escape(u.static("icon/favicon.ico")), escape(u.static("icon/favicon-32.png")),
-               escape(u.static("icon/apple-touch-icon.png")), escape(u.static("manifest.webmanifest"))))
+               escape(u.static("icon/apple-touch-icon.png")), escape(u.manifest())))
 
 
 def scheme_button() -> str:
@@ -105,6 +105,53 @@ def _book_label(entry, meta: dict) -> str:
     return escape(entry.name)
 
 
+UPLOAD_MESSAGES = {
+    "toobig": "is larger than the size limit", "quota": "does not fit in your space", "disk": "the disk is full",
+    "name": "has no usable name", "exists": "that name is already taken", "toomany": "too many files at once",
+    "write": "could not be written", "notempty": "the folder is not empty", "missing": "it no longer exists",
+    "format": "the upload was not understood",
+}
+OK_MESSAGES = {"folder": "Folder created.", "renamed": "Renamed.", "deleted": "Deleted."}
+
+
+def flash_text(query: dict) -> str:
+    """The one-line result shown after an upload or file operation. Only fixed sentences and a count are ever shown:
+    nothing from the query string is echoed."""
+    parts = []
+    try:
+        saved = int(query.get("saved", 0))
+    except ValueError:
+        saved = 0
+    if saved > 0:
+        parts.append("Uploaded %d file%s." % (min(saved, 1000), "" if saved == 1 else "s"))
+    if query.get("ok") in OK_MESSAGES:
+        parts.append(OK_MESSAGES[query["ok"]])
+    if query.get("bad") in UPLOAD_MESSAGES:
+        parts.append("Not done: %s." % UPLOAD_MESSAGES[query["bad"]])
+    return " ".join(parts)
+
+
+def _row_actions(urls: Urls, root: str, parts: tuple, name: str) -> str:
+    return ("<span class='pl-actions'>"
+            "<form method='post' action='%s' data-rename='%s'><input type='hidden' name='name' value=''>"
+            "<button class='pl-btn pl-btn-small' type='submit'>Rename</button></form>"
+            "<form method='post' action='%s' data-confirm='Delete %s?'>"
+            "<button class='pl-btn pl-btn-small' type='submit'>Delete</button></form></span>"
+            % (escape(urls.files("rename", root, parts)), escape(name),
+               escape(urls.files("delete", root, parts)), escape(name)))
+
+
+def _upload_forms(urls: Urls, root: str, parts: tuple) -> str:
+    return ("<form class='pl-upload' method='post' enctype='multipart/form-data' action='%s'>"
+            "<input type='file' name='files' multiple required>"
+            "<button class='pl-btn pl-btn-primary' type='submit'>Upload</button>"
+            "<div class='pl-upload-status' hidden><div class='pl-progress'><i></i></div><span></span></div></form>"
+            "<form class='pl-newfolder' method='post' action='%s'>"
+            "<input type='text' name='name' placeholder='New folder' maxlength='100' required>"
+            "<button class='pl-btn' type='submit'>Create folder</button></form>"
+            % (escape(urls.upload(root, parts)), escape(urls.files("mkdir", root, parts))))
+
+
 SORT_LABELS = (("name", "Name"), ("type", "Type"), ("size", "Size"), ("date", "Modified"))
 
 
@@ -132,7 +179,7 @@ def _sort_bar(here: str, sort: str, desc: bool) -> str:
 
 def listing_page(root: str, parts: tuple, entries: list, page: int, pages: int, total: int, ctx: Ctx,
                  metas: dict | None = None, progress: dict | None = None,
-                 sort: str = "name", desc: bool = False) -> str:
+                 sort: str = "name", desc: bool = False, writable: bool = False, flash: str = "") -> str:
     metas = metas or {}
     progress = progress or {}
     urls = ctx.urls
@@ -143,8 +190,9 @@ def listing_page(root: str, parts: tuple, entries: list, page: int, pages: int, 
     rows = []
     for e in entries:
         if e.is_dir:
-            rows.append("<li class='pl-row'><a class='pl-title' href='%s'>&#128193; %s</a></li>"
-                        % (escape(urls.browse(root, e.parts)), escape(e.display)))
+            rows.append("<li class='pl-row'><a class='pl-title' href='%s'>&#128193; %s</a>%s</li>"
+                        % (escape(urls.browse(root, e.parts)), escape(e.display),
+                           _row_actions(urls, root, e.parts, e.name) if writable else ""))
             continue
         label = _book_label(e, metas.get(e.path, {}))
         pct = progress.get("/".join(e.parts))
@@ -156,9 +204,10 @@ def listing_page(root: str, parts: tuple, entries: list, page: int, pages: int, 
             else:
                 read = "<a href='%s'>View</a> &middot; " % escape(urls.view(root, e.parts))
         rows.append("<li class='pl-row'><span class='pl-title'>%s</span><span class='pl-muted'>%s%s"
-                    "<a href='%s'>Download</a> &middot; %s &middot; %s</span></li>"
+                    "<a href='%s'>Download</a> &middot; %s &middot; %s</span>%s</li>"
                     % (label, badge, read, escape(urls.download(root, e.parts)), _size(e.size),
-                       time.strftime("%Y-%m-%d", time.localtime(e.mtime))))
+                       time.strftime("%Y-%m-%d", time.localtime(e.mtime)),
+                       _row_actions(urls, root, e.parts, e.name) if writable else ""))
     here = urls.browse(root, parts)
     pager = ""
     if pages > 1:
@@ -167,11 +216,13 @@ def listing_page(root: str, parts: tuple, entries: list, page: int, pages: int, 
         pager = "<div class='pl-pager'>%s<span class='pl-muted'>Page %d of %d</span>%s</div>" % (prev, page, pages, nxt)
     title = parts[-1] if parts else root
     bar = _sort_bar(here, sort, desc) if total > 1 else ""
+    note = "<p class='pl-flash' role='status'>%s</p>" % escape(flash) if flash else ""
+    forms = _upload_forms(urls, root, parts) if writable else ""
     body = ("<main class='pl-main'><div class='pl-crumbs'>%s</div><h1>%s</h1><div class='pl-muted'>%d items &middot; "
             "<a href='%s'>OPDS</a></div>%s%s<ul class='pl-list'>%s</ul>%s</main>"
             % (" / ".join(crumbs), escape(title), total, escape(urls.opds(root, parts)),
-               bar, pager, "".join(rows), pager))
-    return layout(title, body, ctx)
+               note + forms, bar + pager, "".join(rows), pager))
+    return layout(title, body, ctx, scripts=(urls.static("uploads.js"),) if writable else ())
 
 
 def _icon_button(ident: str, icon: str, label: str, extra: str = "") -> str:

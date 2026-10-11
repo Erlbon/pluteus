@@ -241,3 +241,13 @@ a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible
   position: absolute; left: 50%; bottom: 24px; transform: translateX(-50%); z-index: 8; padding: 6px 12px;
   background: var(--pl-fg); color: var(--pl-bg); border-radius: 999px; font-size: 13px; opacity: .92;
 }
+
+/* upload folder */
+.pl-upload, .pl-newfolder { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; margin: 12px 0; }
+.pl-upload input[type=file] { max-width: 100%; }
+.pl-upload-status { flex-basis: 100%; }
+.pl-upload-status .pl-progress { margin-bottom: 4px; }
+.pl-flash { margin: 10px 0; padding: 8px 12px; border-left: 3px solid var(--pl-accent, currentColor); }
+.pl-actions { display: inline-flex; gap: 6px; margin-left: 10px; }
+.pl-actions form { display: inline; margin: 0; }
+.pl-btn-small { padding: 2px 8px; font-size: 0.85em; }

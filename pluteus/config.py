@@ -37,6 +37,7 @@ class User:
     password_hash: str
     roots: tuple = ()      # empty = every root
     adult: bool = False    # may see folders carrying the adult marker file
+    upload: bool = True    # may use the personal upload folder (when uploads_dir is set)
 
     def may_use(self, root_name: str) -> bool:
         return not self.roots or root_name in self.roots
@@ -69,6 +70,9 @@ class Config:
     opds_pse: bool = True      # OPDS-PSE page streaming links for comics (reads each CBZ's page list once)
     show_all_files: bool = True    # list and open every file; False = only the types in `extensions` (book server)
     text_view_kb: int = 1024       # the text viewer shows at most this much of a file (the rest is a download)
+    uploads_dir: str = ""          # one subfolder per user lives here; "" = uploads switched off
+    upload_max_mb: int = 4096      # largest single upload
+    upload_quota_mb: int = 0       # most a user may keep in their upload folder; 0 = no limit
 
 
 # TOML puts every key written after a [table] header INTO that table, so a setting typed under
@@ -76,9 +80,12 @@ class Config:
 _SERVER_KEYS = {"host", "port", "page_size", "base_path", "realm", "auth_cache_seconds", "anonymous_user",
                 "session_days", "cookie_secure", "trust_proxy", "allowed_hosts", "opds_pse", "show_all_files", "text_view_kb"}
 _GLOBAL_KEYS = {"exclude", "extensions", "display_strip", "adult_marker", "metadata", "cache_dir",
-                "data_dir", "themes_dir", "theme"}
+                "data_dir", "themes_dir", "theme", "uploads_dir", "upload_max_mb", "upload_quota_mb"}
 _ROOT_KEYS = {"name", "path"}
-_USER_KEYS = {"name", "password_hash", "roots", "adult"}
+_USER_KEYS = {"name", "password_hash", "roots", "adult", "upload"}
+UPLOADS_ROOT = "uploads"          # the virtual root every user sees for their own upload folder
+_FOLDER_NAME = re.compile(r"^[A-Za-z0-9_-](?:[A-Za-z0-9 _.-]*[A-Za-z0-9_-])?$")
+_DEVICE_NAMES = {"con", "prn", "aux", "nul", *("com%d" % i for i in range(1, 10)), *("lpt%d" % i for i in range(1, 10))}
 
 
 def _is_inside(path: str, root: str) -> bool:
@@ -95,6 +102,32 @@ def _in_range(table: dict, key: str, default: int, low: int, high: int) -> int:
     if not low <= value <= high:
         raise ConfigError("%s must be between %d and %d" % (key, low, high))
     return value
+
+
+def _check_uploads(uploads_dir: str, roots: dict, users: dict, opts: dict) -> None:
+    """Every user's upload folder is uploads_dir/<user name>, so the folder must be separate from everything else
+    pluteus serves or keeps, and user names must be usable (and distinct) as Windows folder names."""
+    for r in roots.values():
+        if _is_inside(uploads_dir, r.path) or _is_inside(r.path, uploads_dir):
+            raise ConfigError("uploads_dir %r and root %r overlap: uploads must live in their own folder, outside "
+                              "the library" % (uploads_dir, r.name))
+    for label in ("data_dir", "cache_dir", "themes_dir"):
+        value = str(opts.get(label, ""))
+        if value and _is_inside(value, uploads_dir):
+            raise ConfigError("%s %r is inside uploads_dir %r: users could then list pluteus's own files"
+                              % (label, value, uploads_dir))
+    seen = {}
+    for name, user in users.items():
+        if not user.upload:
+            continue
+        if not _FOLDER_NAME.match(name) or name.split(".")[0].lower() in _DEVICE_NAMES:
+            raise ConfigError("user name %r cannot be used with uploads_dir: it becomes a folder name, so use letters, "
+                              "digits, space, - _ . only (no leading/trailing dot or space, no CON/NUL/COM1...). "
+                              "Rename the user, or set upload = false for them" % name)
+        if name.lower() in seen:
+            raise ConfigError("users %r and %r would share one upload folder (Windows ignores letter case)"
+                              % (seen[name.lower()], name))
+        seen[name.lower()] = name
 
 
 def _check_keys(table: dict, allowed: set, where: str) -> None:
@@ -122,6 +155,8 @@ def parse_config(data: dict, check_roots: bool = True) -> Config:
             raise ConfigError("root name %r must use only letters, digits, - and _" % name)
         if name in roots:
             raise ConfigError("duplicate root name %r" % name)
+        if name == UPLOADS_ROOT:
+            raise ConfigError("the root name %r is reserved for the personal upload folders" % name)
         if check_roots and not os.path.isdir(longpath(path)):
             raise ConfigError("root %r: %r is not a folder" % (name, path))
         roots[name] = Root(name, path)
@@ -142,7 +177,7 @@ def parse_config(data: dict, check_roots: bool = True) -> Config:
         for ar in allowed:
             if ar not in roots:
                 raise ConfigError("user %r refers to unknown root %r" % (name, ar))
-        users[name] = User(name, u["password_hash"], allowed, bool(u.get("adult", False)))
+        users[name] = User(name, u["password_hash"], allowed, bool(u.get("adult", False)), bool(u.get("upload", True)))
     if not users:
         raise ConfigError("no [[users]] defined")
 
@@ -170,6 +205,9 @@ def parse_config(data: dict, check_roots: bool = True) -> Config:
                     raise ConfigError("%s %r is inside root %r: with show_all_files its files would be listed and "
                                       "downloadable. Move it outside the library (or set show_all_files = false)"
                                       % (label, value, r.name))
+    uploads_dir = str(opts.get("uploads_dir", ""))
+    if uploads_dir:
+        _check_uploads(uploads_dir, roots, users, opts)
     theme = str(opts.get("theme", "default"))
     if not re.match(r"^[A-Za-z0-9_-]{1,40}$", theme):
         raise ConfigError("theme %r must use only letters, digits, - and _" % theme)
@@ -197,6 +235,9 @@ def parse_config(data: dict, check_roots: bool = True) -> Config:
         anonymous_user=anonymous_user,
         metadata=bool(opts.get("metadata", True)),
         cache_dir=str(opts.get("cache_dir", "")),
+        uploads_dir=uploads_dir,
+        upload_max_mb=_in_range(opts, "upload_max_mb", 4096, 1, 10_000_000),
+        upload_quota_mb=_in_range(opts, "upload_quota_mb", 0, 0, 100_000_000),
     )
 
 
@@ -209,6 +250,8 @@ def load_config(path: str, check_roots: bool = True) -> Config:
     except tomllib.TOMLDecodeError as e:
         raise ConfigError("%s is not valid TOML: %s" % (path, e))
     cfg = parse_config(data, check_roots)
+    if cfg.uploads_dir and _is_inside(path, cfg.uploads_dir):
+        raise ConfigError("the config file %r is inside uploads_dir: users could list it (it holds password hashes)" % path)
     if cfg.show_all_files:
         for r in cfg.roots.values():
             if _is_inside(path, r.path):

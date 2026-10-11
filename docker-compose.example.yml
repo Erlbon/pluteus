@@ -18,6 +18,9 @@ services:
     volumes:
       - ./config:/config
       - pluteus-data:/data
+      # Personal upload folders (config: uploads_dir = "/uploads"). Needs to be writable; keep it a SEPARATE folder
+      # from the libraries so you can look through what arrives before moving it in.
+      # - /path/to/uploads:/uploads
       - /path/to/books:/library/books:ro
       - /path/to/comics:/library/comics:ro
     restart: unless-stopped

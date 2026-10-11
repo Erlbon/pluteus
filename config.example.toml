@@ -28,6 +28,15 @@ page_size = 50              # entries per OPDS / web page
 # (the server prints a warning). Keep it OUTSIDE the library folders. In Docker it is /data.
 data_dir = 'D:\pluteus-data'
 
+# PERSONAL UPLOAD FOLDERS. Set uploads_dir and every user gets their own folder uploads_dir/<user name>, shown as the
+# top-level folder "uploads": upload, new folder, rename, delete. Nobody else sees it (not even other users with the
+# same roots) and it is never inside a library: you move files into the library yourself. Keep uploads_dir OUTSIDE
+# every root and outside data_dir. User names become folder names (letters, digits, space, - _ . only); give a user
+# `upload = false` to leave them out. The anonymous_user never gets one. Off when the line is missing.
+# uploads_dir = 'D:\pluteus-uploads'
+# upload_max_mb = 4096       # largest single file
+# upload_quota_mb = 0        # most one user may keep; 0 = no limit (the disk is also kept 512 MB from full)
+
 # Look and sessions. Themes are folders of CSS under themes_dir (built-in: default, sepia, night, northernlights).
 # theme = "default"          # the theme for the login page and for users who have not chosen one
 # themes_dir = 'D:\pluteus-themes'
@@ -85,3 +94,4 @@ adult = true
 name = "guest"
 password_hash = "scrypt$16384$8$1$replace-with-output-of-hash-password"
 roots = ["books"]           # omit to allow every root
+# upload = false            # no personal upload folder for this user (when uploads_dir is set)

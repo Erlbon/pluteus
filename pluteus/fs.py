@@ -15,7 +15,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 
-from .config import MIME_TYPES, Config, User
+from .config import MIME_TYPES, UPLOADS_ROOT, Config, Root, User
 
 
 class PathError(ValueError):
@@ -144,10 +144,39 @@ class Library:
             return [self._has_marker(p) for p in dirpaths]
         return list(_PROBES.map(self._has_marker, dirpaths))
 
+    # ---- the personal upload folder: a virtual root called "uploads", different for every user ------------------
+    def uploads_enabled(self, user: User) -> bool:
+        """Uploads are on, and this user has a folder: never the anonymous user (it is shared by everyone)."""
+        return bool(self.cfg.uploads_dir and user.upload and user.name != self.cfg.anonymous_user)
+
+    def upload_base(self, user: User) -> str:
+        """The user's own upload folder (created on first use). Raises NotFound when uploads are not available."""
+        if not self.uploads_enabled(user):
+            raise NotFound(UPLOADS_ROOT)
+        path = os.path.join(self.cfg.uploads_dir, user.name)
+        try:
+            os.makedirs(longpath(path), exist_ok=True)
+        except OSError as err:
+            raise Unavailable(err.errno or errno.EIO, "the upload folder cannot be created: %s" % err)
+        return path
+
     def _root(self, user: User, root_name: str):
+        if root_name == UPLOADS_ROOT:
+            return Root(UPLOADS_ROOT, self.upload_base(user))
         if root_name not in self.cfg.roots or not user.may_use(root_name):
             raise NotFound(root_name)
         return self.cfg.roots[root_name]
+
+    def _top(self, user: User, root_name: str) -> str:
+        """Real (symlink-resolved) location of a root for this user."""
+        if root_name == UPLOADS_ROOT:
+            return os.path.realpath(longpath(self.upload_base(user)))
+        return self._real[root_name]
+
+    def has_root(self, user: User, root_name: str) -> bool:
+        if root_name == UPLOADS_ROOT:
+            return self.uploads_enabled(user)
+        return root_name in self.cfg.roots and user.may_use(root_name)
 
     def _dir_path(self, user: User, root_name: str, parts: tuple) -> str:
         """Absolute folder path for a request, after the name, exclusion and marker checks."""
@@ -168,10 +197,10 @@ class Library:
                 raise NotFound(seg)
         return path
 
-    def _inside(self, root_name: str, path: str) -> None:
+    def _inside(self, user: User, root_name: str, path: str) -> None:
         """Refuse anything whose real location (symlinks, junctions) leaves the root."""
         real = os.path.normcase(os.path.realpath(path))
-        top = os.path.normcase(self._real[root_name])
+        top = os.path.normcase(self._top(user, root_name))
         if real != top and not real.startswith(top.rstrip(os.sep) + os.sep):
             raise NotFound("outside the root")
         # The request named the path; the filesystem may have resolved it differently (8.3 short names such as
@@ -180,11 +209,11 @@ class Library:
             if seg and self._excluded(seg):
                 raise NotFound("excluded")
 
-    def canonical_parts(self, root_name: str, info, requested: tuple) -> tuple:
+    def canonical_parts(self, user: User, root_name: str, info, requested: tuple) -> tuple:
         """The path below the root with the exact spelling on disk. Windows ignores letter case, so a request for
         Plain/BOOK.epub and one for plain/book.epub are one file and must share one progress record."""
         real = os.path.realpath(info.path)
-        top = self._real[root_name]
+        top = self._top(user, root_name)
         if os.path.normcase(real).startswith(os.path.normcase(top).rstrip(os.sep) + os.sep):
             rel = real[len(top.rstrip(os.sep)) + 1:]
             if rel:
@@ -193,7 +222,10 @@ class Library:
 
     # ---- public ----------------------------------------------------------
     def roots_for(self, user: User) -> list:
-        return [r for r in self.cfg.roots.values() if user.may_use(r.name)]
+        roots = [r for r in self.cfg.roots.values() if user.may_use(r.name)]
+        if self.uploads_enabled(user):
+            roots.append(Root(UPLOADS_ROOT, os.path.join(self.cfg.uploads_dir, user.name)))
+        return roots
 
     def list_dir(self, user: User, root_name: str, parts, all_files: bool = False) -> list:
         """Folders first, then files, each in natural order. By default only the configured book types are listed
@@ -202,7 +234,7 @@ class Library:
         path = self._dir_path(user, root_name, parts)
         if not os.path.isdir(path):
             raise NotFound("not a folder")
-        self._inside(root_name, path)
+        self._inside(user, root_name, path)
         dirs, files = [], []
         try:
             with os.scandir(path) as it:
@@ -251,7 +283,34 @@ class Library:
         path = os.path.join(dir_path, name)
         if not os.path.isfile(path):
             raise NotFound(name)
-        self._inside(root_name, path)
+        self._inside(user, root_name, path)
         st = os.stat(path)
         return FileInfo(path, name, MIME_TYPES.get(ext) or mimetypes.guess_type(name)[0] or "application/octet-stream",
                         st.st_size, clamp_time(st.st_mtime))
+
+    # ---- write access: only ever inside the user's own upload folder ---------------------------------------------
+    def upload_dir(self, user: User, parts) -> str:
+        """An existing folder inside this user's upload folder, ready to receive files. NotFound for anything else:
+        other roots, other users' folders, excluded names, links that lead out."""
+        parts = tuple(parts)
+        path = self._dir_path(user, UPLOADS_ROOT, parts)
+        if not os.path.isdir(path):
+            raise NotFound("not a folder")
+        self._inside(user, UPLOADS_ROOT, path)
+        return path
+
+    def upload_entry(self, user: User, parts) -> tuple:
+        """(folder path, entry name) for an existing file or folder in the user's upload folder, to rename or delete."""
+        parts = tuple(parts)
+        if not parts:
+            raise NotFound("the upload folder itself cannot be changed")
+        folder = self.upload_dir(user, parts[:-1])
+        name = parts[-1]
+        check_segment(name)
+        if self._excluded(name) or not os.path.lexists(os.path.join(folder, name)):
+            raise NotFound(name)
+        return folder, name
+
+    def is_hidden_name(self, name: str) -> bool:
+        """Names pluteus would hide or treat as a marker: a new file or folder must never get one."""
+        return self._excluded(name) or name.lower() == self.cfg.adult_marker.lower()
