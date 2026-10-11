@@ -191,23 +191,29 @@ def listing_page(root: str, parts: tuple, entries: list, page: int, pages: int, 
     rows = []
     for e in entries:
         if e.is_dir:
-            rows.append("<li class='pl-row'><a class='pl-title' href='%s'>&#128193; %s</a>%s</li>"
+            # The whole row is the link: a big target for a thumb.
+            rows.append("<li class='pl-row pl-folder'><a class='pl-title' href='%s'>&#128193; %s</a>%s</li>"
                         % (escape(urls.browse(root, e.parts)), escape(e.display),
                            _row_actions(urls, root, e.parts, e.name) if writable else ""))
             continue
         label = _book_label(e, metas.get(e.path, {}))
         pct = progress.get("/".join(e.parts))
-        badge = "<span class='pl-badge'>%d%%</span> " % round(pct * 100) if pct else ""
-        read = ""
-        if ctx.readers:
-            if e.name.lower().endswith((".epub", ".cbz")):
-                read = "<a href='%s'>Read</a> &middot; " % escape(urls.read(root, e.parts))
-            else:
-                read = "<a href='%s'>View</a> &middot; " % escape(urls.view(root, e.parts))
-        rows.append("<li class='pl-row'><span class='pl-title'>%s</span><span class='pl-muted'>%s%s"
-                    "<a href='%s'>Download</a> &middot; %s &middot; %s</span>%s</li>"
-                    % (label, badge, read, escape(urls.download(root, e.parts)), _size(e.size),
-                       time.strftime("%Y-%m-%d", time.localtime(e.mtime)),
+        badge = "<span class='pl-badge'>%d%%</span> &middot; " % round(pct * 100) if pct else ""
+        # Tapping the title opens the file in its reader or viewer (the default); download is its own big button on the
+        # left, where a thumb finds it. Without readers (a plain file server) the title downloads.
+        if not ctx.readers:
+            open_url = urls.download(root, e.parts)
+        elif e.name.lower().endswith((".epub", ".cbz")):
+            open_url = urls.read(root, e.parts)
+        else:
+            open_url = urls.view(root, e.parts)
+        rows.append("<li class='pl-row pl-file'>"
+                    "<a class='pl-dl' href='%s' title='Download' aria-label='Download %s'>"
+                    "<span class='pl-icon pl-i-download'></span></a>"
+                    "<a class='pl-title' href='%s'>%s</a>"
+                    "<span class='pl-meta pl-muted'>%s%s &middot; %s</span>%s</li>"
+                    % (escape(urls.download(root, e.parts)), escape(e.name), escape(open_url), label, badge,
+                       _size(e.size), time.strftime("%Y-%m-%d", time.localtime(e.mtime)),
                        _row_actions(urls, root, e.parts, e.name) if writable else ""))
     here = urls.browse(root, parts)
     pager = ""

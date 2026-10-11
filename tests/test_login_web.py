@@ -139,7 +139,7 @@ def test_the_book_icon_is_served_as_favicon_home_screen_icon_and_manifest(web):
     from PIL import Image
     import io
     assert Image.open(io.BytesIO(client.get("/static/icon/icon-512.png").content)).size == (512, 512)
-    assert "icon-192.png" in client.get("/theme/default/theme.css").text                    # the login-card logo
+    assert "icon-512.png" in client.get("/theme/default/theme.css").text                   # the login-card logo
 
 
 def test_all_built_in_themes_are_selectable(web):

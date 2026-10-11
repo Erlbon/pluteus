@@ -1,5 +1,6 @@
 """Regression tests for the 2026-10-11 review findings (each one was reproduced before it was fixed)."""
 import os
+import re
 import sys
 import zipfile
 
@@ -122,7 +123,7 @@ def test_an_unreachable_root_answers_503_not_404(cfg, tmp_path, library):
 def _sorted_names(client, url, headers):
     import re
     text = client.get(url, headers=headers).text
-    return re.findall(r"<span class='pl-title'>([^<]+)</span>", text)
+    return re.findall(r"<li class='pl-row pl-file'>.*?<a class='pl-title' href='[^']*'>([^<]+)</a>", text)
 
 
 def test_listing_can_be_sorted_by_name_type_size_and_date(cfg, tmp_path, library):
@@ -236,3 +237,17 @@ def test_a_config_file_with_a_byte_order_mark_is_accepted(tmp_path, library):
     useredit.add_user(str(path), "v", "scrypt$1$2$3$4$5")                      # the edit tools read it too ...
     assert not path.read_bytes().startswith(b"\xef\xbb\xbf")                    # ... and save it without the BOM
     assert list(load_config(str(path)).users) == ["u", "v"]
+
+
+def test_a_file_row_opens_the_reader_by_default_and_has_a_separate_download_button(cfg, tmp_path, library):
+    client, _ = make(cfg, tmp_path)
+    h = dict(basic("alice", "pw-alice"), **HTML)
+    html = client.get("/browse/books/Good%20Author", headers=h).text
+    epub = re.search(r"<li class='pl-row pl-file'>(.*?)</li>", html, re.S).group(1)
+    assert re.search(r"<a class='pl-title' href='/read/books/Good%20Author/[^']+\.epub'", epub)           # title -> reader
+    assert re.search(r"<a class='pl-dl' href='/dl/books/Good%20Author/[^']+\.epub' title='Download'", epub)  # icon -> download
+    assert epub.index("pl-dl") < epub.index("pl-title")                                                    # download comes first (left)
+    assert "pl-i-download" in epub
+    other = client.get("/browse/comics/Plain", headers=h).text                                             # a non-book: the viewer
+    assert "<a class='pl-title' href='/view/comics/Plain/notes.txt'" in other
+    assert "<li class='pl-row pl-folder'>" in client.get("/browse/comics", headers=h).text

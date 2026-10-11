@@ -14,6 +14,7 @@ from tkinter import filedialog, messagebox, ttk
 
 from . import __version__
 from .admin import AdminModel, remember_config, remembered_config
+from .auth import MIN_PASSWORD
 from .config import ConfigError
 from .useredit import EditError
 
@@ -77,6 +78,20 @@ class PasswordFields:
         self.entry.grid(row=row, column=1, sticky="we", pady=3)
         ttk.Label(body, text="Again").grid(row=row + 1, column=0, sticky="w", pady=3)
         ttk.Entry(body, textvariable=self.second, show="•", width=30).grid(row=row + 1, column=1, sticky="we", pady=3)
+        # The rule is shown before anything is typed, and the label follows what has been typed so far.
+        self.hint = tk.StringVar()
+        ttk.Label(body, textvariable=self.hint, foreground="#555").grid(row=row + 2, column=1, sticky="w")
+        self.first.trace_add("write", self._update_hint)
+        self._update_hint()
+
+    def _update_hint(self, *_) -> None:
+        n = len(self.first.get())
+        if n == 0:
+            self.hint.set("At least %d characters" % MIN_PASSWORD)
+        elif n < MIN_PASSWORD:
+            self.hint.set("%d so far: at least %d characters needed" % (n, MIN_PASSWORD))
+        else:
+            self.hint.set("Long enough")
 
 
 class PasswordDialog(Dialog):
@@ -110,7 +125,7 @@ class UserDialog(Dialog):
             self.name_entry = ttk.Entry(body, textvariable=self.name, width=30)
             self.name_entry.grid(row=0, column=1, sticky="we", pady=3)
             self.fields = PasswordFields(body, 1)
-            row = 3
+            row = 4
         selected = set(self.user.roots) if self.user else set()
         self.everything = tk.BooleanVar(value=not selected)
         ttk.Separator(body).grid(row=row, column=0, columnspan=2, sticky="we", pady=8)

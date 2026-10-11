@@ -11,16 +11,33 @@ from .auth import MIN_PASSWORD, hash_password
 from .config import ConfigError, load_config
 
 
+ATTEMPTS = 3
+
+
 def _read_password(from_stdin: bool, who: str) -> str:
     if from_stdin:
         pw = sys.stdin.readline().rstrip("\r\n")
-    else:
-        pw = getpass.getpass("Password for %s: " % who)
+        if len(pw) < MIN_PASSWORD:
+            raise useredit.EditError("password must be at least %d characters" % MIN_PASSWORD)
+        return pw
+    # Interactive: say the rule BEFORE the user types, refuse a too-short password at once (before asking for it a
+    # second time) and let them try again instead of starting the whole command over.
+    print("The password must be at least %d characters." % MIN_PASSWORD)
+    for attempt in range(ATTEMPTS):
+        last = attempt == ATTEMPTS - 1
+        pw = getpass.getpass("Password for %s (at least %d characters): " % (who, MIN_PASSWORD))
+        if len(pw) < MIN_PASSWORD:
+            if last:
+                raise useredit.EditError("password must be at least %d characters" % MIN_PASSWORD)
+            print("Too short: %d characters, at least %d are needed. Try again." % (len(pw), MIN_PASSWORD))
+            continue
         if pw != getpass.getpass("Again: "):
-            raise useredit.EditError("the two entries differ")
-    if len(pw) < MIN_PASSWORD:
-        raise useredit.EditError("password must be at least %d characters" % MIN_PASSWORD)
-    return pw
+            if last:
+                raise useredit.EditError("the two entries differ")
+            print("The two entries differ. Try again.")
+            continue
+        return pw
+    raise useredit.EditError("no valid password entered")
 
 
 def _split_roots(value: str) -> list:

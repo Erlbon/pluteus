@@ -204,3 +204,50 @@ def test_window_refuses_to_save_an_invalid_file(window, monkeypatch):
     app.text.insert("end", "this is not toml [[\n")
     app.save_text()
     assert shown and path.read_text(encoding="utf-8") == before
+
+
+# ---- the password rule is shown before it can be broken -------------------------------------------------------------------
+def _typed(monkeypatch, answers):
+    """Make getpass hand out the given answers in order; returns the list of prompts it was shown."""
+    prompts, queue = [], list(answers)
+    monkeypatch.setattr("getpass.getpass", lambda prompt="": (prompts.append(prompt), queue.pop(0))[1])
+    return prompts
+
+
+def test_the_command_line_states_the_minimum_before_asking(monkeypatch, capsys):
+    from pluteus.__main__ import _read_password
+    prompts = _typed(monkeypatch, ["long-enough-1", "long-enough-1"])
+    assert _read_password(False, "alice") == "long-enough-1"
+    assert "at least 8 characters" in capsys.readouterr().out            # said before any typing
+    assert "at least 8" in prompts[0] and prompts[1] == "Again: "
+
+
+def test_a_too_short_password_is_refused_at_once_and_asked_again(monkeypatch, capsys):
+    from pluteus.__main__ import _read_password
+    prompts = _typed(monkeypatch, ["short", "long-enough-1", "long-enough-1"])
+    assert _read_password(False, "alice") == "long-enough-1"
+    assert "Too short: 5 characters" in capsys.readouterr().out
+    assert prompts.count("Again: ") == 1                                  # not asked to type the short one twice
+
+
+def test_a_mismatch_is_asked_again_and_three_failures_give_up(monkeypatch, capsys):
+    from pluteus.__main__ import _read_password
+    _typed(monkeypatch, ["long-enough-1", "different-123", "long-enough-1", "long-enough-1"])
+    assert _read_password(False, "alice") == "long-enough-1"
+    assert "differ. Try again" in capsys.readouterr().out
+    _typed(monkeypatch, ["a", "b", "c"])
+    with pytest.raises(EditError, match="at least 8"):
+        _read_password(False, "alice")
+
+
+def test_the_dialog_hint_follows_what_is_typed(window):
+    import tkinter as tk
+    from tkinter import ttk
+    from pluteus.admin_gui import PasswordFields
+    app, _ = window
+    fields = PasswordFields(ttk.Frame(app), 0)
+    assert fields.hint.get() == "At least 8 characters"                   # visible before anything is typed
+    fields.first.set("abc")
+    assert "3 so far" in fields.hint.get() and "at least 8" in fields.hint.get()
+    fields.first.set("long-enough-1")
+    assert fields.hint.get() == "Long enough"

@@ -25,6 +25,8 @@
 /* The book icon above the sign-in form. A theme can hide it (.pl-logo { display: none; }) or swap the image
    (background-image: url(logo.png), relative to that theme's folder). ../../static is the site's /static/. */
 .pl-logo {
-  display: block; width: 96px; height: 96px; margin: 0 auto 2px;
-  background: url(../../static/icon/icon-192.png) center / contain no-repeat;
+  /* The artwork (icon-512.png) is a wide book on a square canvas with empty space above and below, so the box is wide and
+     short and the picture is scaled to fill its width: about 300px of visible book in the 400px card. */
+  display: block; width: 100%; max-width: 340px; aspect-ratio: 340 / 190; margin: 0 auto 8px;
+  background: url(../../static/icon/icon-512.png) center / 101.5% auto no-repeat;
 }

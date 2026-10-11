@@ -282,3 +282,26 @@ a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible
 .pl-zip-name { overflow-wrap: anywhere; }
 .pl-zip-actions { white-space: nowrap; }
 .pl-zip-dir td { font-weight: 600; }
+
+/* ---- file listing rows: tap the title to open, big download button on the left (made for a thumb on a phone) ---- */
+.pl-folder { display: block; padding: 0; }
+.pl-folder .pl-title { display: block; box-sizing: border-box; min-height: 52px; padding: 15px 6px; }
+.pl-file { display: grid; grid-template-columns: 54px 1fr; align-items: center; column-gap: 10px; padding: 6px 0; }
+.pl-file .pl-dl {
+  grid-row: 1 / span 3; align-self: center; display: inline-flex; align-items: center; justify-content: center;
+  width: 52px; height: 52px; box-sizing: border-box; border-radius: 14px; text-decoration: none; font-size: 22px;
+  color: var(--pl-accent); border: var(--pl-btn-border, 1px solid var(--pl-line)); background: var(--pl-btn-bg, transparent);
+}
+.pl-file .pl-dl:hover, .pl-file .pl-dl:focus-visible { border-color: var(--pl-accent); }
+.pl-file .pl-dl:active { background: color-mix(in srgb, var(--pl-accent) 22%, transparent); }
+.pl-file .pl-dl .pl-icon { width: 1.2em; height: 1.2em; vertical-align: 0; }
+.pl-file .pl-title { grid-column: 2; display: block; padding: 8px 2px 0; line-height: 1.3; }
+.pl-file .pl-meta { grid-column: 2; padding: 0 2px 6px; }
+.pl-file .pl-actions { grid-column: 2; margin: 0; padding: 0 2px 6px; }
+@media (min-width: 720px) {
+  .pl-file { grid-template-columns: 54px 1fr auto; }
+  .pl-file .pl-dl { grid-row: 1 / span 2; }
+  .pl-file .pl-title { grid-row: 1; padding: 12px 2px; }
+  .pl-file .pl-meta { grid-column: 3; grid-row: 1; padding: 0 6px; white-space: nowrap; }
+  .pl-file .pl-actions { grid-column: 2 / span 2; grid-row: 2; }
+}
