@@ -116,3 +116,39 @@ def test_an_unreachable_root_answers_503_not_404(cfg, tmp_path, library):
     assert client.get("/opds/books", headers=basic("alice", "pw-alice")).status_code == 200   # other roots unaffected
     shutil.move(str(library / "comics-away"), str(library / "comics"))
     assert client.get("/opds/comics/NoSuchFolder", headers=basic("alice", "pw-alice")).status_code == 404
+
+
+# ---- sortable folder listings (a per-folder reordering of the listing already read; no index) --------------------------
+def _sorted_names(client, url, headers):
+    import re
+    text = client.get(url, headers=headers).text
+    return re.findall(r"<span class='pl-title'>([^<]+)</span>", text)
+
+
+def test_listing_can_be_sorted_by_name_type_size_and_date(cfg, tmp_path, library):
+    folder = library / "comics" / "Plain"
+    for name, size, when in (("b.txt", 10, 3e8), ("a.zip", 30, 5e8), ("c.csv", 20, 4e8)):
+        (folder / name).write_bytes(b"x" * size)
+        os.utime(folder / name, (when, when))
+    os.utime(folder / "notes.txt", (1e8, 1e8))
+    client, _ = make(cfg, tmp_path, page_size=50)
+    h = dict(basic("alice", "pw-alice"), **HTML)
+    base = "/browse/comics/Plain"
+    assert _sorted_names(client, base, h) == ["a.zip", "b.txt", "c.csv", "notes.txt"]
+    assert _sorted_names(client, base + "?sort=name&dir=desc", h) == ["notes.txt", "c.csv", "b.txt", "a.zip"]
+    assert _sorted_names(client, base + "?sort=type", h) == ["c.csv", "b.txt", "notes.txt", "a.zip"]
+    assert _sorted_names(client, base + "?sort=size", h)[-1] == "a.zip"
+    assert _sorted_names(client, base + "?sort=date&dir=desc", h) == ["a.zip", "c.csv", "b.txt", "notes.txt"]
+    assert _sorted_names(client, base + "?sort=nonsense", h) == _sorted_names(client, base, h)     # unknown: default
+
+
+def test_sort_choice_survives_paging_and_links_flip_direction(cfg, tmp_path, library):
+    folder = library / "comics" / "Plain"
+    for i in range(5):
+        (folder / ("f%d.txt" % i)).write_bytes(b"x" * i)
+    client, _ = make(cfg, tmp_path, page_size=2)
+    h = dict(basic("alice", "pw-alice"), **HTML)
+    text = client.get("/browse/comics/Plain?sort=size&dir=desc", headers=h).text
+    assert "/browse/comics/Plain?sort=size&amp;dir=desc&amp;page=2" in text           # the pager keeps the sort
+    assert "/browse/comics/Plain?sort=size'" in text                                   # the current column flips to ascending
+    assert "/browse/comics/Plain?sort=date&amp;dir=desc'" in text                      # a new date column starts newest first

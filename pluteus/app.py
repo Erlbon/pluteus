@@ -28,7 +28,7 @@ from . import cbz, kinds, opds, textview, web
 from .auth import Authenticator
 from .cbz import CbzError
 from .config import MIME_TYPES, Config
-from .fs import Library, NotFound, PathError, clamp_time
+from .fs import SORTS, Library, NotFound, PathError, clamp_time, sort_entries
 from .meta import MetaCache, MetaService
 from .ratelimit import FailureLimiter
 from .reload import UsersReloader
@@ -353,12 +353,17 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
         root = request.path_params["root"]
         parts = _parts(request.path_params.get("path", ""))
         entries = await run_in_threadpool(lib.list_dir, user, root, parts, cfg.show_all_files)
+        sort = request.query_params.get("sort", "name")
+        sort = sort if sort in SORTS else "name"
+        desc = request.query_params.get("dir") == "desc"
+        if sort != "name" or desc:
+            entries = sort_entries(entries, sort, desc)
         shown, page, pages = opds.paginate(entries, _page_number(request), cfg.page_size)
         metas = await run_in_threadpool(meta.lookup_many, shown)
         book_paths = ["/".join(e.parts) for e in shown if not e.is_dir]
         progress = await run_in_threadpool(state.progress_for, user.name, root, book_paths)
         return HTMLResponse(web.listing_page(root, parts, shown, page, pages, len(entries), ctx_for(user),
-                                             metas, progress))
+                                             metas, progress, sort=sort, desc=desc))
 
     @guarded("web")
     async def settings(request: Request, user):

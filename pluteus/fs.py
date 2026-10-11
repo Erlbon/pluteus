@@ -62,6 +62,24 @@ def natural_key(name: str) -> list:
     return [int(t[:18]) if i % 2 else t.lower() for i, t in enumerate(_SPLIT.split(name))]
 
 
+SORTS = ("name", "type", "size", "date")
+
+
+def sort_entries(entries: list, sort: str = "name", desc: bool = False) -> list:
+    """Re-order ONE folder listing (already read from disk; nothing is indexed). Folders stay above files and are
+    ordered by name, or by date when sorting by date; files go by the chosen column with the name as tie-breaker."""
+    dirs = [e for e in entries if e.is_dir]
+    files = [e for e in entries if not e.is_dir]
+    keys = {"name": lambda e: natural_key(e.name),
+            "type": lambda e: (os.path.splitext(e.name)[1].lower(), natural_key(e.name)),
+            "size": lambda e: (e.size, natural_key(e.name)),
+            "date": lambda e: (e.mtime, natural_key(e.name))}
+    sort = sort if sort in keys else "name"
+    dirs.sort(key=keys["date"] if sort == "date" else keys["name"], reverse=desc)
+    files.sort(key=keys[sort], reverse=desc)
+    return dirs + files
+
+
 def check_segment(seg: str) -> None:
     if seg in ("", ".", "..") or "\x00" in seg or "/" in seg:
         raise PathError("bad path segment")

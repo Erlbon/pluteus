@@ -1,6 +1,7 @@
 """HTML pages. Every page shares one layout that links base.css, the default theme and the user's theme."""
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass
 from html import escape
 
@@ -104,8 +105,34 @@ def _book_label(entry, meta: dict) -> str:
     return escape(entry.name)
 
 
+SORT_LABELS = (("name", "Name"), ("type", "Type"), ("size", "Size"), ("date", "Modified"))
+
+
+def _query(sort: str, desc: bool, page: int = 1) -> str:
+    """?sort=..&dir=..&page=.. with only the non-default parts (the default listing keeps its plain URL)."""
+    pairs = []
+    if sort != "name" or desc:
+        pairs += ["sort=" + sort] + (["dir=desc"] if desc else [])
+    if page > 1:
+        pairs.append("page=%d" % page)
+    return "?" + "&".join(pairs) if pairs else ""
+
+
+def _sort_bar(here: str, sort: str, desc: bool) -> str:
+    items = []
+    for key, label in SORT_LABELS:
+        if key == sort:                                       # the current column: its link flips the direction
+            arrow = " &#9660;" if desc else " &#9650;"
+            href, cls = here + _query(key, not desc), " class='pl-sort-on'"
+        else:                                                 # a new column: newest first for dates, else ascending
+            arrow, cls, href = "", "", here + _query(key, key == "date")
+        items.append("<a%s href='%s'>%s%s</a>" % (cls, escape(href), label, arrow))
+    return "<nav class='pl-sortbar' aria-label='Sort this folder'><span class='pl-muted'>Sort:</span> %s</nav>" % " ".join(items)
+
+
 def listing_page(root: str, parts: tuple, entries: list, page: int, pages: int, total: int, ctx: Ctx,
-                 metas: dict | None = None, progress: dict | None = None) -> str:
+                 metas: dict | None = None, progress: dict | None = None,
+                 sort: str = "name", desc: bool = False) -> str:
     metas = metas or {}
     progress = progress or {}
     urls = ctx.urls
@@ -129,19 +156,21 @@ def listing_page(root: str, parts: tuple, entries: list, page: int, pages: int, 
             else:
                 read = "<a href='%s'>View</a> &middot; " % escape(urls.view(root, e.parts))
         rows.append("<li class='pl-row'><span class='pl-title'>%s</span><span class='pl-muted'>%s%s"
-                    "<a href='%s'>Download</a> &middot; %s</span></li>"
-                    % (label, badge, read, escape(urls.download(root, e.parts)), _size(e.size)))
+                    "<a href='%s'>Download</a> &middot; %s &middot; %s</span></li>"
+                    % (label, badge, read, escape(urls.download(root, e.parts)), _size(e.size),
+                       time.strftime("%Y-%m-%d", time.localtime(e.mtime))))
     here = urls.browse(root, parts)
     pager = ""
     if pages > 1:
-        prev = "<a href='%s?page=%d'>&larr; Previous</a>" % (escape(here), page - 1) if page > 1 else ""
-        nxt = "<a href='%s?page=%d'>Next &rarr;</a>" % (escape(here), page + 1) if page < pages else ""
+        prev = ("<a href='%s'>&larr; Previous</a>" % escape(here + _query(sort, desc, page - 1))) if page > 1 else ""
+        nxt = ("<a href='%s'>Next &rarr;</a>" % escape(here + _query(sort, desc, page + 1))) if page < pages else ""
         pager = "<div class='pl-pager'>%s<span class='pl-muted'>Page %d of %d</span>%s</div>" % (prev, page, pages, nxt)
     title = parts[-1] if parts else root
+    bar = _sort_bar(here, sort, desc) if total > 1 else ""
     body = ("<main class='pl-main'><div class='pl-crumbs'>%s</div><h1>%s</h1><div class='pl-muted'>%d items &middot; "
-            "<a href='%s'>OPDS</a></div>%s<ul class='pl-list'>%s</ul>%s</main>"
+            "<a href='%s'>OPDS</a></div>%s%s<ul class='pl-list'>%s</ul>%s</main>"
             % (" / ".join(crumbs), escape(title), total, escape(urls.opds(root, parts)),
-               pager, "".join(rows), pager))
+               bar, pager, "".join(rows), pager))
     return layout(title, body, ctx)
 
 
