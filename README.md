@@ -57,7 +57,7 @@ It works in Docker, on Linux and on Windows alike, with nothing to install on th
 
 ## Admin app (a window, Windows) and users (command line)
 
-**`python -m pluteus admin`** (or the `pluteus-admin` executable, see below) opens a small window, standard library only:
+**`python -m pluteus admin`** (or `pluteus-admin`, which pip installs next to it) opens a small window, standard library only:
 
 - **Users:** add a user, change a password, choose which folders a user may open, adult access and the personal upload
   folder, remove a user. Passwords are typed twice and hashed on the spot.
@@ -66,9 +66,6 @@ It works in Docker, on Linux and on Windows alike, with nothing to install on th
 - It edits the **file**, not the running server, so nothing extra is exposed to the network or the internet. Point it at
   the server's config through a network drive (for the Docker setup: `...\pluteus\config\config.toml`); it remembers the
   last file. A running server picks up user changes within seconds; other settings need `docker compose restart pluteus`.
-
-Build the executable (Windows, needs PyInstaller in a scratch environment): `tools\build-admin-exe.ps1` makes
-`pluteus-admin.exe`, a single file you can copy anywhere; it needs no Python installed.
 
 The same user commands are available without a window, which edits `config.toml` in
 place (your comments are kept, the old file is saved as `config.toml.bak`, and an edit that would make
