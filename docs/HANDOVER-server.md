@@ -80,6 +80,10 @@ cd D:\temp\_docker\pluteus
 docker compose run --rm pluteus python -m pluteus user set admin --password --config /config/config.toml
 ```
 
+**The password must be at least 8 characters** (shorter ones are refused with "password must be at least 8 characters",
+and nothing is changed). The same minimum applies to every password set later with `user add`, `user set --password` and the
+admin app. Remind the user of this before they type it.
+
 Wait for the user's confirmation. Do not continue before the placeholder password is replaced.
 
 ### 3. Start and verify on the LAN
@@ -120,7 +124,7 @@ docker compose exec pluteus python -m pluteus user add NAME --roots books --conf
 docker compose exec pluteus python -m pluteus user list --config /config/config.toml
 ```
 
-Each command prompts for the password (the user types it). `--roots books` limits a user to one root, `--adult` lets a user
+Each command prompts for the password (the user types it, at least 8 characters). `--roots books` limits a user to one root, `--adult` lets a user
 see folders marked with an `.adult` file, `--no-upload` removes their upload folder. Or let the user do it with
 `D:\temp\_docker\pluteus\pluteus-admin.exe` (open `D:\temp\_docker\pluteus\config\config.toml`). User changes take effect
 within seconds; any other change to `config.toml` needs `docker compose restart pluteus`.
