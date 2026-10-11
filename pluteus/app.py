@@ -441,13 +441,16 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
     async def browse(request: Request, user):
         root = request.path_params["root"]
         parts = _parts(request.path_params.get("path", ""))
-        entries = await run_in_threadpool(lib.list_dir, user, root, parts, cfg.show_all_files)
         sort = request.query_params.get("sort", "name")
         sort = sort if sort in SORTS else "name"
         desc = request.query_params.get("dir") == "desc"
+        # Size and date of every file are only read when the sort needs them; otherwise only for the page that is shown
+        # (one system call per file: about 0.7 ms each across a Docker bind mount, so 900 files would cost 0.6 s).
+        entries = await run_in_threadpool(lib.list_dir, user, root, parts, cfg.show_all_files, sort in ("size", "date"))
         if sort != "name" or desc:
             entries = sort_entries(entries, sort, desc)
         shown, page, pages = opds.paginate(entries, _page_number(request), cfg.page_size)
+        shown = await run_in_threadpool(lib.with_stats, shown)
         metas = await run_in_threadpool(meta.lookup_many, shown)
         book_paths = ["/".join(e.parts) for e in shown if not e.is_dir]
         progress = await run_in_threadpool(state.progress_for, user.name, root, book_paths)
@@ -564,7 +567,7 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
     # ---- the universal viewer: /view picks the viewer, /raw serves the few types that are safe inline ----------------
     def neighbours(user, root: str, parts: tuple, kind: str):
         """(previous entry, next entry, 1-based position, total) among the same kind of file in this folder."""
-        entries = lib.list_dir(user, root, parts[:-1], True)
+        entries = lib.list_dir(user, root, parts[:-1], True, False)                         # names and kinds only
         same = [e for e in entries if not e.is_dir and kinds.kind_of(e.name) == kind]
         names = [e.name for e in same]
         i = names.index(parts[-1]) if parts[-1] in names else 0
@@ -825,8 +828,9 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
     async def opds_folder(request: Request, user):
         root = request.path_params["root"]
         parts = _parts(request.path_params.get("path", ""))
-        listing = await run_in_threadpool(lib.list_dir, user, root, parts)
+        listing = await run_in_threadpool(lib.list_dir, user, root, parts, False, False)    # names only: see with_stats
         shown, page, pages = opds.paginate(listing, _page_number(request), cfg.page_size)
+        shown = await run_in_threadpool(lib.with_stats, shown)                              # size and date of this page only
         here = urls.opds(root, parts)
         metas = await run_in_threadpool(meta.lookup_many, shown)
         streams = await run_in_threadpool(page_streams, user, root, shown) if cfg.opds_pse else {}
@@ -841,7 +845,7 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
                                                urls.download(root, e.parts), mime, e.mtime, e.size,
                                                metas.get(e.path), streams.get(e.path)))
         up = urls.opds(root, parts[:-1]) if parts else urls.opds()
-        updated = max((clamp_time(e.mtime) for e in listing), default=time.time())
+        updated = max((clamp_time(e.mtime) for e in shown), default=time.time())            # the newest entry on this page
         body = opds.build_feed(
             title=lib.display_name(parts[-1]) if parts else root,
             feed_id="urn:pluteus:" + root + ":" + "/".join(parts),

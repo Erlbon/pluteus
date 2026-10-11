@@ -159,6 +159,12 @@ roots, natural order and paging, sorting, display names, exclusions, the adult m
 Windows short names), Range downloads, the readers, the viewers, and a folder whose name ends in a dot. A
 read-only smoke test against the real libraries over SMB showed feed times of 10-40 ms, including a 476-file folder.
 
+**Speed on the server (Docker Desktop, libraries bind-mounted, 2026-10-12):** the library roots and a big genre folder
+list in 40-55 ms; a comic folder of 918 files lists in about 40 ms (it took 0.6 s before listings read the size and date of
+only the 50 entries on the page: one system call per file costs about 0.7 ms across a Docker bind mount, where reading the
+names costs 7 ms for all 918). Sorting a folder by size or date still reads every file once (about 0.65 s for 918 files).
+Nothing is indexed, so a folder costs the same however big the library is.
+
 ## Design rules (from the owner)
 
 - **Filesystem first.** Folders are read live from disk; there is no library-wide index, so nothing to rescan or

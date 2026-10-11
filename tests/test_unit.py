@@ -1,4 +1,6 @@
 """Pure-function tests: sorting, display names, passwords, config validation."""
+import os
+
 import pytest
 
 from pluteus.auth import Authenticator, hash_password, verify_password
@@ -112,3 +114,81 @@ def test_config_defaults_and_extensions():
     assert cfg.extensions == (".epub", ".cbz")
     assert "scratch" in cfg.excludes and "thumbs.db" in cfg.excludes
     assert cfg.page_size == 50 and cfg.base_path == ""
+
+
+# ---- reading sizes and dates only for the entries that are shown ---------------------------------------------------------------
+class CountingEntry:
+    """Wraps os.DirEntry and counts stat() calls (os.DirEntry itself cannot be patched)."""
+    calls = 0
+
+    def __init__(self, entry):
+        self._e, self.name, self.path = entry, entry.name, entry.path
+
+    def is_dir(self):
+        return self._e.is_dir()
+
+    def is_file(self):
+        return self._e.is_file()
+
+    def stat(self):
+        CountingEntry.calls += 1
+        return self._e.stat()
+
+
+def counting_scandir(monkeypatch):
+    import contextlib
+    real = os.scandir
+
+    @contextlib.contextmanager
+    def fake(path):
+        with real(path) as it:
+            yield (CountingEntry(e) for e in it)
+    monkeypatch.setattr("pluteus.fs.os.scandir", fake)
+    CountingEntry.calls = 0
+
+
+def test_list_dir_without_stat_reads_names_only_and_with_stats_fills_the_same_values(cfg, library, monkeypatch):
+    lib = Library(cfg)
+    user = cfg.users["bob"]
+    full = lib.list_dir(user, "comics", ("3 - Marvel (1961-2012)", "Spider-Man (1963-)"))
+    counting_scandir(monkeypatch)
+    lazy = lib.list_dir(user, "comics", ("3 - Marvel (1961-2012)", "Spider-Man (1963-)"), False, False)
+    assert CountingEntry.calls == 0 and [e.name for e in lazy] == [e.name for e in full]
+    assert all(not e.has_stat and e.size == 0 and e.mtime == 0.0 for e in lazy)
+    filled = lib.with_stats(lazy[:2])
+    assert CountingEntry.calls == 0                                    # with_stats uses os.stat, not the directory scan
+    assert [(e.name, e.size, e.mtime) for e in filled] == [(e.name, e.size, e.mtime) for e in full[:2]]
+    assert all(e.has_stat for e in filled) and lib.with_stats(filled) == filled      # already filled: unchanged
+
+
+def test_with_stats_leaves_out_an_entry_that_vanished_and_handles_many_entries(cfg, library):
+    lib = Library(cfg)
+    folder = library / "comics" / "Plain"
+    for i in range(20):
+        (folder / ("f%02d.txt" % i)).write_bytes(b"x" * i)
+    lazy = lib.list_dir(cfg.users["bob"], "comics", ("Plain",), True, False)
+    gone = [e for e in lazy if e.name == "f05.txt"][0]
+    os.remove(folder / "f05.txt")
+    filled = lib.with_stats(lazy)                                      # more than 8 entries: read in parallel
+    assert "f05.txt" not in [e.name for e in filled] and len(filled) == len(lazy) - 1
+    assert {e.name: e.size for e in filled}["f07.txt"] == 7
+    assert gone.has_stat is False
+
+
+def test_a_default_listing_reads_only_the_shown_page_and_a_size_sort_reads_everything(cfg, tmp_path, library, monkeypatch):
+    from conftest import basic
+    from test_login_web import HTML, make
+    folder = library / "comics" / "Plain"
+    for i in range(30):
+        (folder / ("g%02d.txt" % i)).write_bytes(b"y" * i)
+    client, _ = make(cfg, tmp_path, page_size=5)
+    h = dict(basic("alice", "pw-alice"), **HTML)
+    counting_scandir(monkeypatch)
+    assert client.get("/browse/comics/Plain", headers=h).status_code == 200
+    by_name = CountingEntry.calls
+    assert by_name == 0                                                # the page's 5 are read with os.stat, none via the scan
+    assert "g00.txt" in client.get("/browse/comics/Plain", headers=h).text
+    CountingEntry.calls = 0
+    r = client.get("/browse/comics/Plain?sort=size&dir=desc", headers=h)
+    assert r.status_code == 200 and CountingEntry.calls >= 30         # sorting by size needs every file's size
+    assert client.get("/opds/comics/Plain", headers=basic("alice", "pw-alice")).status_code == 200

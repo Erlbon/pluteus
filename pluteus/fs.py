@@ -7,6 +7,7 @@ form) stay reachable.
 """
 from __future__ import annotations
 
+import dataclasses
 import errno
 import mimetypes
 import os
@@ -98,6 +99,8 @@ class Entry:
     mtime: float
     parts: tuple          # path below the root, ending with this entry's name
     path: str = ""        # real (extended-length) path, set for files
+    src: str = ""         # real path of the entry itself (files and folders), used to read its size and date later
+    has_stat: bool = True  # False: size and mtime were not read yet (list_dir(stat=False)); see Library.with_stats
 
 
 @dataclass(frozen=True)
@@ -227,9 +230,13 @@ class Library:
             roots.append(Root(UPLOADS_ROOT, os.path.join(self.cfg.uploads_dir, user.name)))
         return roots
 
-    def list_dir(self, user: User, root_name: str, parts, all_files: bool = False) -> list:
+    def list_dir(self, user: User, root_name: str, parts, all_files: bool = False, stat: bool = True) -> list:
         """Folders first, then files, each in natural order. By default only the configured book types are listed
-        (what OPDS feeds want); all_files=True lists every regular file (the web listing and the viewers)."""
+        (what OPDS feeds want); all_files=True lists every regular file (the web listing and the viewers).
+
+        stat=False does not read each entry's size and date (entries come back with has_stat=False and zeros). Reading
+        them costs one system call per file, which is cheap on a local disk but about 0.7 ms each across a Docker bind
+        mount, so a page that shows 50 of 900 files should read only those 50: call with_stats() on the page."""
         parts = tuple(parts)
         path = self._dir_path(user, root_name, parts)
         if not os.path.isdir(path):
@@ -249,12 +256,13 @@ class Library:
                         elif (not all_files and os.path.splitext(name)[1].lower() not in self.cfg.extensions) \
                                 or not e.is_file():
                             continue
-                        st = e.stat()
+                        st = e.stat() if stat else None
                     except OSError:
                         continue
                     entry = Entry(name, self.display_name(name) if is_dir else name, is_dir,
-                                  0 if is_dir else st.st_size, clamp_time(st.st_mtime), parts + (name,),
-                                  "" if is_dir else e.path)
+                                  0 if (is_dir or st is None) else st.st_size,
+                                  clamp_time(st.st_mtime) if st is not None else 0.0, parts + (name,),
+                                  "" if is_dir else e.path, e.path, st is not None)
                     (dirs if is_dir else files).append(entry)
         except OSError as err:
             if err.errno in (errno.ENOENT, errno.ENOTDIR):
@@ -268,6 +276,30 @@ class Library:
         dirs.sort(key=lambda x: natural_key(x.name))
         files.sort(key=lambda x: natural_key(x.name))
         return dirs + files
+
+    def with_stats(self, entries: list) -> list:
+        """The same entries with their size and date read (in parallel when there are many). Entries that have them
+        already pass through untouched; one that cannot be read any more (it vanished) is left out, as list_dir would."""
+        todo = [e for e in entries if not e.has_stat]
+        if not todo:
+            return list(entries)
+
+        def read(e: Entry):
+            try:
+                st = os.stat(e.src)
+            except OSError:
+                return None
+            return dataclasses.replace(e, size=0 if e.is_dir else st.st_size, mtime=clamp_time(st.st_mtime), has_stat=True)
+
+        done = [read(e) for e in todo] if len(todo) < 8 else list(_PROBES.map(read, todo))
+        filled = {e.name: new for e, new in zip(todo, done)}
+        out = []
+        for e in entries:
+            if e.has_stat:
+                out.append(e)
+            elif filled.get(e.name) is not None:
+                out.append(filled[e.name])
+        return out
 
     def file_info(self, user: User, root_name: str, parts, any_type: bool = False) -> FileInfo:
         """One servable file. any_type=True allows every regular file, not just the configured book types."""
