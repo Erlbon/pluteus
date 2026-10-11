@@ -351,3 +351,12 @@ def test_the_home_page_is_called_file_library_and_the_list_has_a_neutral_title(c
     html = client.get("/", headers=HTML).text
     assert "<h1>File Library</h1>" in html and "<title>File Library</title>" in html
     assert "File Library</a>" in client.get("/browse/books", headers=HTML).text           # the first breadcrumb
+
+
+def test_sizes_switch_unit_at_1024_and_go_up_to_terabytes():
+    from pluteus.web import _size
+    assert [_size(n) for n in (0, 1023, 1024, 1536, 1024 ** 2, 1024 ** 3 - 1, 1024 ** 3)] == [
+        "0 B", "1023 B", "1.0 KB", "1.5 KB", "1.0 MB", "1024.0 MB", "1.0 GB"]
+    gb = 1024 ** 3
+    assert _size(1382.3 * gb) == "1.3 TB" and _size(156.8 * gb) == "156.8 GB" and _size(3726.0 * gb) == "3.6 TB"
+    assert _size(6 * 1024 ** 4) == "6.0 TB" and _size(5000 * 1024 ** 4) == "5000.0 TB"       # nothing bigger than TB

@@ -59,8 +59,8 @@ def scheme_button() -> str:
 
 
 def _size(n: float) -> str:
-    for unit in ("B", "KB", "MB", "GB"):
-        if n < 1024 or unit == "GB":
+    for unit in ("B", "KB", "MB", "GB", "TB"):
+        if n < 1024 or unit == "TB":
             return "%d %s" % (n, unit) if unit == "B" else "%.1f %s" % (n, unit)
         n /= 1024
 
