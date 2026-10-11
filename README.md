@@ -198,6 +198,21 @@ request from `GET /cbz/{root}/{path}?page=N` (0-based). Pages are cacheable (ETa
 80 MB per page, enforced while reading, so a zip header that lies cannot blow up memory. Measured on a real 184-page
 graphic novel over SMB: about 0.1-0.2 s per page.
 
-Not built: two-page spreads, right-to-left, webtoon scrolling, page resizing, ComicInfo.xml titles, OPDS page
-streaming (OPDS-PSE) for Android apps. PSE would be small now that the page endpoint exists: one extra link per
-comic in the feed carrying the page count and a URL template.
+Not built: two-page spreads, right-to-left, webtoon scrolling, page resizing, ComicInfo.xml titles.
+
+### OPDS page streaming (PSE) for Android comic apps
+
+Each CBZ in an OPDS feed also carries an **OPDS-PSE v1.2** stream link, so apps that support it (Panels, Chunky,
+KOReader and others) can read a comic page by page from the server instead of downloading the whole file first:
+
+    <link rel="http://vaemendis.net/opds-pse/stream" type="image/png"
+          href="/cbz/{root}/{path}.cbz?page={pageNumber}" pse:count="184" pse:lastRead="6" pse:lastReadDate="..."/>
+
+`{pageNumber}` is 0-based (as the spec says) and the same endpoint the web reader uses; `pse:lastRead` is 1-based and
+comes from the user's saved reading position, so an app can resume where the web reader stopped. The link `type` is
+always one the spec allows (jpeg/png/gif, from the first page; clients decode by the real bytes, so WebP pages work).
+Pages are served as stored: `{maxWidth}` is not used. A comic whose page list cannot be read simply gets no stream link
+and stays downloadable. Built from the spec text and tested against it; **not yet tried in a real Android app**.
+
+The first time a feed page lists its comics, each CBZ's page list is read once (a full page of 50 comics took about
+2.2 s over SMB, 22 ms afterwards, because the lists are cached). Set `opds_pse = false` in `[server]` to turn it off.

@@ -10,6 +10,7 @@ import functools
 import hashlib
 import json
 import os
+import re
 import time
 from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
@@ -419,6 +420,27 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
                                start_href=urls.opds(), updated=now, entries=entries)
         return Response(body, media_type=opds.NAV_TYPE)
 
+    def page_streams(user, root: str, shown: list) -> dict:
+        """OPDS-PSE data for the comics on this feed page: {path: link details}. Comics whose page list cannot be
+        read simply get no stream link (they stay downloadable)."""
+        pages_by_path = meta.lookup_pages(shown)
+        if not pages_by_path:
+            return {}
+        comics = [e for e in shown if e.path in pages_by_path]
+        rows = state.progress_rows(user.name, root, ["/".join(e.parts) for e in comics])
+        out = {}
+        for e in comics:
+            pages = pages_by_path[e.path]
+            info = {"href": urls.cbz(root, e.parts) + "?page={pageNumber}", "count": len(pages),
+                    "mime": cbz.mime_for(pages[0])}
+            row = rows.get("/".join(e.parts))
+            found = re.fullmatch(r"page:(\d+)", row["locator"]) if row else None
+            if found:                                              # our 0-based page index -> the spec's 1-based lastRead
+                info["last_read"] = min(len(pages), int(found.group(1)) + 1)
+                info["last_read_date"] = row["updated"]
+            out[e.path] = info
+        return out
+
     @guarded("basic")
     async def opds_folder(request: Request, user):
         root = request.path_params["root"]
@@ -427,6 +449,7 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
         shown, page, pages = opds.paginate(listing, _page_number(request), cfg.page_size)
         here = urls.opds(root, parts)
         metas = await run_in_threadpool(meta.lookup_many, shown)
+        streams = await run_in_threadpool(page_streams, user, root, shown) if cfg.opds_pse else {}
         entries = []
         for e in shown:
             eid = "urn:pluteus:" + root + ":" + "/".join(e.parts)
@@ -436,7 +459,7 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
                 mime = MIME_TYPES.get(os.path.splitext(e.name)[1].lower(), "application/octet-stream")
                 entries.append(opds.book_entry(e.name.rsplit(".", 1)[0], eid,
                                                urls.download(root, e.parts), mime, e.mtime, e.size,
-                                               metas.get(e.path)))
+                                               metas.get(e.path), streams.get(e.path)))
         up = urls.opds(root, parts[:-1]) if parts else urls.opds()
         updated = max((e.mtime for e in listing), default=time.time())
         body = opds.build_feed(

@@ -10,6 +10,10 @@ DC = "http://purl.org/dc/terms/"
 ET.register_namespace("", ATOM)
 ET.register_namespace("opds", OPDS)
 ET.register_namespace("dc", DC)
+PSE = "http://vaemendis.net/opds-pse/ns"                    # OPDS Page Streaming Extension (spec v1.2)
+PSE_STREAM_REL = "http://vaemendis.net/opds-pse/stream"
+PSE_TYPES = ("image/jpeg", "image/png", "image/gif")         # the only link types the spec allows
+ET.register_namespace("pse", PSE)
 
 NAV_TYPE = "application/atom+xml;profile=opds-catalog;kind=navigation"
 ACQ_TYPE = "application/atom+xml;profile=opds-catalog;kind=acquisition"
@@ -43,8 +47,13 @@ def nav_entry(title: str, entry_id: str, href: str, updated: float) -> ET.Elemen
     return e
 
 
+def stream_mime(first_page_mime: str) -> str:
+    """PSE only allows jpeg/png/gif as the link type; clients decode by the real bytes, so JPEG is the safe default."""
+    return first_page_mime if first_page_mime in PSE_TYPES else "image/jpeg"
+
+
 def book_entry(title: str, entry_id: str, href: str, mime: str, updated: float, size: int,
-               meta: dict | None = None) -> ET.Element:
+               meta: dict | None = None, stream: dict | None = None) -> ET.Element:
     meta = meta or {}
     e = ET.Element(_q("entry"))
     _text(e, "title", meta.get("title") or title)
@@ -62,6 +71,14 @@ def book_entry(title: str, entry_id: str, href: str, mime: str, updated: float, 
     ET.SubElement(e, "{%s}format" % DC).text = mime
     ET.SubElement(e, _q("link"), {"rel": ACQUISITION_REL, "href": href, "type": mime,
                                   "length": str(size)})
+    if stream:
+        # OPDS-PSE: read this comic page by page. href holds the literal {pageNumber} (0-based) for the client to fill in.
+        attrs = {"rel": PSE_STREAM_REL, "href": stream["href"], "type": stream_mime(stream["mime"]),
+                 "{%s}count" % PSE: str(stream["count"])}
+        if stream.get("last_read"):
+            attrs["{%s}lastRead" % PSE] = str(stream["last_read"])                 # 1-based, as the spec says
+            attrs["{%s}lastReadDate" % PSE] = _iso(stream["last_read_date"])
+        ET.SubElement(e, _q("link"), attrs)
     return e
 
 

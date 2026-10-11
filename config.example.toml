@@ -15,6 +15,9 @@ page_size = 50              # entries per OPDS / web page
 #                           # that cannot log in. Wrong credentials are still refused. Give that user few roots
 #                           # and never adult = true, and do not expose this to the internet.
 
+# opds_pse = true           # OPDS page-streaming links so Android comic apps can read a CBZ page by page; reads each
+#                           # comic's page list once per feed page (cached). Set false to turn off.
+
 # EPUB metadata (title, authors, series, language, year) is read from inside each book, only for the
 # books on the page being shown, and cached in a disposable SQLite file (safe to delete at any time).
 # metadata = true

@@ -169,6 +169,18 @@ class MetaService:
         self.cache.put(key, info.size, info.mtime, {"pages": pages})
         return pages
 
+    def lookup_pages(self, entries) -> dict:
+        """{entry.path: page names} for the CBZ entries given; unreadable archives are left out. Parallel, cached."""
+        from .cbz import CbzError
+        comics = [e for e in entries if not e.is_dir and e.name.lower().endswith(".cbz")]
+
+        def one(entry):
+            try:
+                return self.pages_for(entry)
+            except CbzError:
+                return None
+        return {e.path: pages for e, pages in zip(comics, self._pool.map(one, comics)) if pages}
+
     def for_file(self, info) -> dict:
         """Metadata for one file (anything with path, size and mtime), through the same cache."""
         return self._one(info) if self.enabled else {}

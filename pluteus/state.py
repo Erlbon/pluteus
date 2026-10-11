@@ -110,6 +110,16 @@ class StateDB:
             out.update({p: pct for p, pct in rows})
         return out
 
+    def progress_rows(self, username: str, root: str, paths: list) -> dict:
+        """{path: {'locator', 'updated'}} for the given paths (used for OPDS-PSE lastRead)."""
+        out: dict = {}
+        for i in range(0, len(paths), 400):
+            chunk = paths[i:i + 400]
+            rows = self._all("SELECT path, locator, updated FROM progress WHERE username=? AND root=? AND path IN (%s)"
+                             % ",".join("?" * len(chunk)), (username, root, *chunk))
+            out.update({p: {"locator": loc, "updated": upd} for p, loc, upd in rows})
+        return out
+
     # ---- preferences ------------------------------------------------------------
     def get_prefs(self, username: str) -> dict:
         row = self._one("SELECT data FROM prefs WHERE username=?", (username,))

@@ -65,12 +65,13 @@ class Config:
     session_days: int = 30     # login sessions last this long, renewed while in use
     cookie_secure: str = "auto"   # "auto": Secure cookie when the request is HTTPS; or "always" / "never"
     trust_proxy: bool = False  # believe X-Forwarded-For / X-Forwarded-Proto (only behind your own proxy)
+    opds_pse: bool = True      # OPDS-PSE page streaming links for comics (reads each CBZ's page list once)
 
 
 # TOML puts every key written after a [table] header INTO that table, so a setting typed under
 # [[roots]] by mistake would silently do nothing. Every table's keys are therefore checked.
 _SERVER_KEYS = {"host", "port", "page_size", "base_path", "realm", "auth_cache_seconds", "anonymous_user",
-                "session_days", "cookie_secure", "trust_proxy"}
+                "session_days", "cookie_secure", "trust_proxy", "opds_pse"}
 _GLOBAL_KEYS = {"exclude", "extensions", "display_strip", "adult_marker", "metadata", "cache_dir",
                 "data_dir", "themes_dir", "theme"}
 _ROOT_KEYS = {"name", "path"}
@@ -154,6 +155,7 @@ def parse_config(data: dict, check_roots: bool = True) -> Config:
         roots=roots, users=users,
         data_dir=str(opts.get("data_dir", "")), themes_dir=str(opts.get("themes_dir", "")), theme=theme,
         session_days=session_days, cookie_secure=secure, trust_proxy=bool(server.get("trust_proxy", False)),
+        opds_pse=bool(server.get("opds_pse", True)),
         host=str(server.get("host", "127.0.0.1")), port=int(server.get("port", 8080)),
         page_size=int(server.get("page_size", 50)), base_path=base_path,
         display_strip=strip, extensions=extensions, excludes=excludes,
