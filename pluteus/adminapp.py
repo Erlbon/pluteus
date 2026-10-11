@@ -123,7 +123,16 @@ def create_admin_app(main_app) -> Starlette:
         roots = []
         for r in cfg.roots.values():
             free, total = disk(r.path)
-            roots.append({"name": r.name, "path": r.path, "ok": os.path.isdir(longpath(r.path)), "free": free, "total": total})
+            began = time.monotonic()
+            ok = os.path.isdir(longpath(r.path))
+            if ok:
+                try:
+                    with os.scandir(longpath(r.path)) as it:
+                        next(it, None)
+                except OSError:
+                    ok = False
+            roots.append({"name": r.name, "path": r.path, "ok": ok, "free": free, "total": total,
+                          "seconds": time.monotonic() - began})
         up = None
         if cfg.uploads_dir:
             free, total = disk(cfg.uploads_dir)

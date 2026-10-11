@@ -291,3 +291,13 @@ def test_the_admin_page_runs_on_its_own_port_next_to_the_main_server(tmp_path):
     finally:
         server.stop()
     assert not server.thread.is_alive()
+
+
+def test_library_lights_are_green_yellow_or_red():
+    from pluteus.adminweb import _root_light
+    good = {"ok": True, "free": 500, "total": 1000, "seconds": 0.01}
+    assert "pl-dot-ok" in _root_light(good)
+    assert "pl-dot-warn" in _root_light(dict(good, seconds=5.0)) and "slow" in _root_light(dict(good, seconds=5.0))
+    assert "pl-dot-warn" in _root_light(dict(good, free=20)) and "low disk" in _root_light(dict(good, free=20))
+    assert "pl-dot-bad" in _root_light(dict(good, ok=False))
+    assert "pl-dot-ok" in _root_light({"ok": True, "free": None, "total": None})      # unknown disk size is not a warning

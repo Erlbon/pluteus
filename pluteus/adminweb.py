@@ -76,6 +76,32 @@ def _box(title: str, inner: str) -> str:
 
 
 # ---- status ----------------------------------------------------------------------------------------------------------------
+SLOW_SECONDS = 2.0          # a library that takes longer than this to answer a listing is shown yellow
+LOW_DISK = 0.05             # less than this share of a disk free is shown yellow
+_LIGHT_CLASS = {"ok": "pl-dot-ok", "warn": "pl-dot-warn", "bad": "pl-dot-bad"}
+
+
+def _light(level: str, text: str) -> str:
+    """A traffic-light dot ('ok' green, 'warn' yellow, 'bad' red) followed by a short text."""
+    return "<span class='pl-dot %s'></span>%s" % (_LIGHT_CLASS[level], escape(text))
+
+
+def _disk_level(free, total):
+    """('warn', 'low disk space') when under LOW_DISK is free, else None."""
+    if free is not None and total and free / total < LOW_DISK:
+        return "warn", "low disk space"
+    return None
+
+
+def _root_light(r: dict) -> str:
+    if not r["ok"]:
+        return _light("bad", "NOT available")
+    if r.get("seconds", 0) > SLOW_SECONDS:
+        return _light("warn", "slow (%.1f s)" % r["seconds"])
+    low = _disk_level(r["free"], r["total"])
+    return _light(*low) if low else _light("ok", "ok")
+
+
 def status_page(ctx: Ctx, d: dict) -> str:
     facts = _table(["", ""], [["Version", escape(d["version"])], ["Python", escape(d["python"])],
                               ["Running for", escape(duration(d["uptime"]))],
@@ -83,7 +109,7 @@ def status_page(ctx: Ctx, d: dict) -> str:
                               ["Known devices", str(d["counts"]["devices"])], ["Locked names", str(d["counts"]["locked"])]], "")
     roots = []
     for r in d["roots"]:
-        state = "<span class='pl-dot pl-dot-ok'></span>ok" if r["ok"] else "<span class='pl-dot pl-dot-bad'></span><span class='pl-error'>NOT available</span>"
+        state = _root_light(r)
         space = "%s free of %s" % (_size(r["free"]), _size(r["total"])) if r["free"] is not None else ""
         roots.append([escape(r["name"]), "<code>%s</code>" % escape(r["path"]), state, escape(space)])
     boxes = [_box("Server", facts), _box("Libraries", _table(["Name", "Folder", "State", "Disk"], roots, "No libraries."))]
@@ -92,13 +118,20 @@ def status_page(ctx: Ctx, d: dict) -> str:
         rows = [[escape(u["name"]), _size(u["size"])] for u in up["users"]]
         space = "%s free of %s" % (_size(up["free"]), _size(up["total"])) if up["free"] is not None else ""
         quota = "no per-user limit" if not up["quota_mb"] else "limit %d MB per user" % up["quota_mb"]
-        boxes.append(_box("Uploads", "<p>Folder <code>%s</code> &middot; %s &middot; %s</p>%s"
-                          % (escape(up["dir"]), escape(space), escape(quota), _table(["User", "Size"], rows, "Nothing uploaded yet."))))
+        low = _disk_level(up["free"], up["total"])
+        light = _light(*low) if low else _light("ok", "ok")
+        boxes.append(_box("Uploads", "<p>%s &middot; Folder <code>%s</code> &middot; %s &middot; %s</p>%s"
+                          % (light, escape(up["dir"]), escape(space), escape(quota), _table(["User", "Size"], rows, "Nothing uploaded yet."))))
     st = d["state"]
-    where = "<code>%s</code>" % escape(st["path"]) if st["persistent"] else "<span class='pl-error'>memory only: lost on restart (set data_dir)</span>"
     backup = "newest %s" % ago(st["newest_backup"]) if st["newest_backup"] else "none yet"
-    boxes.append(_box("State (sessions, progress)", "<p>%s &middot; %s &middot; %d backup(s), %s</p>"
-                      % (where, _size(st["size"]), st["backups"], escape(backup))))
+    if not st["persistent"]:
+        light, where = _light("bad", "memory only"), "lost on restart (set data_dir)"
+    elif not st["backups"]:
+        light, where = _light("warn", "no backup yet"), "<code>%s</code>" % escape(st["path"])
+    else:
+        light, where = _light("ok", "ok"), "<code>%s</code>" % escape(st["path"])
+    boxes.append(_box("State (sessions, progress)", "<p>%s &middot; %s &middot; %s &middot; %d backup(s), %s</p>"
+                      % (light, where, _size(st["size"]), st["backups"], escape(backup))))
     return page(ctx, "Status", "status", "".join(boxes))
 
 
@@ -106,7 +139,7 @@ def status_page(ctx: Ctx, d: dict) -> str:
 def security_page(ctx: Ctx, locks: list, devices: list, sessions: dict, flash: str = "") -> str:
     lock_rows = []
     for r in locks:
-        state = ("<strong>locked for %s</strong>" % escape(duration(r["locked_for"]))) if r["locked_for"] else "not locked"
+        state = _light("warn", "locked for %s" % duration(r["locked_for"])) if r["locked_for"] else _light("ok", "not locked")
         lock_rows.append([escape(r["name"]), state, str(r["locks"]), str(r["recent_failures"]),
                           _post("/security/unlock", {"name": r["name"]}, "Clear")])
     locks_html = _box("Wrong passwords and locks", _table(
