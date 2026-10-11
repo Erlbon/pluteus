@@ -1,4 +1,9 @@
 #!/bin/sh
 # Test gate: the tests must pass before anything is pushed.
-python -m pytest -q || { echo "pre-push: the tests fail; not pushing" >&2; exit 1; }
+# Use the project's own virtual environment when there is one (it has the dependencies from pyproject.toml);
+# otherwise the python on the PATH.
+if [ -x .venv/Scripts/python.exe ]; then PY=.venv/Scripts/python.exe
+elif [ -x .venv/bin/python ]; then PY=.venv/bin/python
+else PY=python; fi
+"$PY" -m pytest -q || { echo "pre-push: the tests fail; not pushing" >&2; exit 1; }
 exit 0
