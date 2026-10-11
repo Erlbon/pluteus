@@ -151,18 +151,13 @@ a { color: var(--nl-link); }
   background: var(--nl-badge); box-shadow: var(--nl-badge-glow); color: #eafff6;
 }
 
-/* the home page lists become frosted-glass cards */
-.pl-roots, .pl-recent { display: flex; flex-direction: column; gap: 12px; max-width: 520px; }
-.pl-roots .pl-row, .pl-recent .pl-row {
-  padding: 16px 20px; font-size: 18px; font-weight: 600; border-radius: 16px;
-  background: var(--pl-card-bg); border: var(--pl-card-border); box-shadow: var(--pl-card-shadow);
+/* the home page: each of the two boxes (Continue reading, Browse) is one frosted-glass card, its rows are plain lines */
+.pl-home-box {
   -webkit-backdrop-filter: blur(14px) saturate(140%); backdrop-filter: blur(14px) saturate(140%);
-  transition: border-color 0.15s, box-shadow 0.15s, transform 0.15s;
+  border-radius: 18px;
 }
-.pl-roots .pl-row:hover, .pl-recent .pl-row:hover {
-  border-color: var(--nl-pill-hover); transform: translateY(-1px);
-  box-shadow: 0 0 18px rgba(125, 255, 184, 0.3), var(--pl-card-shadow);
-}
+.pl-roots .pl-row, .pl-recent .pl-row { font-size: 18px; font-weight: 600; transition: background 0.15s; }
+.pl-roots .pl-row:hover, .pl-recent .pl-row:hover { background: rgba(125, 255, 184, 0.07); }
 .pl-roots .pl-row a, .pl-recent .pl-row a { color: var(--pl-fg); flex: 1; }
 .pl-roots .pl-row a:hover, .pl-recent .pl-row a:hover { text-decoration: none; }
 
@@ -203,7 +198,7 @@ a { color: var(--nl-link); }
 
 /* no backdrop-filter support: a more opaque panel keeps the text readable */
 @supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
-  .pl-card, .pl-menu, .pl-roots .pl-row, .pl-recent .pl-row { background: var(--nl-glass-fallback); }
+  .pl-card, .pl-menu { background: var(--nl-glass-fallback); }
 }
 
 /* ---- reader ---- */

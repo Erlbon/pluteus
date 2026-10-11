@@ -336,3 +336,15 @@ a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible
    book, a zoomed picture or a long document that is a nasty surprise) ---- */
 html:has(body.pl-reader-page) { overscroll-behavior-y: contain; }
 body.pl-reader-page, .pl-reader-stage { overscroll-behavior: contain; }
+
+/* ---- home page: two boxes, then the small print ---- */
+.pl-home-box { margin: 16px 0 22px; padding: 4px 22px 8px; }
+.pl-home-box h2 { margin: 14px 0 4px; }
+.pl-home-box .pl-list { margin: 2px 0 0; }
+.pl-home-box .pl-row:last-child { border-bottom: 0; }
+.pl-main > .pl-home-box:first-of-type { margin-top: 12px; }
+
+/* the small type icon in front of a file's title (the same icons as on the home page), hanging so long titles wrap neatly */
+.pl-file .pl-title { display: flex; align-items: baseline; }
+.pl-file .pl-title .pl-kind { flex: none; }
+.pl-title-text { min-width: 0; overflow-wrap: anywhere; }

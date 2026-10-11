@@ -123,7 +123,7 @@ def test_an_unreachable_root_answers_503_not_404(cfg, tmp_path, library):
 def _sorted_names(client, url, headers):
     import re
     text = client.get(url, headers=headers).text
-    return re.findall(r"<li class='pl-row pl-file'>.*?<a class='pl-title' href='[^']*'>([^<]+)</a>", text)
+    return re.findall(r"<li class='pl-row pl-file'>.*?<a class='pl-title' href='[^']*'><span class='pl-kind'>[^<]*</span><span class='pl-title-text'>([^<]+)</span></a>", text)
 
 
 def test_listing_can_be_sorted_by_name_type_size_and_date(cfg, tmp_path, library):
@@ -276,3 +276,31 @@ def test_home_page_icons_where_a_started_book_lives_and_the_opds_link_in_the_foo
     assert html.count("class='pl-kind'>&#128193;") == 2 and "class='pl-kind'>&#128228;" in html   # folder icons; uploads has its own
     assert "OPDS catalogue" not in html
     assert re.search(r"<p class='pl-muted pl-foot'><a href='/opds'>OPDS feed</a> for reader apps &middot; pluteus \d", html)
+
+
+def test_home_page_is_two_boxes_and_a_footer(cfg, tmp_path, library):
+    client, app = make(cfg, tmp_path)
+    me = TestClient(app, follow_redirects=False)
+    me.post("/login", content="username=alice&password=pw-alice",
+            headers={"content-type": "application/x-www-form-urlencoded", "origin": "http://testserver"})
+    html = me.get("/", headers=HTML).text
+    assert html.count("class='pl-card pl-home-box'") == 1                         # nothing started yet: only the Browse box
+    assert "aria-label='Browse'" in html and "Continue reading" not in html
+    me.put("/api/progress/books/Good%20Author/Real%20Book.epub", json={"locator": "x", "percent": 0.3},
+           headers={"origin": "http://testserver"})
+    html = me.get("/", headers=HTML).text
+    assert html.count("class='pl-card pl-home-box'") == 2
+    assert html.index("aria-label='Continue reading'") < html.index("aria-label='Browse'") < html.index("pl-foot")
+    assert html.rindex("</section>") < html.index("pl-foot")                       # the small print sits below both boxes
+
+
+def test_every_file_row_in_a_listing_has_its_type_icon(cfg, tmp_path, library):
+    client, _ = make(cfg, tmp_path)
+    h = dict(basic("alice", "pw-alice"), **HTML)
+    books = client.get("/browse/books/Good%20Author", headers=h).text
+    assert "<span class='pl-kind'>&#128214;</span><span class='pl-title-text'>" in books            # an EPUB: the open book
+    comics = client.get("/browse/comics/3%20-%20Marvel%20%281961-2012%29/Spider-Man%20%281963-%29", headers=h).text
+    assert "<span class='pl-kind'>&#128172;</span>" in comics                                        # a CBZ: the speech balloon
+    plain = client.get("/browse/comics/Plain", headers=h).text
+    assert "<span class='pl-kind'>&#128196;</span>" in plain                                         # a text file: a plain page
+    assert "&#128193;" in client.get("/browse/comics", headers=h).text                                # folders keep their folder icon

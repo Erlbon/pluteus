@@ -96,7 +96,8 @@ def roots_page(roots: list, ctx: Ctx, recent: list | None = None) -> str:
     items = "".join("<li class='pl-row'><a class='pl-root-link' href='%s'><span class='pl-kind'>%s</span>%s</a></li>"
                     % (escape(ctx.urls.browse(r.name)), UPLOADS_ICON if r.name == "uploads" else ROOT_ICON, escape(r.name))
                     for r in roots)
-    # (the two lists below carry .pl-roots / .pl-recent so a theme can style them as cards)
+    # Two boxes (cards): "Continue reading" (only when there is something) and "Browse", then the small print below them.
+    # (the lists carry .pl-roots / .pl-recent and the boxes .pl-home-box, so a theme can restyle them)
     cont = ""
     if recent:
         rows = "".join(
@@ -105,9 +106,11 @@ def roots_page(roots: list, ctx: Ctx, recent: list | None = None) -> str:
             "<span class='pl-badge'>%d%%</span></li>"
             % (escape(r["href"]), kind_icon(r["kind"]), escape(r["label"]), escape(r["where"]), round(r["percent"] * 100))
             for r in recent)
-        cont = "<h2>Continue reading</h2><ul class='pl-list pl-recent'>%s</ul>" % rows
+        cont = ("<section class='pl-card pl-home-box' aria-label='Continue reading'><h2>Continue reading</h2>"
+                "<ul class='pl-list pl-recent'>%s</ul></section>" % rows)
     body = ("<main class='pl-main'><h1>Library</h1>%s"
-            "<h2>Browse</h2><ul class='pl-list pl-roots'>%s</ul>"
+            "<section class='pl-card pl-home-box' aria-label='Browse'><h2>Browse</h2>"
+            "<ul class='pl-list pl-roots'>%s</ul></section>"
             "<p class='pl-muted pl-foot'><a href='%s'>OPDS feed</a> for reader apps &middot; pluteus %s</p></main>"
             % (cont, items, escape(ctx.urls.opds()), escape(__version__)))
     return layout("Library", body, ctx)
@@ -227,9 +230,10 @@ def listing_page(root: str, parts: tuple, entries: list, page: int, pages: int, 
         rows.append("<li class='pl-row pl-file'>"
                     "<a class='pl-dl' href='%s' title='Download' aria-label='Download %s'>"
                     "<span class='pl-icon pl-i-download'></span></a>"
-                    "<a class='pl-title' href='%s'>%s</a>"
+                    "<a class='pl-title' href='%s'><span class='pl-kind'>%s</span><span class='pl-title-text'>%s</span></a>"
                     "<span class='pl-meta pl-muted'>%s%s &middot; %s</span>%s</li>"
-                    % (escape(urls.download(root, e.parts)), escape(e.name), escape(open_url), label, badge,
+                    % (escape(urls.download(root, e.parts)), escape(e.name), escape(open_url),
+                       kind_icon(kinds.kind_of(e.name)), label, badge,
                        _size(e.size), time.strftime("%Y-%m-%d", time.localtime(e.mtime)),
                        _row_actions(urls, root, e.parts, e.name) if writable else ""))
     here = urls.browse(root, parts)
