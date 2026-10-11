@@ -23,10 +23,24 @@ page_size = 50              # entries per OPDS / web page
 #                           # With true, data_dir / cache_dir / themes_dir and this config file must NOT be inside a root.
 # text_view_kb = 1024       # the text viewer shows at most this many KB of a file (the rest is a download)
 
+# WHERE STATE LIVES. Set data_dir for a real install: it holds logins (sessions), reading progress, user
+# preferences and the hourly backups. Without it all of that is kept in memory and lost on every restart
+# (the server prints a warning). Keep it OUTSIDE the library folders. In Docker it is /data.
+data_dir = 'D:\pluteus-data'
+
+# Look and sessions. Themes are folders of CSS under themes_dir (built-in: default, sepia, night, northernlights).
+# theme = "default"          # the theme for the login page and for users who have not chosen one
+# themes_dir = 'D:\pluteus-themes'
+# session_days = 30          # how long a browser stays signed in
+# cookie_secure = "auto"     # "auto" (follow the request), "always" or "never". Use "always" behind HTTPS.
+# trust_proxy = false        # true ONLY behind a reverse proxy you control (Caddy, nginx): then X-Forwarded-For /
+#                            # X-Forwarded-Proto are believed, for the client address and the secure-cookie decision.
+# realm = "pluteus"          # the name shown in the browser's / app's login prompt
+
 # EPUB metadata (title, authors, series, language, year) is read from inside each book, only for the
 # books on the page being shown, and cached in a disposable SQLite file (safe to delete at any time).
 # metadata = true
-# cache_dir = 'D:\pluteus-cache'   # leave out to keep the cache in memory only (lost on restart)
+# cache_dir = 'D:\pluteus-cache'   # where that cache lives; leave out to keep it in data_dir
 
 # Folder or file names to hide anywhere (case-insensitive), on top of the built-in list
 # (Recycle Bin, Thumbs.db, ...). Names starting with a dot are always hidden.

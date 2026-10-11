@@ -133,7 +133,9 @@ def test_the_page_endpoint_is_only_for_comics_you_may_see(comic_app, library):
     assert client.get("/cbz/comics/%2e%2e/%2e%2e/secret.txt?page=0").status_code in (400, 404)
     anon = TestClient(app, follow_redirects=False)
     r = anon.get(PAGES + "?page=0")
-    assert r.status_code == 401 and "www-authenticate" not in r.headers                           # no browser login popup for <img>
+    assert r.status_code == 401 and r.headers["www-authenticate"].startswith("Basic")             # apps need the challenge
+    assert "www-authenticate" not in TestClient(app, follow_redirects=False, cookies={"pluteus_session": "stale"}).get(
+        PAGES + "?page=0").headers                                                                # a browser session: no popup
     assert anon.get(PAGES + "?page=0", headers={"authorization": "Basic " + __import__("base64").b64encode(b"alice:pw-alice").decode()}).status_code == 200
     carol = TestClient(app, follow_redirects=False)
     login(carol, "carol", "pw-carol")

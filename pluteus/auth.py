@@ -13,6 +13,7 @@ import os
 import time
 
 DEFAULT_N, DEFAULT_R, DEFAULT_P = 2 ** 14, 8, 1
+BAD_SECONDS = 300          # how long an identical failed Authorization header is refused without re-checking
 
 
 def hash_password(password: str, *, n: int = DEFAULT_N, r: int = DEFAULT_R, p: int = DEFAULT_P) -> str:
@@ -38,6 +39,7 @@ class Authenticator:
         self.users = users
         self.cache_seconds = cache_seconds
         self._cache: dict = {}
+        self._bad: dict = {}
         # Burned on unknown user names so they cost the same time as a wrong password.
         self._dummy = hash_password("dummy")
 
@@ -45,6 +47,7 @@ class Authenticator:
         """Swap the user table (config reload). Cached logins are dropped so removed or changed users stop at once."""
         self.users = users
         self._cache = {}
+        self._bad = {}
 
     @staticmethod
     def parse_basic(header):
@@ -76,6 +79,15 @@ class Authenticator:
             return self.users.get(hit[0])
         return None
 
+    def known_bad(self, header) -> bool:
+        """True when exactly these credentials failed recently. A reader app with a stale password resends the same
+        wrong header on every request: refuse it without hashing and without counting it as a new guess."""
+        if not header or header[:6].lower() != "basic ":
+            return False
+        key = hashlib.sha256(header[6:].strip().encode("utf-8")).hexdigest()
+        until = self._bad.get(key)
+        return bool(until and until > time.monotonic())
+
     def authenticate(self, header):
         """Return the User for an Authorization header value, or None."""
         if not header or header[:6].lower() != "basic ":
@@ -88,6 +100,9 @@ class Authenticator:
         creds = self.parse_basic(header)
         user = self.check(*creds) if creds else None
         if user is None:
+            if len(self._bad) > 1000:
+                self._bad = {k: v for k, v in self._bad.items() if v > now}
+            self._bad[key] = now + BAD_SECONDS
             return None
         if len(self._cache) > 1000:
             self._cache = {k: v for k, v in self._cache.items() if v[1] > now}

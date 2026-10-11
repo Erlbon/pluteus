@@ -127,7 +127,10 @@ class MetaCache:
         except sqlite3.Error:
             return None
         if row and row[0] == size and row[1] == mtime:
-            return json.loads(row[2])
+            try:
+                return json.loads(row[2])
+            except ValueError:                      # a corrupt row is just a cache miss
+                return None
         return None
 
     def put(self, path: str, size: int, mtime: float, data: dict) -> None:

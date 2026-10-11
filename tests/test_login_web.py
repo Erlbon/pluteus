@@ -247,12 +247,20 @@ def test_login_form_locks_after_five_failures_even_for_the_right_password(web):
 def test_basic_logins_are_throttled_but_recent_good_ones_keep_working(web):
     client, _ = web
     assert client.get("/opds", headers=basic("alice", "pw-alice")).status_code == 200    # verified and remembered
-    for _ in range(5):
-        assert client.get("/opds", headers=basic("alice", "wrong")).status_code == 401
-    r = client.get("/opds", headers=basic("alice", "wrong"))
+    for i in range(5):                                                                  # five DIFFERENT guesses
+        assert client.get("/opds", headers=basic("alice", "wrong%d" % i)).status_code == 401
+    r = client.get("/opds", headers=basic("alice", "wrong-again"))
     assert r.status_code == 429 and int(r.headers["retry-after"]) > 0
     assert client.get("/opds", headers=basic("alice", "pw-alice")).status_code == 200   # a locked-out attacker can't lock the owner out
     assert client.get("/opds", headers=basic("bob", "pw-bob")).status_code == 200
+
+
+def test_a_stale_password_resent_by_an_app_is_one_strike_not_a_lockout(web):
+    client, _ = web
+    for _ in range(40):                                                                # the same wrong header, over and over
+        assert client.get("/opds", headers=basic("alice", "old-password")).status_code == 401
+    assert client.get("/opds", headers=basic("alice", "pw-alice")).status_code == 200   # the owner is not locked out
+    assert client.get("/opds", headers=basic("alice", "wrong-1")).status_code == 401    # a new wrong guess still counts
 
 
 # ---- themes and settings ----------------------------------------------------------------------------------------------

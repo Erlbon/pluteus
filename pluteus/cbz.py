@@ -48,7 +48,10 @@ def list_pages(path: str) -> list:
         raise CbzError("no images in this archive")
     if len(names) > MAX_PAGES:
         raise CbzError("more than %d pages" % MAX_PAGES)
-    return sorted(names, key=lambda n: natural_key(n.replace("\\", "/")))
+    try:
+        return sorted(names, key=lambda n: natural_key(n.replace("\\", "/")))
+    except (ValueError, OverflowError) as e:                       # hostile entry names must never reach the caller
+        raise CbzError("unusable page names: %s" % e)
 
 
 def read_page(path: str, name: str, limit: int = MAX_PAGE_BYTES) -> bytes:

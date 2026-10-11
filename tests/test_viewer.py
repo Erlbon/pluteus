@@ -178,7 +178,7 @@ def test_raw_needs_a_login_and_respects_hidden_folders(signed_in, library):
     client, app = signed_in
     anon = TestClient(app, follow_redirects=False)
     r = anon.get("/raw/books/" + d("a.png"))
-    assert r.status_code == 401 and "www-authenticate" not in r.headers
+    assert r.status_code == 401 and r.headers["www-authenticate"].startswith("Basic")
     (library / "comics" / "Adult Pub" / "x.png").write_bytes(RED)
     assert client.get("/raw/comics/Adult%20Pub/x.png").status_code == 404           # alice may not see it
     assert client.get("/raw/books/%2e%2e/%2e%2e/secret.txt").status_code in (400, 404)

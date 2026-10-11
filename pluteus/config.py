@@ -86,6 +86,16 @@ def _is_inside(path: str, root: str) -> bool:
     return p == r or p.startswith(r.rstrip(os.sep) + os.sep)
 
 
+def _in_range(table: dict, key: str, default: int, low: int, high: int) -> int:
+    try:
+        value = int(table.get(key, default))
+    except (TypeError, ValueError):
+        raise ConfigError("%s must be a whole number" % key)
+    if not low <= value <= high:
+        raise ConfigError("%s must be between %d and %d" % (key, low, high))
+    return value
+
+
 def _check_keys(table: dict, allowed: set, where: str) -> None:
     for key in table:
         if key not in allowed:
@@ -176,8 +186,8 @@ def parse_config(data: dict, check_roots: bool = True) -> Config:
         opds_pse=bool(server.get("opds_pse", True)),
         show_all_files=bool(server.get("show_all_files", True)),
         text_view_kb=max(16, int(server.get("text_view_kb", 1024))),
-        host=str(server.get("host", "127.0.0.1")), port=int(server.get("port", 8080)),
-        page_size=int(server.get("page_size", 50)), base_path=base_path,
+        host=str(server.get("host", "127.0.0.1")), port=_in_range(server, "port", 8080, 1, 65535),
+        page_size=_in_range(server, "page_size", 50, 1, 1000), base_path=base_path,
         display_strip=strip, extensions=extensions, excludes=excludes,
         adult_marker=str(opts.get("adult_marker", ".adult")),
         realm=str(server.get("realm", "pluteus")),

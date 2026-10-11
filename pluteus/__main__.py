@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import getpass
+import os
 import sys
 
 from . import __version__, useredit
@@ -103,13 +104,19 @@ def main(argv=None) -> int:
     try:
         if a.cmd == "user":
             return _user_command(a)
-        cfg = load_config(a.config)
+        # check-config insists every root exists; serve only warns, so a share that is offline at boot (the usual
+        # case after a power cut) does not turn into a restart loop: its folders answer 503 until it is back.
+        cfg = load_config(a.config, check_roots=a.cmd == "check-config")
     except (ConfigError, useredit.EditError) as e:
         print("Error:", e, file=sys.stderr)
         return 2
     if a.cmd == "check-config":
         print("OK: %d root(s), %d user(s)" % (len(cfg.roots), len(cfg.users)))
         return 0
+    from .fs import longpath
+    for root in cfg.roots.values():
+        if not os.path.isdir(longpath(root.path)):
+            print("Warning: root %r (%s) is not reachable right now" % (root.name, root.path), file=sys.stderr)
     import uvicorn
 
     from .app import create_app

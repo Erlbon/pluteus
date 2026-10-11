@@ -12,6 +12,7 @@ import os
 import re
 import shutil
 import tempfile
+import time
 import tomllib
 
 from .config import ConfigError, Config, parse_config
@@ -188,7 +189,14 @@ def _save(path: str, text: str) -> None:
             shutil.copymode(path, tmp)      # mkstemp makes the file owner-only; keep the original's permissions
         except OSError:
             pass
-        os.replace(tmp, path)
+        for attempt in range(8):            # Windows refuses to replace a file another process has open for a moment
+            try:                            # (virus scanner, backup tool, the running server's reload poll)
+                os.replace(tmp, path)
+                break
+            except PermissionError:
+                if attempt == 7:
+                    raise
+                time.sleep(0.15)
     except BaseException:
         if os.path.exists(tmp):
             os.remove(tmp)

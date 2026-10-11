@@ -28,7 +28,7 @@ from . import cbz, kinds, opds, textview, web
 from .auth import Authenticator
 from .cbz import CbzError
 from .config import MIME_TYPES, Config
-from .fs import Library, NotFound, PathError
+from .fs import Library, NotFound, PathError, clamp_time
 from .meta import MetaCache, MetaService
 from .ratelimit import FailureLimiter
 from .reload import UsersReloader
@@ -96,6 +96,14 @@ def _safe_next(target: str, base: str, fallback: str) -> str:
     return target
 
 
+def too_big(request: Request, limit: int) -> bool:
+    """True when the client announces a body above `limit` bytes, before any of it is read into memory."""
+    try:
+        return int(request.headers.get("content-length", "0")) > limit
+    except ValueError:
+        return True
+
+
 def _form(body: bytes) -> dict:
     """application/x-www-form-urlencoded -> {name: first value}. Bounded; no multipart dependency."""
     if len(body) > 16384:
@@ -123,7 +131,8 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
         if cfg.trust_proxy:
             forwarded = request.headers.get("x-forwarded-for", "")
             if forwarded:
-                return forwarded.split(",")[0].strip()
+                # The LAST entry is the one our own proxy appended; earlier ones are whatever the client claimed.
+                return forwarded.split(",")[-1].strip()
         return request.client.host if request.client else "?"
 
     def cookie_secure(request: Request) -> bool:
@@ -142,14 +151,15 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
         host = request.headers.get("host", "")
         return bool(origin) and bool(host) and urlsplit(origin).netloc.lower() == host.lower()
 
-    def resolve(request: Request):
-        """(user or None, seconds to wait when throttled)."""
+    async def resolve(request: Request):
+        """(user or None, seconds to wait when throttled). Password hashing and the hourly housekeeping run on
+        worker threads, never on the event loop."""
         if reloader:
             reloader.maybe_reload()
         now = time.monotonic()
         if now >= housekeeping_due[0]:
             housekeeping_due[0] = now + 3600
-            state.housekeeping(backup_dir)
+            await run_in_threadpool(state.housekeeping, backup_dir)
         user = sessions.user_for(request.cookies.get(COOKIE), auth.users)
         if user:
             return user, 0
@@ -158,12 +168,14 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
             user = auth.cached_user(header)
             if user:
                 return user, 0
+            if auth.known_bad(header):                  # the same wrong credentials again: no hashing, no new strike
+                return None, 0
             creds = auth.parse_basic(header)
             name, ip = (creds[0] if creds else ""), client_ip(request)
             wait = limiter.wait_seconds(name, ip)
             if wait:
                 return None, wait
-            user = auth.authenticate(header)
+            user = await run_in_threadpool(auth.authenticate, header)
             if user:
                 limiter.success(name)
                 return user, 0
@@ -187,8 +199,12 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
         if wait:
             return PlainTextResponse("Too many failed attempts. Try again in %d seconds." % wait, 429,
                                      headers={"Retry-After": str(wait)})
-        if mode == "api":
-            return JSONResponse({"error": "login required"}, 401)
+        if mode in ("api", "media"):
+            # 'media' is for files that reader apps fetch (page streaming, inline media): challenge-driven apps only
+            # send credentials after a Basic challenge. 'api' (progress) is for our own scripts and never challenges,
+            # and a browser that still holds a session cookie never gets a pop-up either.
+            return JSONResponse({"error": "login required"}, 401,
+                                headers=challenge if mode == "media" and not request.cookies.get(COOKIE) else None)
         if mode == "web" and "text/html" in request.headers.get("accept", ""):
             here = request.url.path + ("?" + request.url.query if request.url.query else "")
             return RedirectResponse(urls.login(here), 303)
@@ -199,7 +215,7 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
         def decorate(fn):
             @functools.wraps(fn)
             async def wrapper(request: Request):
-                user, wait = resolve(request)
+                user, wait = await resolve(request)
                 if user is None:
                     return unauthorized(request, mode, wait)
                 if not csrf_ok(request):
@@ -210,6 +226,11 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
                     return PlainTextResponse("Bad path", 400)
                 except NotFound:
                     return PlainTextResponse("Not found", 404)
+                except FileNotFoundError:               # the file vanished between the check and the read
+                    return PlainTextResponse("Not found", 404)
+                except OSError:                         # share offline, permission denied, ...: not the caller's fault
+                    return PlainTextResponse("The library storage is not available right now.", 503,
+                                             headers={"Retry-After": "30"})
             return wrapper
         return decorate
 
@@ -274,6 +295,8 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
     async def login_submit(request: Request):
         if not csrf_ok(request):
             return PlainTextResponse("Cross-site request refused", 403)
+        if too_big(request, 16384):
+            return PlainTextResponse("Request too large", 413)
         form = _form(await request.body())
         username, password = form.get("username", ""), form.get("password", "")
         next_url = _safe_next(form.get("next", ""), cfg.base_path, urls.home())
@@ -307,11 +330,15 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
     def continue_reading(user) -> list:
         """(link, label, fraction) for the books this user left unfinished, newest first."""
         out = []
-        for r in state.recent_progress(user.name, 20):
+        for r in state.recent_progress(user.name, 40):
             kind = kinds.kind_of(r["path"])
             if r["root"] in cfg.roots and user.may_use(r["root"]) and r["percent"] < 0.98 \
                     and kind in kinds.KINDS_WITH_PROGRESS:
                 parts = tuple(r["path"].split("/"))
+                try:                                   # skip books that are now hidden, excluded or gone
+                    lib.file_info(user, r["root"], parts, cfg.show_all_files)
+                except (NotFound, PathError, OSError):
+                    continue
                 link = urls.read(r["root"], parts) if kind in ("epub", "comic") else urls.view(r["root"], parts)
                 out.append((link, os.path.splitext(parts[-1])[0], r["percent"]))
         return out[:6]
@@ -407,7 +434,7 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
         if page is not None:
             return page
         rows = [("Name", info.name), ("Type", info.mime), ("Size", web._size(info.size)),
-                ("Modified", time.strftime("%Y-%m-%d %H:%M", time.localtime(info.mtime)))]
+                ("Modified", time.strftime("%Y-%m-%d %H:%M", time.localtime(clamp_time(info.mtime))))]
         note = "This looks like a binary file." if kind in ("text", "other") else ""
         return web.info_page(ctx, info.name, rows=rows, download_url=download, back_url=back, note=note,
                              text_url=urls.view(root, parts) + "?as=text")
@@ -424,7 +451,7 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
         page = await run_in_threadpool(view_page, user, root, parts, info, kind, as_text)
         return HTMLResponse(page)
 
-    @guarded("api")
+    @guarded("media")
     async def raw(request: Request, user):
         """Inline display for the types we chose to allow, each with the type WE state; never anything else."""
         root = request.path_params["root"]
@@ -434,12 +461,12 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
         mime = kinds.INLINE_MIME.get(ext)
         if mime is None:
             raise NotFound("not shown inline")
-        headers = {"X-Content-Type-Options": "nosniff", "Cache-Control": "private, max-age=3600"}
+        headers = {"X-Content-Type-Options": "nosniff", "Cache-Control": "private, max-age=300"}
         if ext in kinds.SANDBOXED:
             headers["Content-Security-Policy"] = "sandbox; default-src 'none'; style-src 'unsafe-inline'"
         return FileResponse(info.path, media_type=mime, headers=headers)       # no filename: displayed, not downloaded
 
-    @guarded("api")
+    @guarded("media")
     async def cbz_page(request: Request, user):
         """One page of a comic, read straight out of the archive. 0-based: ?page=0 is the first page."""
         root = request.path_params["root"]
@@ -474,8 +501,8 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
         if request.method == "PUT":
             if "application/json" not in request.headers.get("content-type", ""):
                 return JSONResponse({"error": "a JSON body is required"}, 415)
-            raw = await request.body()
-            if len(raw) > 8192:
+            raw = b"" if too_big(request, 8192) else await request.body()
+            if too_big(request, 8192) or len(raw) > 8192:
                 return JSONResponse({"error": "body too large"}, 413)
             try:
                 data = json.loads(raw)
@@ -539,7 +566,7 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
                                                urls.download(root, e.parts), mime, e.mtime, e.size,
                                                metas.get(e.path), streams.get(e.path)))
         up = urls.opds(root, parts[:-1]) if parts else urls.opds()
-        updated = max((e.mtime for e in listing), default=time.time())
+        updated = max((clamp_time(e.mtime) for e in listing), default=time.time())
         body = opds.build_feed(
             title=lib.display_name(parts[-1]) if parts else root,
             feed_id="urn:pluteus:" + root + ":" + "/".join(parts),

@@ -7,6 +7,7 @@ form) stay reachable.
 """
 from __future__ import annotations
 
+import errno
 import mimetypes
 import os
 import re
@@ -25,8 +26,18 @@ class NotFound(LookupError):
     purpose, so a hidden folder looks exactly like one that does not exist."""
 
 
+class Unavailable(OSError):
+    """The storage itself failed (share offline, permission denied): a server problem, not a missing path."""
+
+
 _NT = os.name == "nt"
 _SPLIT = re.compile(r"(\d+)")
+_MAX_TIME = 2 ** 31 - 1          # year 2038; Windows time functions refuse values far outside 1970..3000
+
+
+def clamp_time(t: float) -> float:
+    """A modification time that the time functions can always format (files can carry absurd stamps)."""
+    return t if 0 <= t <= _MAX_TIME else 0.0
 
 
 def longpath(p: str) -> str:
@@ -47,7 +58,8 @@ def longpath(p: str) -> str:
 
 def natural_key(name: str) -> list:
     """Sort key where digit runs compare as numbers: '3.10' after '3.9', case-insensitive."""
-    return [int(t) if i % 2 else t.lower() for i, t in enumerate(_SPLIT.split(name))]
+    # Digit runs are cut at 18 digits: Python refuses int() on thousands of digits, and no real name needs more.
+    return [int(t[:18]) if i % 2 else t.lower() for i, t in enumerate(_SPLIT.split(name))]
 
 
 def check_segment(seg: str) -> None:
@@ -115,6 +127,8 @@ class Library:
     def _dir_path(self, user: User, root_name: str, parts: tuple) -> str:
         """Absolute folder path for a request, after the name, exclusion and marker checks."""
         root = self._root(user, root_name)
+        if not os.path.isdir(longpath(root.path)):          # an offline share is a server problem, not a missing page
+            raise Unavailable(errno.EIO, "root %r is not reachable" % root_name)
         for seg in parts:
             check_segment(seg)
         for seg in parts:
@@ -135,6 +149,11 @@ class Library:
         top = os.path.normcase(self._real[root_name])
         if real != top and not real.startswith(top.rstrip(os.sep) + os.sep):
             raise NotFound("outside the root")
+        # The request named the path; the filesystem may have resolved it differently (8.3 short names such as
+        # _INCOM~1, links). Hidden and excluded names must be judged on what was really reached.
+        for seg in real[len(top):].split(os.sep):
+            if seg and self._excluded(seg):
+                raise NotFound("excluded")
 
     # ---- public ----------------------------------------------------------
     def roots_for(self, user: User) -> list:
@@ -167,11 +186,13 @@ class Library:
                     except OSError:
                         continue
                     entry = Entry(name, self.display_name(name) if is_dir else name, is_dir,
-                                  0 if is_dir else st.st_size, st.st_mtime, parts + (name,),
+                                  0 if is_dir else st.st_size, clamp_time(st.st_mtime), parts + (name,),
                                   "" if is_dir else e.path)
                     (dirs if is_dir else files).append(entry)
         except OSError as err:
-            raise NotFound(str(err))
+            if err.errno in (errno.ENOENT, errno.ENOTDIR):
+                raise NotFound(str(err))
+            raise Unavailable(err.errno, str(err))
         dirs.sort(key=lambda x: natural_key(x.name))
         files.sort(key=lambda x: natural_key(x.name))
         return dirs + files
@@ -193,4 +214,4 @@ class Library:
         self._inside(root_name, path)
         st = os.stat(path)
         return FileInfo(path, name, MIME_TYPES.get(ext) or mimetypes.guess_type(name)[0] or "application/octet-stream",
-                        st.st_size, st.st_mtime)
+                        st.st_size, clamp_time(st.st_mtime))
