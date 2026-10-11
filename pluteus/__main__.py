@@ -73,6 +73,10 @@ def main(argv=None) -> int:
     check = sub.add_parser("check-config", help="validate a config file and exit")
     check.add_argument("--config", required=True)
     sub.add_parser("hash-password", help="print a password hash (for editing config.toml by hand)")
+    sup = sub.add_parser("supervise", help="run the server and start it again whenever it exits (for a scheduled task)")
+    sup.add_argument("--config", required=True)
+    sup.add_argument("--log", required=True, help="file the server's output is appended to")
+    sup.add_argument("--delay", type=float, default=10.0, help="seconds to wait before starting it again")
     admin = sub.add_parser("admin", help="open the admin window (users and config file)")
     admin.add_argument("--config", help="path to config.toml (default: the one used last time)")
 
@@ -100,6 +104,9 @@ def main(argv=None) -> int:
     u_rm.add_argument("--yes", action="store_true", help="do not ask for confirmation")
     a = ap.parse_args(argv)
 
+    if a.cmd == "supervise":
+        from .supervise import run as supervise
+        return supervise(a.config, a.log, a.delay)
     if a.cmd == "admin":
         from .admin_gui import main as admin_main
         return admin_main(["--config", a.config] if a.config else [])

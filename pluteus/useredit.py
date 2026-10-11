@@ -175,9 +175,9 @@ def validate(text: str) -> Config:
 
 def read_config_text(path: str) -> str:
     try:
-        with open(path, "r", encoding="utf-8", newline="") as f:
+        with open(path, "r", encoding="utf-8-sig", newline="") as f:      # tolerate a BOM; saving writes none
             return f.read()
-    except OSError as e:
+    except (OSError, UnicodeDecodeError) as e:
         raise EditError("cannot read %s: %s" % (path, e))
 
 

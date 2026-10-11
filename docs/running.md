@@ -8,7 +8,7 @@ Both work and neither is second class. Pick by what the machine already does:
 | Needs | Docker (Desktop on Windows) | Python 3.11+ |
 | Isolation | read-only container, no capabilities, own user | whatever the account you run it as can read |
 | Upgrading | rebuild the image, `docker compose up -d` | `pip install --upgrade`, restart |
-| Tested | yes (Windows, Docker Desktop; hardened settings; uploads) | yes for install and `serve`; auto-start below is **not tested** |
+| Tested | yes (Windows, Docker Desktop; hardened settings; uploads) | yes: install, `serve`, and the Windows auto-start script (see below for what was and was not tried) |
 
 Everything else (config file, users, Caddy, uploads) is identical. The config file is the same format; only the paths in it
 differ (container paths in Docker).
@@ -82,13 +82,30 @@ copy config.example.toml config.toml              # edit: roots, data_dir, uploa
 Behind Caddy set `host = "127.0.0.1"` (Caddy on the same machine) or `"0.0.0.0"` (Caddy in Docker Desktop reaching the
 host through `host.docker.internal`; then keep the port closed on the router and allow it only locally in the firewall).
 
-Starting at boot (**not tested yet, adapt before trusting**):
+Starting at boot:
 
-- **Windows**: a Task Scheduler task that runs `C:\pluteus\.venv\Scripts\python.exe -m pluteus serve --config
-  C:\pluteus\config.toml` at startup, in `C:\pluteus`. Run it under an account that can read the libraries. A mapped drive
-  letter (`Z:`) does not exist for a task or service account: use the real local path or a UNC path in `config.toml`.
-  When a library folder is not reachable yet at boot, `serve` prints a warning and starts anyway (its pages answer 503
-  until the folder is back); `check-config` is the strict one and reports it as an error.
+- **Windows: `tools\install-task.ps1`** (Task Scheduler, nothing to download):
+
+  ```powershell
+  .\tools\install-task.ps1 -Config C:\pluteus\config.toml -Start           # at boot, as SYSTEM (elevated PowerShell)
+  .\tools\install-task.ps1 -Config C:\pluteus\config.toml -AtLogon -Start  # at your logon, as you, no admin needed
+  .\tools\install-task.ps1 -Remove                                          # stop and remove the task
+  ```
+
+  It checks the config first (and refuses a broken one), then registers a task that runs `python -m pluteus supervise`: the
+  supervisor starts the server, appends its output to `pluteus-service.log` next to the config (`-Log` to change), and starts
+  it again 10 seconds after any exit. It puts the server in a Windows job object, so **stopping the task stops the server
+  too** (Task Scheduler on its own left the server running). Stop/start with `Stop-ScheduledTask` / `Start-ScheduledTask
+  -TaskName pluteus`.
+  - **Tested** (on Windows 11, `-AtLogon`): install and start, health check, killing the server (back in about 13 s, logged),
+    stopping the task (nothing left running, port free, nothing comes back), removing it while it runs, refusing a broken
+    config, refusing politely without administrator rights.
+  - **Not tested:** the default start-at-boot mode as SYSTEM (needs an elevated session), an actual reboot, and a real service
+    account reading a network share.
+  - SYSTEM does not see mapped drive letters (`Z:`): use a local path or `\\server\share` in `config.toml` (the script warns).
+  - Logs grow without limit; delete or rotate `pluteus-service.log` now and then.
+  - When a library folder is not reachable yet at boot, `serve` prints a warning and starts anyway (its pages answer 503
+    until the folder is back); `check-config` is the strict one and reports it as an error.
 - **Linux**: a systemd unit with `ExecStart=/opt/pluteus/.venv/bin/python -m pluteus serve --config /etc/pluteus/config.toml`,
   `User=pluteus`, `Restart=on-failure`.
 

@@ -222,3 +222,17 @@ def test_a_real_public_address_behind_the_proxy_is_still_limited_per_address(cfg
         client.get("/opds", headers={**basic("nobody%d" % i, "x"), **real})
     assert client.get("/opds", headers={**basic("alice", "pw-alice"), **real}).status_code == 429
     assert client.get("/opds", headers={**basic("alice", "pw-alice"), "x-forwarded-for": "8.8.4.4"}).status_code == 200
+
+
+def test_a_config_file_with_a_byte_order_mark_is_accepted(tmp_path, library):
+    """PowerShell 5.1 and some Windows editors write a UTF-8 BOM; the file is still valid."""
+    from pluteus import useredit
+    from pluteus.config import load_config
+    path = tmp_path / "config.toml"
+    text = ('[server]\nhost = "127.0.0.1"\n[[roots]]\nname = "r"\npath = \'%s\'\n[[users]]\nname = "u"\n'
+            'password_hash = "scrypt$1$2$3$4$5"\n' % str(library / "comics"))
+    path.write_bytes(b"\xef\xbb\xbf" + text.encode("utf-8"))
+    assert list(load_config(str(path)).users) == ["u"]
+    useredit.add_user(str(path), "v", "scrypt$1$2$3$4$5")                      # the edit tools read it too ...
+    assert not path.read_bytes().startswith(b"\xef\xbb\xbf")                    # ... and save it without the BOM
+    assert list(load_config(str(path)).users) == ["u", "v"]

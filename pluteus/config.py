@@ -244,9 +244,12 @@ def parse_config(data: dict, check_roots: bool = True) -> Config:
 def load_config(path: str, check_roots: bool = True) -> Config:
     try:
         with open(path, "rb") as f:
-            data = tomllib.load(f)
+            raw = f.read()
+        data = tomllib.loads(raw.decode("utf-8-sig"))     # -sig: Windows editors and PowerShell often add a BOM
     except OSError as e:
         raise ConfigError("cannot read %s: %s" % (path, e))
+    except UnicodeDecodeError as e:
+        raise ConfigError("%s is not UTF-8 text: %s" % (path, e))
     except tomllib.TOMLDecodeError as e:
         raise ConfigError("%s is not valid TOML: %s" % (path, e))
     cfg = parse_config(data, check_roots)
