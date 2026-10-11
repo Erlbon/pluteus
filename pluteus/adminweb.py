@@ -83,7 +83,7 @@ def status_page(ctx: Ctx, d: dict) -> str:
                               ["Known devices", str(d["counts"]["devices"])], ["Locked names", str(d["counts"]["locked"])]], "")
     roots = []
     for r in d["roots"]:
-        state = "<span class='pl-ok'>ok</span>" if r["ok"] else "<span class='pl-error'>NOT available</span>"
+        state = "<span class='pl-dot pl-dot-ok'></span>ok" if r["ok"] else "<span class='pl-dot pl-dot-bad'></span><span class='pl-error'>NOT available</span>"
         space = "%s free of %s" % (_size(r["free"]), _size(r["total"])) if r["free"] is not None else ""
         roots.append([escape(r["name"]), "<code>%s</code>" % escape(r["path"]), state, escape(space)])
     boxes = [_box("Server", facts), _box("Libraries", _table(["Name", "Folder", "State", "Disk"], roots, "No libraries."))]

@@ -371,6 +371,10 @@ body.pl-reader-page, .pl-reader-stage { overscroll-behavior: contain; }
 .pl-admin-table code { font-size: .9em; overflow-wrap: anywhere; }
 .pl-inline { display: inline-block; margin: 0; }
 .pl-ok { color: var(--pl-accent); }
+.pl-dot { display: inline-block; width: .6em; height: .6em; border-radius: 50%; margin-right: .5em; vertical-align: baseline; }
+.pl-dot-ok { background: #3fa34d; }
+.pl-dot-warn { background: #d9a520; }
+.pl-dot-bad { background: #d64545; }
 .pl-btn-danger { color: var(--pl-danger); }
 .pl-admin-form { margin: 10px 0; padding: 10px 0; border-top: 1px dashed var(--pl-line); }
 .pl-fieldset { border: 1px solid var(--pl-line); border-radius: 10px; margin: 10px 0; padding: 6px 12px; }
