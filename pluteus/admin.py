@@ -64,20 +64,21 @@ class AdminModel:
         if len(password) < MIN_PASSWORD:
             raise EditError("the password must be at least %d characters" % MIN_PASSWORD)
 
-    def add_user(self, name: str, password: str, again: str, roots=(), adult: bool = False, upload: bool = True) -> None:
+    def add_user(self, name: str, password: str, again: str, roots=(), adult: bool = False, upload: bool = True,
+                 admin: bool = False) -> None:
         name = name.strip()
         if not name:
             raise EditError("the user needs a name")
         self._check_password(password, again)
-        useredit.add_user(self.path, name, hash_password(password), tuple(roots), adult, upload)
+        useredit.add_user(self.path, name, hash_password(password), tuple(roots), adult, upload, admin)
 
     def change_password(self, name: str, password: str, again: str) -> None:
         self._check_password(password, again)
         useredit.set_user(self.path, name, password_hash=hash_password(password))
 
-    def set_access(self, name: str, roots=(), adult: bool = False, upload: bool = True) -> None:
+    def set_access(self, name: str, roots=(), adult: bool = False, upload: bool = True, admin: bool = False) -> None:
         """roots empty = every root."""
-        useredit.set_user(self.path, name, roots=tuple(roots), adult=adult, upload=upload)
+        useredit.set_user(self.path, name, roots=tuple(roots), adult=adult, upload=upload, admin=admin)
 
     def remove_user(self, name: str) -> None:
         if len(self.config().users) <= 1:

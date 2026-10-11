@@ -53,6 +53,12 @@ class Authenticator:
         self._bad = {}
         self._trusted = {}
 
+    def forget_user(self, name: str) -> None:
+        """Drop every remembered login of one user (the admin page's "sign out everywhere"): reader apps then have to
+        prove the password again."""
+        self._cache = {k: v for k, v in self._cache.items() if v[0] != name}
+        self._trusted = {k: v for k, v in self._trusted.items() if v[0] != name}
+
     def trusted_user(self, header, max_age: float = TRUSTED_SECONDS):
         """The User for credentials that were verified at some point in the last `max_age` seconds (default 14 days),
         without hashing anything. Used only while an account is locked against strangers: a header that once verified can

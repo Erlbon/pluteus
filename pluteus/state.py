@@ -103,6 +103,19 @@ class StateDB:
         row = self._one("SELECT username, pwfp, last_seen, last_ip FROM devices WHERE token_hash=?", (token_hash,))
         return None if row is None else {"username": row[0], "pwfp": row[1], "last_seen": row[2], "last_ip": row[3]}
 
+    def list_devices(self) -> list:
+        """Every known device (browser that has logged in), newest first: no secrets, only the hash used as its id."""
+        rows = self._all("SELECT token_hash, username, first_seen, last_seen, last_ip FROM devices ORDER BY last_seen DESC")
+        return [{"id": r[0], "username": r[1], "first_seen": r[2], "last_seen": r[3], "last_ip": r[4]} for r in rows]
+
+    def delete_device(self, token_hash: str) -> int:
+        return self._write("DELETE FROM devices WHERE token_hash=?", (token_hash,))
+
+    def session_counts(self, now=None) -> dict:
+        """{user name: number of login sessions that have not expired}."""
+        now = time.time() if now is None else now
+        return {r[0]: r[1] for r in self._all("SELECT username, COUNT(*) FROM sessions WHERE expires>? GROUP BY username", (now,))}
+
     def delete_user_devices(self, username: str) -> int:
         return self._write("DELETE FROM devices WHERE username=?", (username,))
 

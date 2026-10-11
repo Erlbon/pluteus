@@ -20,6 +20,9 @@ services:
     #  - behind a Caddy on the same Docker network:    no ports at all, Caddy uses pluteus:8080
     ports:
       - "8080:8080"
+      # The admin page (config: admin_port = 8101, admin_host = "0.0.0.0", and a user with admin = true). Publish it on the
+      # LAN address of this machine ONLY, never on all interfaces, and never route or forward it to the internet:
+      # - "192.168.1.99:8101:8101"
     volumes:
       - ./config:/config
       - pluteus-data:/data

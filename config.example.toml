@@ -28,6 +28,13 @@ page_size = 50              # entries per OPDS / web page
 # (the server prints a warning). Keep it OUTSIDE the library folders. In Docker it is /data.
 data_dir = 'D:\pluteus-data'
 
+# ADMIN PAGE (local network only). A web page on its OWN port for status, locks/known devices and users. Off unless
+# admin_port is set; needs at least one user with `admin = true`. Never route or forward this port to the internet
+# (a reverse proxy that routes only the main port does not expose it). In Docker use admin_host = "0.0.0.0" and publish
+# the port on the LAN address only.
+# admin_port = 8101
+# admin_host = "127.0.0.1"
+
 # PERSONAL UPLOAD FOLDERS. Set uploads_dir and every user gets their own folder uploads_dir/<user name>, shown as the
 # top-level folder "uploads": upload, new folder, rename, delete. Nobody else sees it (not even other users with the
 # same roots) and it is never inside a library: you move files into the library yourself. Keep uploads_dir OUTSIDE
@@ -95,3 +102,4 @@ name = "guest"
 password_hash = "scrypt$16384$8$1$replace-with-output-of-hash-password"
 roots = ["books"]           # omit to allow every root
 # upload = false            # no personal upload folder for this user (when uploads_dir is set)
+# admin = true              # may sign in to the admin page (needs admin_port). Off by default.

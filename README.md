@@ -32,7 +32,30 @@ an OPDS reader (KOReader, Panels, Moon+ Reader, Librera...). Reader apps log in 
 get a login page and a session cookie.
 Put it behind HTTPS (a reverse proxy such as Caddy) before exposing it beyond your LAN.
 
-## Admin app (a window) and users (command line)
+## Admin page (web, local network only)
+
+Set `admin_port` (and, in Docker, `admin_host = "0.0.0.0"`) and pluteus also serves an **admin page** on that **second port**.
+It works in Docker, on Linux and on Windows alike, with nothing to install on the machine you browse from.
+
+- **Reach:** `http://<server>:<admin_port>/`. It is a separate listener, so a reverse proxy that routes only the main port
+  (Caddy, nginx) never exposes it. **Never route or forward this port to the internet**; in Docker publish it on the
+  LAN address only (`"192.168.1.99:8101:8101"`). The page says so at the bottom of every screen.
+- **Who:** only users with `admin = true` (off for everyone by default; set it with `user add NAME --admin`,
+  `user set NAME --admin`, in `config.toml`, or from the desktop app). Signing in is the browser's own login prompt; wrong
+  passwords are counted by the same throttle as the main site, and every change needs a same-site request.
+- **Status:** version and uptime, every library (reachable? free disk), the upload folders and their sizes, where the
+  state lives and its backups, and counts of users, sessions, known devices and locked names.
+- **Security:** the accounts with wrong passwords or locks, with **Clear** to lift a lock at once; the **known devices**
+  (browsers that have signed in, with first and last seen and the last address) with **Forget**; and **Sign out
+  everywhere** for a user (every session and known device, and remembered reader-app logins), for when a password may
+  have leaked.
+- **Users:** add, change a password, choose folders and rights, remove. It uses the same checked editor as the command
+  line, so a bad change is refused with the reason and nothing is written; you cannot remove yourself or the last admin.
+  Changes reach the running server within a few seconds. Other settings live in `config.toml` and need a restart.
+- **First admin** (before there is a page to sign in to), in Docker:
+  `docker compose exec pluteus python -m pluteus user set NAME --admin --config /config/config.toml`.
+
+## Admin app (a window, Windows) and users (command line)
 
 **`python -m pluteus admin`** (or the `pluteus-admin` executable, see below) opens a small window, standard library only:
 

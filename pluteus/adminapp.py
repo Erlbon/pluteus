@@ -1,0 +1,294 @@
+"""The admin page: status, security (locks, known devices, sessions) and users, on its OWN port.
+
+It is meant for the local network only. It is a separate listener (admin_port), so a reverse proxy such as Caddy that
+only routes the main port never exposes it, and nothing here is reachable through the public address. Only users with
+`admin = true` may sign in (HTTP Basic, the browser's own prompt), wrong passwords are counted by the same throttle as the
+main site, every change needs a same-site request, and the page does nothing unless admin_port is set.
+
+It shares the running server's state (users, sessions, the login throttle) with the main app, so "clear this lock" or
+"sign this user out" act on the live server at once. User changes go to config.toml through the same checked editor as the
+command line and the desktop app; the running server notices them within a few seconds.
+"""
+from __future__ import annotations
+
+import functools
+import logging
+import os
+import platform
+import shutil
+import threading
+import time
+from urllib.parse import parse_qs, urlsplit
+
+from starlette.applications import Starlette
+from starlette.concurrency import run_in_threadpool
+from starlette.middleware import Middleware
+from starlette.responses import HTMLResponse, PlainTextResponse, RedirectResponse
+from starlette.routing import Route
+
+from . import __version__, adminweb, uploads
+from .admin import AdminModel
+from .app import SecurityHeaders
+from .config import ConfigError
+from .fs import longpath
+from .themes import DEFAULT
+from .urls import Urls
+from .useredit import EditError
+from .web import Ctx
+
+log = logging.getLogger("pluteus.admin")
+BODY_LIMIT = 16384
+
+
+def _first(form: dict, key: str) -> str:
+    values = form.get(key) or [""]
+    return values[0]
+
+
+def create_admin_app(main_app) -> Starlette:
+    st = main_app.state
+    cfg, state, auth, limiter, themes = st.cfg, st.state, st.auth, st.limiter, st.themes
+    config_path = st.config_path
+    ctx = Ctx(Urls(""), "", cfg.theme if themes.exists(cfg.theme) else DEFAULT)
+    challenge = {"WWW-Authenticate": 'Basic realm="pluteus admin", charset="UTF-8"'}
+
+    # ---- who is asking ----------------------------------------------------------------------------------------------
+    def csrf_ok(request) -> bool:
+        if request.method in ("GET", "HEAD", "OPTIONS"):
+            return True
+        origin = request.headers.get("origin") or request.headers.get("referer") or ""
+        host = request.headers.get("host", "").lower()
+        return bool(origin and host and urlsplit(origin).netloc.lower() == host)
+
+    async def sign_in(request):
+        """(user or None, seconds to wait). Same rules as the main site; no per-address limit here (a LAN page, and Docker
+        hides the real addresses anyway)."""
+        header = request.headers.get("authorization")
+        if not header:
+            return None, 0
+        user = auth.cached_user(header)
+        if user:
+            return user, 0
+        if auth.known_bad(header):
+            return None, 0
+        creds = auth.parse_basic(header)
+        name = creds[0] if creds else ""
+        wait = limiter.wait_seconds(name, "")
+        if wait:
+            trusted = auth.trusted_user(header)
+            return (trusted, 0) if trusted else (None, wait)
+        user = await run_in_threadpool(auth.authenticate, header)
+        if user:
+            limiter.success(name)
+            return user, 0
+        seconds, number = limiter.failure(name, "")
+        if seconds:
+            log.warning("admin page: login for %r is locked for %d s (lock number %d)", name[:40], seconds, number)
+        return None, 0
+
+    def guarded(fn):
+        @functools.wraps(fn)
+        async def wrapper(request):
+            user, wait = await sign_in(request)
+            if wait:
+                return PlainTextResponse("Too many wrong passwords. Try again in %d seconds." % wait, 429,
+                                         headers={"Retry-After": str(wait)})
+            if user is None:
+                return PlainTextResponse("Sign in with an administrator account.", 401, headers=challenge)
+            if not user.admin:
+                return PlainTextResponse("This account may not use the admin page.", 403)
+            if not csrf_ok(request):
+                return PlainTextResponse("Cross-site request refused", 403)
+            return await fn(request, user)
+        return wrapper
+
+    async def form_of(request) -> dict:
+        if int(request.headers.get("content-length", "0") or 0) > BODY_LIMIT:
+            return {}
+        body = (await request.body())[:BODY_LIMIT]
+        return parse_qs(body.decode("utf-8", "replace"), keep_blank_values=True)
+
+    def done(where: str, code: str) -> RedirectResponse:
+        return RedirectResponse("%s?ok=%s" % (where, code), 303)
+
+    # ---- status -----------------------------------------------------------------------------------------------------------
+    def disk(path: str):
+        try:
+            usage = shutil.disk_usage(longpath(path))
+            return usage.free, usage.total
+        except OSError:
+            return None, None
+
+    def collect_status() -> dict:
+        roots = []
+        for r in cfg.roots.values():
+            free, total = disk(r.path)
+            roots.append({"name": r.name, "path": r.path, "ok": os.path.isdir(longpath(r.path)), "free": free, "total": total})
+        up = None
+        if cfg.uploads_dir:
+            free, total = disk(cfg.uploads_dir)
+            users = [{"name": u.name, "size": uploads.tree_size(os.path.join(cfg.uploads_dir, u.name))}
+                     for u in auth.users.values() if u.upload and u.name != cfg.anonymous_user]
+            up = {"dir": cfg.uploads_dir, "free": free, "total": total, "quota_mb": cfg.upload_quota_mb, "users": users}
+        backups = os.path.join(cfg.data_dir, "backups") if cfg.data_dir else ""
+        names = [n for n in os.listdir(backups) if n.startswith("state-")] if backups and os.path.isdir(backups) else []
+        try:
+            newest = max(os.path.getmtime(os.path.join(backups, n)) for n in names) if names else None
+            size = os.path.getsize(state.path) if state.persistent else 0
+        except OSError:
+            newest, size = None, 0
+        return {
+            "version": __version__, "python": platform.python_version(), "uptime": time.time() - st.started,
+            "roots": roots, "uploads": up,
+            "state": {"persistent": state.persistent, "path": state.path, "size": size, "backups": len(names), "newest_backup": newest},
+            "counts": {"users": len(auth.users), "sessions": sum(state.session_counts().values()),
+                       "devices": len(state.list_devices()), "locked": sum(1 for r in limiter.snapshot() if r["locked_for"])}}
+
+    @guarded
+    async def status(request, user):
+        return HTMLResponse(adminweb.status_page(ctx, await run_in_threadpool(collect_status)))
+
+    # ---- security ---------------------------------------------------------------------------------------------------------
+    @guarded
+    async def security(request, user):
+        locks = limiter.snapshot()
+        devices = await run_in_threadpool(state.list_devices)
+        sessions = await run_in_threadpool(state.session_counts)
+        return HTMLResponse(adminweb.security_page(ctx, locks, devices, sessions, request.query_params.get("ok", "")))
+
+    @guarded
+    async def unlock(request, user):
+        name = _first(await form_of(request), "name")
+        cleared = limiter.unlock(name)
+        log.info("admin %s cleared the lock on %r", user.name, name[:40])
+        return done("/security", "unlocked" if cleared else "nothing")
+
+    @guarded
+    async def forget(request, user):
+        device = _first(await form_of(request), "id")
+        await run_in_threadpool(state.delete_device, device)
+        log.info("admin %s forgot a known device", user.name)
+        return done("/security", "forgot")
+
+    @guarded
+    async def signout(request, user):
+        name = _first(await form_of(request), "name")
+        await run_in_threadpool(state.delete_user_sessions, name)
+        await run_in_threadpool(state.delete_user_devices, name)
+        auth.forget_user(name)
+        log.info("admin %s signed %r out everywhere", user.name, name[:40])
+        return done("/security", "signedout")
+
+    # ---- users ------------------------------------------------------------------------------------------------------------
+    def users_html(me: str, flash: str = "", error: str = "", status_code: int = 200):
+        if not config_path:
+            return HTMLResponse(adminweb.users_page(ctx, [], [], me, can_edit=False), status_code)
+        model = AdminModel(config_path)
+        return HTMLResponse(adminweb.users_page(ctx, model.users(), model.root_names(), me, flash, error), status_code)
+
+    @guarded
+    async def users(request, user):
+        try:
+            return await run_in_threadpool(users_html, user.name, request.query_params.get("ok", ""))
+        except (EditError, ConfigError, OSError) as e:
+            return await run_in_threadpool(users_html_failed, user.name, str(e))
+
+    def users_html_failed(me: str, message: str):
+        return HTMLResponse(adminweb.page(ctx, "Users", "users", "", error="The users cannot be read: " + message), 500)
+
+    def admins_after(model: AdminModel, name: str, new_admin: bool | None) -> int:
+        """How many admins there would be if `name` were removed (new_admin None) or given the flag `new_admin`."""
+        count = 0
+        for u in model.users():
+            admin = u.admin if u.name != name else bool(new_admin)
+            if u.name == name and new_admin is None:
+                continue
+            count += 1 if admin else 0
+        return count
+
+    async def change(request, user, action):
+        """Run one users-page action in a worker thread; show a refused one on the page itself (status 400)."""
+        if not config_path:
+            return PlainTextResponse("No configuration file: users cannot be changed here.", 400)
+        form = await form_of(request)
+        try:
+            code = await run_in_threadpool(action, AdminModel(config_path), form)
+        except (EditError, ConfigError) as e:
+            return await run_in_threadpool(users_html, user.name, "", str(e), 400)
+        except OSError as e:
+            return await run_in_threadpool(users_html, user.name, "", "The configuration file cannot be written: %s" % e, 500)
+        log.info("admin %s: users %s", user.name, code)
+        return done("/users", code)
+
+    def flags_of(form: dict) -> tuple:
+        return "adult" in form, "upload" in form, "admin" in form
+
+    @guarded
+    async def add_user(request, user):
+        def action(model, form):
+            adult, upload, admin = flags_of(form)
+            model.add_user(_first(form, "name"), _first(form, "password"), _first(form, "again"), tuple(form.get("root", [])),
+                           adult, upload, admin)
+            return "added"
+        return await change(request, user, action)
+
+    @guarded
+    async def change_password(request, user):
+        def action(model, form):
+            model.change_password(_first(form, "name"), _first(form, "password"), _first(form, "again"))
+            return "password"
+        return await change(request, user, action)
+
+    @guarded
+    async def set_access(request, user):
+        def action(model, form):
+            name = _first(form, "name")
+            adult, upload, admin = flags_of(form)
+            if admins_after(model, name, admin) < 1:
+                raise EditError("there must be at least one admin: this change would leave none")
+            model.set_access(name, tuple(form.get("root", [])), adult, upload, admin)
+            return "access"
+        return await change(request, user, action)
+
+    @guarded
+    async def remove_user(request, user):
+        def action(model, form):
+            name = _first(form, "name")
+            if name == user.name:
+                raise EditError("you cannot remove yourself")
+            if admins_after(model, name, None) < 1:
+                raise EditError("the last admin cannot be removed")
+            model.remove_user(name)
+            return "removed"
+        return await change(request, user, action)
+
+    routes = [
+        Route("/", status), Route("/security", security),
+        Route("/security/unlock", unlock, methods=["POST"]), Route("/security/forget", forget, methods=["POST"]),
+        Route("/security/signout", signout, methods=["POST"]),
+        Route("/users", users), Route("/users/add", add_user, methods=["POST"]),
+        Route("/users/password", change_password, methods=["POST"]), Route("/users/access", set_access, methods=["POST"]),
+        Route("/users/remove", remove_user, methods=["POST"]),
+        *st.asset_routes,                      # stylesheets, icons and themes: public files, same as on the main site
+    ]
+    return Starlette(routes=routes, middleware=[Middleware(SecurityHeaders)])
+
+
+class AdminServer:
+    def __init__(self, server, thread: threading.Thread):
+        self.server, self.thread = server, thread
+
+    def stop(self) -> None:
+        self.server.should_exit = True
+        self.thread.join(5)
+
+
+def start_admin_server(main_app) -> AdminServer:
+    """Run the admin page in a background thread next to the main server (which keeps the main thread)."""
+    import uvicorn
+    cfg = main_app.state.cfg
+    server = uvicorn.Server(uvicorn.Config(create_admin_app(main_app), host=cfg.admin_host, port=cfg.admin_port,
+                                           log_level="info"))
+    thread = threading.Thread(target=server.run, name="pluteus-admin", daemon=True)
+    thread.start()
+    return AdminServer(server, thread)

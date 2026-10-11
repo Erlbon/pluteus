@@ -38,6 +38,7 @@ class User:
     roots: tuple = ()      # empty = every root
     adult: bool = False    # may see folders carrying the adult marker file
     upload: bool = True    # may use the personal upload folder (when uploads_dir is set)
+    admin: bool = False    # may sign in to the admin page (admin_port); never given by default
 
     def may_use(self, root_name: str) -> bool:
         return not self.roots or root_name in self.roots
@@ -70,6 +71,8 @@ class Config:
     opds_pse: bool = True      # OPDS-PSE page streaming links for comics (reads each CBZ's page list once)
     show_all_files: bool = True    # list and open every file; False = only the types in `extensions` (book server)
     text_view_kb: int = 1024       # the text viewer shows at most this much of a file (the rest is a download)
+    admin_port: int = 0            # the admin page listens here (0 = off). NEVER route or forward this port to the internet
+    admin_host: str = "127.0.0.1"  # the address it listens on ("0.0.0.0" inside Docker, then publish the port on the LAN only)
     uploads_dir: str = ""          # one subfolder per user lives here; "" = uploads switched off
     upload_max_mb: int = 4096      # largest single upload
     upload_quota_mb: int = 0       # most a user may keep in their upload folder; 0 = no limit
@@ -78,11 +81,12 @@ class Config:
 # TOML puts every key written after a [table] header INTO that table, so a setting typed under
 # [[roots]] by mistake would silently do nothing. Every table's keys are therefore checked.
 _SERVER_KEYS = {"host", "port", "page_size", "base_path", "realm", "auth_cache_seconds", "anonymous_user",
-                "session_days", "cookie_secure", "trust_proxy", "allowed_hosts", "opds_pse", "show_all_files", "text_view_kb"}
+                "session_days", "cookie_secure", "trust_proxy", "allowed_hosts", "opds_pse", "show_all_files", "text_view_kb",
+                "admin_port", "admin_host"}
 _GLOBAL_KEYS = {"exclude", "extensions", "display_strip", "adult_marker", "metadata", "cache_dir",
                 "data_dir", "themes_dir", "theme", "uploads_dir", "upload_max_mb", "upload_quota_mb"}
 _ROOT_KEYS = {"name", "path"}
-_USER_KEYS = {"name", "password_hash", "roots", "adult", "upload"}
+_USER_KEYS = {"name", "password_hash", "roots", "adult", "upload", "admin"}
 UPLOADS_ROOT = "uploads"          # the virtual root every user sees for their own upload folder
 _FOLDER_NAME = re.compile(r"^[A-Za-z0-9_-](?:[A-Za-z0-9 _.-]*[A-Za-z0-9_-])?$")
 _DEVICE_NAMES = {"con", "prn", "aux", "nul", *("com%d" % i for i in range(1, 10)), *("lpt%d" % i for i in range(1, 10))}
@@ -177,7 +181,8 @@ def parse_config(data: dict, check_roots: bool = True) -> Config:
         for ar in allowed:
             if ar not in roots:
                 raise ConfigError("user %r refers to unknown root %r" % (name, ar))
-        users[name] = User(name, u["password_hash"], allowed, bool(u.get("adult", False)), bool(u.get("upload", True)))
+        users[name] = User(name, u["password_hash"], allowed, bool(u.get("adult", False)), bool(u.get("upload", True)),
+                           bool(u.get("admin", False)))
     if not users:
         raise ConfigError("no [[users]] defined")
 
@@ -205,6 +210,12 @@ def parse_config(data: dict, check_roots: bool = True) -> Config:
                     raise ConfigError("%s %r is inside root %r: with show_all_files its files would be listed and "
                                       "downloadable. Move it outside the library (or set show_all_files = false)"
                                       % (label, value, r.name))
+    admin_port = _in_range(server, "admin_port", 0, 0, 65535)
+    if admin_port:
+        if not any(u.admin for u in users.values()):
+            raise ConfigError("admin_port is set but no user has admin = true: nobody could sign in to the admin page")
+        if admin_port == _in_range(server, "port", 8080, 1, 65535):
+            raise ConfigError("admin_port must differ from port")
     uploads_dir = str(opts.get("uploads_dir", ""))
     if uploads_dir:
         _check_uploads(uploads_dir, roots, users, opts)
@@ -226,6 +237,7 @@ def parse_config(data: dict, check_roots: bool = True) -> Config:
         opds_pse=bool(server.get("opds_pse", True)),
         show_all_files=bool(server.get("show_all_files", True)),
         text_view_kb=max(16, int(server.get("text_view_kb", 1024))),
+        admin_port=admin_port, admin_host=str(server.get("admin_host", "127.0.0.1")),
         host=str(server.get("host", "127.0.0.1")), port=_in_range(server, "port", 8080, 1, 65535),
         page_size=_in_range(server, "page_size", 50, 1, 1000), base_path=base_path,
         display_strip=strip, extensions=extensions, excludes=excludes,

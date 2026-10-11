@@ -95,6 +95,36 @@ class FailureLimiter:
                     self._recent(key, now)
         return started
 
+    def snapshot(self, now=None) -> list:
+        """What the admin page shows: [{'name', 'locked_for' (seconds, 0 = not locked), 'locks' (how many so far),
+        'recent_failures' (wrong passwords inside the window)}] for every name that has any of those. Read-only."""
+        now = time.time() if now is None else now
+        rows = {}
+        with self._lock:
+            for name, until in list(self._locked.items()):
+                if until > now:
+                    rows.setdefault(name, {})["locked_for"] = int(until - now) + 1
+            for name, (count, _end) in self._strikes.items():
+                rows.setdefault(name, {})["locks"] = count
+            for (kind, key) in list(self._fails):
+                if kind == "user":
+                    recent = self._recent((kind, key), now)
+                    if recent:
+                        rows.setdefault(key, {})["recent_failures"] = len(recent)
+        return sorted(({"name": n, "locked_for": r.get("locked_for", 0), "locks": r.get("locks", 0),
+                        "recent_failures": r.get("recent_failures", 0)} for n, r in rows.items()),
+                      key=lambda r: (-r["locked_for"], r["name"]))
+
+    def unlock(self, username: str) -> bool:
+        """Clear the lock, the lock count and the recent failures of one name. True when there was anything to clear."""
+        with self._lock:
+            name = (username or "").lower()
+            found = name in self._locked or name in self._strikes or ("user", name) in self._fails
+            self._locked.pop(name, None)
+            self._strikes.pop(name, None)
+            self._fails.pop(("user", name), None)
+        return found
+
     def success(self, username: str, device: str = "") -> None:
         with self._lock:
             name = (username or "").lower()

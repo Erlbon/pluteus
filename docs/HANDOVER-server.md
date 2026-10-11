@@ -175,6 +175,19 @@ lines and the Chrome version and send them to the user for the other Claude.
    `refused ... as cross-site` log lines.
 6. Anything that surprised you or that you changed (with the reason). Do not leave changes unreported.
 
+## Optional: the admin page (only when the user asks for it)
+
+pluteus can serve a web admin page (status, locks and known devices, users) on a **second port** that Caddy never routes.
+It is OFF until configured. To enable it on this server, with the user's go-ahead:
+
+1. Make one user an admin (the user types no password for this; it only sets a flag):
+   `docker compose exec pluteus python -m pluteus user set admin --admin --config /config/config.toml`
+2. In `config\config.toml`, under `[server]`, add `admin_port = 8101` and `admin_host = "0.0.0.0"`.
+3. In `docker-compose.yml`, under `ports:`, add `"192.168.1.99:8101:8101"` (the server's LAN address, **never** `8101:8101`
+   on all interfaces). Do **not** add anything to the Caddyfile and do **not** forward port 8101 on the router.
+4. `docker compose up -d` (a changed compose file recreates the container), then open `http://192.168.1.99:8101/` and sign in
+   as `admin`. Check that `https://<public host>/pluteus/users` answers 404 (the admin page must not exist on the public route).
+
 ## Later, not now
 
 Native install with auto-start (`tools\install-task.ps1`, not needed with Docker), and updating: `git pull` in

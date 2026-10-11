@@ -232,3 +232,31 @@ def test_a_known_device_is_not_stopped_by_a_lock_and_its_typos_do_not_count_agai
     assert lim2.wait_seconds("alice", "8.8.8.8", now=6) == 0
     lim2.success("alice", device="dev1")
     assert lim2.wait_seconds("alice", "9.9.9.9", now=7, device="dev1", known=True) == 0
+
+
+def test_snapshot_lists_locks_and_failures_and_unlock_clears_them():
+    lim = FailureLimiter(max_per_user=5, max_per_ip=999, window=300)
+    fill(lim, name="locked")
+    for i in range(2):
+        lim.failure("busy", "9.9.9.9", now=10 + i)
+    rows = {r["name"]: r for r in lim.snapshot(now=20)}
+    assert rows["locked"]["locked_for"] > 0 and rows["locked"]["locks"] == 1
+    assert rows["busy"] == {"name": "busy", "locked_for": 0, "locks": 0, "recent_failures": 2}
+    assert lim.snapshot(now=20)[0]["name"] == "locked"                                  # locked names first
+    assert lim.unlock("LOCKED") is True and lim.unlock("locked") is False               # case-insensitive; nothing left to clear
+    assert lim.wait_seconds("locked", "9.9.9.9", now=20) == 0
+    assert {r["name"] for r in lim.snapshot(now=20)} == {"busy"}
+    assert lim.snapshot(now=10000) == []                                                 # everything ages out
+
+
+def test_forget_user_drops_remembered_reader_app_logins():
+    from pluteus.auth import Authenticator, hash_password
+    from pluteus.config import User
+    users = {"a": User("a", hash_password("a-password-1", n=2 ** 4)), "b": User("b", hash_password("b-password-1", n=2 ** 4))}
+    auth = Authenticator(users)
+    import base64
+    head = lambda n, p: "Basic " + base64.b64encode(("%s:%s" % (n, p)).encode()).decode()
+    assert auth.authenticate(head("a", "a-password-1")) and auth.authenticate(head("b", "b-password-1"))
+    auth.forget_user("a")
+    assert auth.cached_user(head("a", "a-password-1")) is None and auth.trusted_user(head("a", "a-password-1")) is None
+    assert auth.cached_user(head("b", "b-password-1")) is not None                      # others keep theirs

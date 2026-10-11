@@ -903,4 +903,10 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
     app.state.limiter = limiter
     app.state.auth = auth
     app.state.guarded = guarded          # lets the reader modules register routes with the same identity rules
+    # What the admin page (adminapp.py, on its own port) shares with this app: the same state, throttle and users, the
+    # same configuration, and the public routes for the stylesheets, icons and themes.
+    app.state.cfg = cfg
+    app.state.config_path = config_path
+    app.state.started = time.time()
+    app.state.asset_routes = [r for r in routes if r.path in ("/static/{path:path}", "/favicon.ico", "/theme/{name}/{path:path}")]
     return StripBase(app, cfg.base_path) if cfg.base_path else app
