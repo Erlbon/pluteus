@@ -107,12 +107,19 @@
     say(STEPS[step] === 0 ? "Sleep timer off" : STEPS[step] === -1 ? "Stops at the end of this file" : "Pauses in " + STEPS[step] + " minutes", 2000);
   });
 
+  /* ---- moving between files REPLACES the history entry, so Back goes to the folder, not through every file played ---- */
+  function withAutoplay(url) { return url + (url.indexOf("?") < 0 ? "?" : "&") + "autoplay=1"; }
+  ["prev", "next"].forEach(function (id) {                           // the footer arrows
+    var link = document.getElementById(id);
+    if (link && link.tagName === "A") link.addEventListener("click", function (e) { e.preventDefault(); location.replace(link.href); });
+  });
+
   /* ---- the end of a file: play the next one, unless the sleep timer says stop ---- */
   media.addEventListener("ended", function () {
     clearInterval(timer);
     send(true, true);
     if (STEPS[step] === -1) { step = 0; sleepLabel(); say("Sleep timer: stopped at the end of the file", 4000); return; }
-    if (nextUrl) location.href = nextUrl + (nextUrl.indexOf("?") < 0 ? "?" : "&") + "autoplay=1";
+    if (nextUrl) location.replace(withAutoplay(nextUrl));
   });
   if (/[?&]autoplay=1/.test(location.search)) {
     var started = media.play();
@@ -134,8 +141,8 @@
     handle("seekbackward", function (d) { jump(-((d && d.seekOffset) || SKIP)); });
     handle("seekforward", function (d) { jump((d && d.seekOffset) || SKIP); });
     handle("seekto", function (d) { if (d && typeof d.seekTime === "number") media.currentTime = d.seekTime; });
-    if (prevUrl) handle("previoustrack", function () { location.href = prevUrl; });
-    if (nextUrl) handle("nexttrack", function () { location.href = nextUrl + (nextUrl.indexOf("?") < 0 ? "?" : "&") + "autoplay=1"; });
+    if (prevUrl) handle("previoustrack", function () { location.replace(withAutoplay(prevUrl)); });
+    if (nextUrl) handle("nexttrack", function () { location.replace(withAutoplay(nextUrl)); });
     var lastPosition = 0;
     media.addEventListener("timeupdate", function () {
       var now = Date.now();

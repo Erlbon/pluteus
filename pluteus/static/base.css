@@ -331,3 +331,8 @@ a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible
 @media (min-width: 900px) {
   .pl-reader.pl-single #viewer { box-shadow: 0 0 0 1px var(--pl-line), 0 10px 34px rgba(0, 0, 0, .28); }
 }
+
+/* ---- no pull-to-refresh while reading (Chrome on Android reloads the page on a downward swipe at the top: in a scrolling
+   book, a zoomed picture or a long document that is a nasty surprise) ---- */
+html:has(body.pl-reader-page) { overscroll-behavior-y: contain; }
+body.pl-reader-page, .pl-reader-stage { overscroll-behavior: contain; }

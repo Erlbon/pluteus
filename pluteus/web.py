@@ -292,7 +292,8 @@ def epub_reader_page(ctx: Ctx, title: str, subtitle: str, *, book_url: str, prog
            _icon_button("fs-btn", "fullscreen", "Full screen"),
            _icon_button("prev", "prev", "Previous page"), _icon_button("next", "next", "Next page")))
     return layout(title, body, ctx, bar=False, body_class="pl-reader-page",
-                  scripts=(u.static("vendor/jszip.min.js"), u.static("vendor/epub.min.js"), u.static("reader-epub.js")))
+                  scripts=(u.static("vendor/jszip.min.js"), u.static("vendor/epub.min.js"), u.static("reader-epub.js"),
+                           u.static("menus-back.js")))
 
 
 def comic_reader_page(ctx: Ctx, title: str, *, pages_url: str, count: int, progress_url: str, back_url: str,

@@ -217,3 +217,21 @@ def test_epub_reader_defaults_to_one_centered_page_with_a_two_page_option():
     assert "pl-single" in js and 'rendition.spread(' in js and '"spread"' in js
     css = (static / "base.css").read_text(encoding="utf-8")
     assert ".pl-reader.pl-single #viewer" in css and "min(100%, 50rem)" in css   # centered, a comfortable line length
+
+
+def test_android_back_and_pull_to_refresh_handling(signed_in):
+    from pathlib import Path
+    static = Path(__file__).resolve().parent.parent / "pluteus" / "static"
+    client, _ = signed_in
+    html = client.get(READ, headers=HTML).text
+    assert html.index("reader-epub.js") < html.index("menus-back.js")                    # the menus exist before it looks for them
+    back = (static / "menus-back.js").read_text(encoding="utf-8")
+    for needle in ("pushState", "history.back()", "popstate", "MutationObserver", ".pl-menu"):
+        assert needle in back, needle
+    for name in ("viewer-media.js", "viewer-image.js"):                                   # moving between files must not pile up history
+        js = (static / name).read_text(encoding="utf-8")
+        assert "location.replace" in js and "location.assign" not in js and "location.href =" not in js, name
+    css = (static / "base.css").read_text(encoding="utf-8")
+    assert "html:has(body.pl-reader-page) { overscroll-behavior-y: contain; }" in css
+    content = (static / "themes" / "default" / "reader-content.css").read_text(encoding="utf-8")
+    assert "overscroll-behavior: contain" in content                                      # the book's own iframe too

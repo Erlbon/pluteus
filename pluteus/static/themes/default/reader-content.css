@@ -31,3 +31,6 @@ img, svg, video, canvas {
   max-width: 100% !important;
   height: auto !important;
 }
+
+/* The book's page is an iframe: a downward swipe in scrolling mode must not chain up to the browser's pull-to-refresh. */
+html, body { overscroll-behavior: contain; }

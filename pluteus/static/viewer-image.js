@@ -27,7 +27,12 @@
 
   img.addEventListener("error", function () { status.textContent = "This image could not be shown."; status.hidden = false; });
 
-  function go(url) { if (url) location.assign(url); }
+  // Moving to another image REPLACES the history entry: after looking through twenty pictures, Back returns to the folder.
+  function go(url) { if (url) location.replace(url); }
+  ["prev", "next"].forEach(function (id) {                           // the footer arrows
+    var link = document.getElementById(id);
+    if (link && link.tagName === "A") link.addEventListener("click", function (e) { e.preventDefault(); go(link.href); });
+  });
   var tapPrev = document.getElementById("tap-prev"), tapNext = document.getElementById("tap-next");
   if (tapPrev) tapPrev.addEventListener("click", function () { go(cfg.prev); });
   if (tapNext) tapNext.addEventListener("click", function () { go(cfg.next); });
