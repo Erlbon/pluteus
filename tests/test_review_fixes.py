@@ -251,3 +251,11 @@ def test_a_file_row_opens_the_reader_by_default_and_has_a_separate_download_butt
     other = client.get("/browse/comics/Plain", headers=h).text                                             # a non-book: the viewer
     assert "<a class='pl-title' href='/view/comics/Plain/notes.txt'" in other
     assert "<li class='pl-row pl-folder'>" in client.get("/browse/comics", headers=h).text
+
+
+def test_login_page_shows_the_wordmark_above_the_card_and_the_version(cfg, tmp_path):
+    from pluteus import __version__
+    client, _ = make(cfg, tmp_path)
+    html = client.get("/login").text
+    assert "pl-brand pl-wordmark'>PLUTEUS<" in html and "pluteus %s</p>" % __version__ in html
+    assert html.index("pl-wordmark") < html.index("class='pl-card pl-login'") < html.index("pl-version")

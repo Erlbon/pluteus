@@ -14,7 +14,9 @@
   --pl-dim: #6b7385;
   --pl-line: #d9dde7;
   --pl-card: #f5f6fa;
-  --pl-accent: #2b5fd9;
+  /* The accent is the gold of the P on the book icon (sampled from it: #ac7b2b ... #cda44e). Light scheme: a deeper
+     gold so text and links keep their contrast on white; dark scheme (below): a brighter one. */
+  --pl-accent: #8a6410;
   --pl-accent-fg: #ffffff;
   --pl-danger: #b3382c;
   --pl-radius: 8px;
@@ -47,7 +49,7 @@
   /* reader: the page itself (book text) and the chrome around it */
   --pl-book-bg: #fbfaf7;
   --pl-book-fg: #1d1d1b;
-  --pl-book-link: #2b5fd9;
+  --pl-book-link: #8a6410;
   --pl-book-font: var(--pl-font-reading);
   --pl-book-size: 100;            /* percent */
   --pl-book-line: 1.55;
@@ -64,12 +66,12 @@
     --pl-dim: #9aa3b8;
     --pl-line: #2b3140;
     --pl-card: #1c212c;
-    --pl-accent: #7aa2ff;
-    --pl-accent-fg: #0e1220;
+    --pl-accent: #d4a94f;
+    --pl-accent-fg: #1a1406;
     --pl-danger: #ef7b6f;
     --pl-book-bg: #191c24;
     --pl-book-fg: #d8dce6;
-    --pl-book-link: #8db0ff;
+    --pl-book-link: #e0b866;
   }
 }
 :root:where([data-scheme="dark"]) {
@@ -78,12 +80,12 @@
   --pl-dim: #9aa3b8;
   --pl-line: #2b3140;
   --pl-card: #1c212c;
-  --pl-accent: #7aa2ff;
-  --pl-accent-fg: #0e1220;
+  --pl-accent: #d4a94f;
+  --pl-accent-fg: #1a1406;
   --pl-danger: #ef7b6f;
   --pl-book-bg: #191c24;
   --pl-book-fg: #d8dce6;
-  --pl-book-link: #8db0ff;
+  --pl-book-link: #e0b866;
 }
 :root[data-scheme="light"] { color-scheme: light; }
 :root[data-scheme="dark"] { color-scheme: dark; }
@@ -111,7 +113,7 @@ a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible
   padding: 8px 16px; border-bottom: 1px solid var(--pl-line);
   background: var(--pl-bar-bg); box-shadow: var(--pl-bar-shadow);
 }
-.pl-brand { font-weight: 700; letter-spacing: .02em; color: var(--pl-fg); }
+.pl-brand { font-weight: 700; letter-spacing: .02em; color: var(--pl-accent); }
 .pl-spacer { flex: 1; }
 .pl-bar form { margin: 0; }
 .pl-main { max-width: 900px; margin: 0 auto; padding: 16px; }
@@ -155,7 +157,10 @@ a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible
 .pl-btn-primary {
   background: var(--pl-btn-primary-bg); color: var(--pl-btn-primary-fg); border: var(--pl-btn-primary-border);
 }
-.pl-login { max-width: 400px; margin: 12vh auto 0; position: relative; }
+.pl-login-wrap { max-width: 400px; margin: 7vh auto 0; }
+.pl-wordmark { text-align: center; font-size: 30px; letter-spacing: .32em; padding-left: .32em; margin: 0 0 18px; }
+.pl-version { text-align: center; margin: 14px 0 0; letter-spacing: .04em; }
+.pl-login { max-width: 400px; margin: 0 auto; position: relative; }
 .pl-login h1 { font-size: 20px; }
 .pl-logo { display: none; }                          /* a theme shows it: .pl-logo { display:block; background:url(logo.png) ... } */
 .pl-scheme { padding: 6px 8px; line-height: 1; }

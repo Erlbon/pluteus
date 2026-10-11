@@ -5,7 +5,7 @@ import time
 from dataclasses import dataclass
 from html import escape
 
-from . import kinds
+from . import __version__, kinds
 from .themes import DEFAULT
 from .urls import Urls
 
@@ -67,7 +67,8 @@ def _size(n: float) -> str:
 
 def login_page(ctx: Ctx, next_url: str = "", error: str = "", username: str = "") -> str:
     err = "<p class='pl-error' role='alert'>%s</p>" % escape(error) if error else ""
-    body = ("<main class='pl-main'><form class='pl-card pl-login' method='post' action='%s'>"
+    body = ("<main class='pl-main'><div class='pl-login-wrap'><div class='pl-brand pl-wordmark'>PLUTEUS</div>"
+            "<form class='pl-card pl-login' method='post' action='%s'>"
             "<div class='pl-login-tools'>%s</div><div class='pl-logo'></div>"
             "<h1>Sign in</h1>%s"
             "<label class='pl-field'><span>User name</span>"
@@ -75,8 +76,9 @@ def login_page(ctx: Ctx, next_url: str = "", error: str = "", username: str = ""
             "<label class='pl-field'><span>Password</span>"
             "<input type='password' name='password' autocomplete='current-password' required></label>"
             "<input type='hidden' name='next' value='%s'>"
-            "<button class='pl-btn pl-btn-primary' type='submit'>Sign in</button></form></main>"
-            % (escape(ctx.urls.login()), scheme_button(), err, escape(username), escape(next_url)))
+            "<button class='pl-btn pl-btn-primary' type='submit'>Sign in</button></form>"
+            "<p class='pl-version pl-muted'>pluteus %s</p></div></main>"
+            % (escape(ctx.urls.login()), scheme_button(), err, escape(username), escape(next_url), escape(__version__)))
     return layout("Sign in", body, ctx, bar=False, body_class="pl-login-page")
 
 

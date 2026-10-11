@@ -28,5 +28,20 @@
   /* The artwork (icon-512.png) is a wide book on a square canvas with empty space above and below, so the box is wide and
      short and the picture is scaled to fill its width: about 300px of visible book in the 400px card. */
   display: block; width: 100%; max-width: 340px; aspect-ratio: 340 / 190; margin: 0 auto 8px;
+  /* Light scheme (the default): a faint gold glow behind the book and a soft warm shadow under it, so the dark cut-out
+     rests on the pale card instead of looking pasted on. The dark scheme (below) needs no glow. */
+  background:
+    url(../../static/icon/icon-512.png) center / 101.5% auto no-repeat,
+    radial-gradient(ellipse 62% 58% at 50% 52%, rgba(212, 169, 79, .26), rgba(212, 169, 79, 0) 72%);
+  filter: drop-shadow(0 12px 14px rgba(80, 52, 12, .26));
+}
+@media (prefers-color-scheme: dark) {
+  html:not([data-scheme="light"]) .pl-logo {
+    background: url(../../static/icon/icon-512.png) center / 101.5% auto no-repeat;
+    filter: drop-shadow(0 10px 16px rgba(0, 0, 0, .55));
+  }
+}
+html[data-scheme="dark"] .pl-logo {
   background: url(../../static/icon/icon-512.png) center / 101.5% auto no-repeat;
+  filter: drop-shadow(0 10px 16px rgba(0, 0, 0, .55));
 }
