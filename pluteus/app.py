@@ -23,8 +23,9 @@ from starlette.responses import (FileResponse, HTMLResponse, JSONResponse, Plain
                                  RedirectResponse, Response)
 from starlette.routing import Route
 
-from . import opds, web
+from . import cbz, opds, web
 from .auth import Authenticator
+from .cbz import CbzError
 from .config import MIME_TYPES, Config
 from .fs import Library, NotFound, PathError
 from .meta import MetaCache, MetaService
@@ -305,7 +306,7 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
         out = []
         for r in state.recent_progress(user.name, 20):
             if r["root"] in cfg.roots and user.may_use(r["root"]) and r["percent"] < 0.98 \
-                    and r["path"].lower().endswith(".epub"):
+                    and r["path"].lower().endswith((".epub", ".cbz")):
                 parts = tuple(r["path"].split("/"))
                 out.append((urls.read(r["root"], parts), os.path.splitext(parts[-1])[0], r["percent"]))
         return out[:6]
@@ -341,15 +342,49 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
         root = request.path_params["root"]
         parts = _parts(request.path_params["path"])
         info = await run_in_threadpool(lib.file_info, user, root, parts)      # exists, allowed, not hidden
+        key = hashlib.sha1(("%s-%s" % (info.size, info.mtime)).encode()).hexdigest()[:12]
+        if info.name.lower().endswith(".cbz"):
+            try:
+                pages = await run_in_threadpool(meta.pages_for, info)
+            except CbzError as e:
+                return PlainTextResponse("This comic cannot be opened (%s). You can still download it." % e, 422)
+            return HTMLResponse(web.comic_reader_page(
+                ctx_for(user), os.path.splitext(info.name)[0], pages_url=urls.cbz(root, parts), count=len(pages),
+                progress_url=urls.api("progress", root, parts), back_url=urls.browse(root, parts[:-1]), key=key))
         if not info.name.lower().endswith(".epub"):
             return PlainTextResponse("There is no in-browser reader for this file type.", 404)
         book = await run_in_threadpool(meta.for_file, info)
         title = book.get("title") or os.path.splitext(info.name)[0]
-        key = hashlib.sha1(("%s-%s" % (info.size, info.mtime)).encode()).hexdigest()[:12]
         return HTMLResponse(web.epub_reader_page(
             ctx_for(user), title, ", ".join(book.get("authors", ())),
             book_url=urls.download(root, parts), progress_url=urls.api("progress", root, parts),
             back_url=urls.browse(root, parts[:-1]), content_css_url=urls.theme("_", "reader-content.css"), key=key))
+
+    @guarded("api")
+    async def cbz_page(request: Request, user):
+        """One page of a comic, read straight out of the archive. 0-based: ?page=0 is the first page."""
+        root = request.path_params["root"]
+        parts = _parts(request.path_params["path"])
+        try:
+            number = int(request.query_params.get("page", "0"))
+        except ValueError:
+            raise PathError("page must be a number")
+        info = await run_in_threadpool(lib.file_info, user, root, parts)
+        if not info.name.lower().endswith(".cbz"):
+            raise NotFound("not a comic archive")
+        try:
+            pages = await run_in_threadpool(meta.pages_for, info)
+            if not 0 <= number < len(pages):
+                raise NotFound("no such page")
+            etag = '"%s"' % hashlib.md5(("%s-%s-%d" % (info.size, info.mtime, number)).encode(),
+                                        usedforsecurity=False).hexdigest()
+            headers = {"ETag": etag, "Cache-Control": "private, max-age=86400"}     # a page never changes
+            if etag in {t.strip() for t in request.headers.get("if-none-match", "").split(",")}:
+                return Response(status_code=304, headers=headers)
+            data = await run_in_threadpool(cbz.read_page, info.path, pages[number])
+        except CbzError as e:
+            return PlainTextResponse("Cannot read this page (%s)" % e, 422)
+        return Response(data, media_type=cbz.mime_for(pages[number]), headers=headers)
 
     @guarded("api")
     async def progress(request: Request, user):
@@ -434,6 +469,7 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
         Route("/browse/{root}", browse),
         Route("/browse/{root}/{path:path}", browse),
         Route("/read/{root}/{path:path}", read),
+        Route("/cbz/{root}/{path:path}", cbz_page),
         Route("/api/progress/{root}/{path:path}", progress, methods=["GET", "PUT"]),
         Route("/opds", opds_root),
         Route("/opds/", opds_root),

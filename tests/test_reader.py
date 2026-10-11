@@ -62,7 +62,7 @@ def test_reader_needs_a_login_and_only_opens_epubs_you_may_see(cfg, tmp_path, si
     r = anon.get(READ, headers=HTML)
     assert r.status_code == 303 and r.headers["location"].startswith("/login?next=%2Fread%2Fbooks")
     assert client.get("/read/comics/3%20-%20Marvel%20%281961-2012%29/Spider-Man%20%281963-%29/Amazing%20001.cbz",
-                      headers=HTML).status_code == 404                              # no reader for CBZ (yet)
+                      headers=HTML).status_code == 422                              # a CBZ, but this one is not a zip
     assert client.get("/read/books/Good%20Author/Nope.epub", headers=HTML).status_code == 404
     assert client.get("/read/books/%2e%2e/secret.epub", headers=HTML).status_code in (400, 404)
     assert client.get("/read/books/Good%20Author", headers=HTML).status_code == 404   # a folder is not a book
@@ -71,12 +71,12 @@ def test_reader_needs_a_login_and_only_opens_epubs_you_may_see(cfg, tmp_path, si
     assert carol.get(READ, headers=HTML).status_code == 404                           # carol has no 'books' root
 
 
-def test_listing_offers_read_for_epubs_only(signed_in):
+def test_listing_offers_read_for_epubs_and_comics_but_not_other_files(signed_in):
     client, _ = signed_in
     books = client.get("/browse/books/Good%20Author", headers=HTML).text
     assert "href='/read/books/Good%20Author/Real%20Book.epub'" in books
     comics = client.get("/browse/comics/3%20-%20Marvel%20%281961-2012%29/Spider-Man%20%281963-%29", headers=HTML).text
-    assert "/read/" not in comics
+    assert "href='/read/comics/3%20-%20Marvel%20%281961-2012%29/Spider-Man%20%281963-%29/Amazing%20001.cbz'" in comics
 
 
 # ---- assets --------------------------------------------------------------------------------------------
@@ -190,7 +190,7 @@ def test_home_lists_unfinished_epubs_newest_first(signed_in):
     st = app.state.state
     st.put_progress("alice", "books", "Good Author/Real Book.epub", "a", 0.5, now=100)
     st.put_progress("alice", "books", "Good Author/Plain Filename.epub", "b", 0.99, now=200)       # finished: hidden
-    st.put_progress("alice", "comics", "Plain/notes.cbz", "c", 0.2, now=300)                       # not an epub: hidden
+    st.put_progress("alice", "comics", "Plain/notes.pdf", "c", 0.2, now=300)                       # no reader for it: hidden
     st.put_progress("alice", "gone", "x.epub", "d", 0.2, now=400)                                  # root no longer exists
     html = client.get("/", headers=HTML).text
     assert "Continue reading" in html and "50%" in html

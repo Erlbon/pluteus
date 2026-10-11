@@ -184,3 +184,20 @@ in `pluteus/static/vendor/`, no CDN) with an interface built from the theme's ow
 
 The reader is a convenience: the OPDS feed and plain downloads for Android reader apps are the main way to read.
 The progress API is `GET/PUT /api/progress/{root}/{path}` (JSON `{locator, percent}`; same-site writes only).
+
+## Reading comics (CBZ)
+
+Every `.cbz` has a **Read** link too: a deliberately simple one-page-at-a-time reader (no libraries, `reader-comic.js`).
+Fit to page or fit to width (scrolls down), arrows / space / page keys / Home / End, edge taps and swipes, click the
+progress bar to jump, full screen, dark/light. The page number is saved per user like an EPUB's position, so comics
+reopen where you stopped and appear under "Continue reading" until finished.
+
+The server never extracts anything: it reads the zip's central directory once to list the pages (images only, natural
+order, `__MACOSX`/dot files/`Thumbs.db` skipped; the list is cached in the SQLite cache), then serves one entry per
+request from `GET /cbz/{root}/{path}?page=N` (0-based). Pages are cacheable (ETag) and bounded: at most 5000 pages and
+80 MB per page, enforced while reading, so a zip header that lies cannot blow up memory. Measured on a real 184-page
+graphic novel over SMB: about 0.1-0.2 s per page.
+
+Not built: two-page spreads, right-to-left, webtoon scrolling, page resizing, ComicInfo.xml titles, OPDS page
+streaming (OPDS-PSE) for Android apps. PSE would be small now that the page endpoint exists: one extra link per
+comic in the feed carrying the page count and a URL template.

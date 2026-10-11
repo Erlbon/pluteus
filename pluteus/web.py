@@ -122,7 +122,7 @@ def listing_page(root: str, parts: tuple, entries: list, page: int, pages: int, 
         pct = progress.get("/".join(e.parts))
         badge = "<span class='pl-badge'>%d%%</span> " % round(pct * 100) if pct else ""
         read = ""
-        if ctx.readers and e.name.lower().endswith(".epub"):
+        if ctx.readers and e.name.lower().endswith((".epub", ".cbz")):
             read = "<a href='%s'>Read</a> &middot; " % escape(urls.read(root, e.parts))
         rows.append("<li class='pl-row'><span class='pl-title'>%s</span><span class='pl-muted'>%s%s"
                     "<a href='%s'>Download</a> &middot; %s</span></li>"
@@ -182,6 +182,33 @@ def epub_reader_page(ctx: Ctx, title: str, subtitle: str, *, book_url: str, prog
            _icon_button("prev", "prev", "Previous page"), _icon_button("next", "next", "Next page")))
     return layout(title, body, ctx, bar=False, body_class="pl-reader-page",
                   scripts=(u.static("vendor/jszip.min.js"), u.static("vendor/epub.min.js"), u.static("reader-epub.js")))
+
+
+def comic_reader_page(ctx: Ctx, title: str, *, pages_url: str, count: int, progress_url: str, back_url: str,
+                      key: str) -> str:
+    """The single-page comic reader shell; reader-comic.js fetches the pages one by one."""
+    data = " ".join("data-%s='%s'" % (k, escape(str(v))) for k, v in (
+        ("pages", pages_url), ("count", count), ("progress", progress_url), ("key", key)))
+    body = (
+        "<div class='pl-reader pl-comic' id='reader' %s>"
+        "<header class='pl-reader-bar'>"
+        "<a class='pl-reader-btn' id='back' href='%s' title='Back to the folder' aria-label='Back to the folder'>"
+        "<span class='pl-icon pl-i-back'></span></a>"
+        "<div class='pl-reader-title' title='%s'>%s</div>%s%s%s</header>"
+        "<div class='pl-reader-stage pl-comic-stage pl-fit-page' id='stage'>"
+        "<img class='pl-page' id='page' alt='' draggable='false'>"
+        "<div class='pl-tap pl-tap-left' id='tap-prev'></div><div class='pl-tap pl-tap-right' id='tap-next'></div>"
+        "<div class='pl-toast' id='status'>Loading&hellip;</div></div>"
+        "<footer class='pl-reader-foot'>%s<div class='pl-progress' id='seek' title='Jump to a page'><i id='bar'></i></div>"
+        "<span id='pct'>&ndash;</span>%s</footer></div>"
+        % (data, escape(back_url), escape(title), escape(title),
+           "<button class='pl-reader-btn pl-scheme' type='button' title='Toggle dark / light' aria-label='Toggle dark / light'>"
+           "<span class='pl-icon pl-i-contrast'></span></button>",
+           _icon_button("fit-btn", "fit", "Fit to width / fit to page"),
+           _icon_button("fs-btn", "fullscreen", "Full screen"),
+           _icon_button("prev", "prev", "Previous page"), _icon_button("next", "next", "Next page")))
+    return layout(title, body, ctx, bar=False, body_class="pl-reader-page",
+                  scripts=(ctx.urls.static("reader-comic.js"),))
 
 
 def settings_page(ctx: Ctx, themes: list, saved: bool = False) -> str:

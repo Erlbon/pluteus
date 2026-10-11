@@ -157,6 +157,18 @@ class MetaService:
         self.cache.put(entry.path, entry.size, entry.mtime, data)
         return data
 
+    def pages_for(self, info) -> list:
+        """Page names of a CBZ, through the same disposable cache (keyed on path + size + mtime).
+        Raises cbz.CbzError for an unreadable archive; failures are not cached."""
+        from . import cbz
+        key = "cbz:" + info.path
+        hit = self.cache.get(key, info.size, info.mtime)
+        if hit and hit.get("pages"):
+            return hit["pages"]
+        pages = cbz.list_pages(info.path)
+        self.cache.put(key, info.size, info.mtime, {"pages": pages})
+        return pages
+
     def for_file(self, info) -> dict:
         """Metadata for one file (anything with path, size and mtime), through the same cache."""
         return self._one(info) if self.enabled else {}
