@@ -18,6 +18,11 @@ page_size = 50              # entries per OPDS / web page
 # opds_pse = true           # OPDS page-streaming links so Android comic apps can read a CBZ page by page; reads each
 #                           # comic's page list once per feed page (cached). Set false to turn off.
 
+# show_all_files = true     # list and open every file (images, text, audio, video, anything). false = books-only server:
+#                           # only the types in `extensions` are listed or served. OPDS feeds always list books only.
+#                           # With true, data_dir / cache_dir / themes_dir and this config file must NOT be inside a root.
+# text_view_kb = 1024       # the text viewer shows at most this many KB of a file (the rest is a download)
+
 # EPUB metadata (title, authors, series, language, year) is read from inside each book, only for the
 # books on the page being shown, and cached in a disposable SQLite file (safe to delete at any time).
 # metadata = true

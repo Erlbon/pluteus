@@ -66,16 +66,24 @@ class Config:
     cookie_secure: str = "auto"   # "auto": Secure cookie when the request is HTTPS; or "always" / "never"
     trust_proxy: bool = False  # believe X-Forwarded-For / X-Forwarded-Proto (only behind your own proxy)
     opds_pse: bool = True      # OPDS-PSE page streaming links for comics (reads each CBZ's page list once)
+    show_all_files: bool = True    # list and open every file; False = only the types in `extensions` (book server)
+    text_view_kb: int = 1024       # the text viewer shows at most this much of a file (the rest is a download)
 
 
 # TOML puts every key written after a [table] header INTO that table, so a setting typed under
 # [[roots]] by mistake would silently do nothing. Every table's keys are therefore checked.
 _SERVER_KEYS = {"host", "port", "page_size", "base_path", "realm", "auth_cache_seconds", "anonymous_user",
-                "session_days", "cookie_secure", "trust_proxy", "opds_pse"}
+                "session_days", "cookie_secure", "trust_proxy", "opds_pse", "show_all_files", "text_view_kb"}
 _GLOBAL_KEYS = {"exclude", "extensions", "display_strip", "adult_marker", "metadata", "cache_dir",
                 "data_dir", "themes_dir", "theme"}
 _ROOT_KEYS = {"name", "path"}
 _USER_KEYS = {"name", "password_hash", "roots", "adult"}
+
+
+def _is_inside(path: str, root: str) -> bool:
+    p = os.path.normcase(os.path.abspath(path))
+    r = os.path.normcase(os.path.abspath(root))
+    return p == r or p.startswith(r.rstrip(os.sep) + os.sep)
 
 
 def _check_keys(table: dict, allowed: set, where: str) -> None:
@@ -141,6 +149,16 @@ def parse_config(data: dict, check_roots: bool = True) -> Config:
         re.compile(strip)
     except re.error as e:
         raise ConfigError("display_strip is not a valid regex: %s" % e)
+    if bool(server.get("show_all_files", True)):
+        # Every file under a root is listed and downloadable in this mode, so pluteus's own files (the sessions in
+        # state.sqlite3!) must never sit inside one.
+        for label in ("data_dir", "cache_dir", "themes_dir"):
+            value = str(opts.get(label, ""))
+            for r in roots.values():
+                if value and _is_inside(value, r.path):
+                    raise ConfigError("%s %r is inside root %r: with show_all_files its files would be listed and "
+                                      "downloadable. Move it outside the library (or set show_all_files = false)"
+                                      % (label, value, r.name))
     theme = str(opts.get("theme", "default"))
     if not re.match(r"^[A-Za-z0-9_-]{1,40}$", theme):
         raise ConfigError("theme %r must use only letters, digits, - and _" % theme)
@@ -156,6 +174,8 @@ def parse_config(data: dict, check_roots: bool = True) -> Config:
         data_dir=str(opts.get("data_dir", "")), themes_dir=str(opts.get("themes_dir", "")), theme=theme,
         session_days=session_days, cookie_secure=secure, trust_proxy=bool(server.get("trust_proxy", False)),
         opds_pse=bool(server.get("opds_pse", True)),
+        show_all_files=bool(server.get("show_all_files", True)),
+        text_view_kb=max(16, int(server.get("text_view_kb", 1024))),
         host=str(server.get("host", "127.0.0.1")), port=int(server.get("port", 8080)),
         page_size=int(server.get("page_size", 50)), base_path=base_path,
         display_strip=strip, extensions=extensions, excludes=excludes,
@@ -176,4 +196,10 @@ def load_config(path: str, check_roots: bool = True) -> Config:
         raise ConfigError("cannot read %s: %s" % (path, e))
     except tomllib.TOMLDecodeError as e:
         raise ConfigError("%s is not valid TOML: %s" % (path, e))
-    return parse_config(data, check_roots)
+    cfg = parse_config(data, check_roots)
+    if cfg.show_all_files:
+        for r in cfg.roots.values():
+            if _is_inside(path, r.path):
+                raise ConfigError("the config file %r is inside root %r: with show_all_files it would be listed and "
+                                  "downloadable (it holds password hashes). Move it out of the library" % (path, r.name))
+    return cfg

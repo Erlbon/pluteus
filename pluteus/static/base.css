@@ -208,6 +208,26 @@ a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible
 .pl-fit-page .pl-page { max-width: 100%; max-height: 100%; margin: auto; object-fit: contain; }
 .pl-fit-width .pl-page { width: 100%; height: auto; align-self: flex-start; }
 .pl-progress[title] { cursor: pointer; }
+.pl-fit-orig .pl-page { max-width: none; max-height: none; margin: 0; }          /* image viewer: actual size */
+.pl-image .pl-page { cursor: zoom-in; } .pl-image.pl-actual .pl-page { cursor: zoom-out; }
+
+/* file viewers: text, audio/video, and the page for files with no viewer */
+.pl-text {
+  margin: 0; padding: 16px 20px; height: 100%; overflow: auto; white-space: pre; tab-size: 4;
+  font: 13px/1.5 ui-monospace, "Cascadia Mono", Menlo, Consolas, monospace; color: var(--pl-fg); background: var(--pl-book-bg);
+}
+.pl-text.pl-wrap { white-space: pre-wrap; overflow-wrap: anywhere; }
+.pl-media-stage { display: flex; align-items: center; justify-content: center; padding: 16px; background: var(--pl-bg); overflow: auto; }
+.pl-media-box { width: min(100%, 900px); display: flex; flex-direction: column; gap: 14px; align-items: center; }
+.pl-media-title { font-weight: 600; text-align: center; overflow-wrap: anywhere; }
+.pl-media-box audio { width: 100%; }
+.pl-media-box video { max-width: 100%; max-height: calc(100vh - 190px); background: #000; }
+.pl-info-stage { display: flex; align-items: flex-start; justify-content: center; padding: 24px 16px; overflow: auto; background: var(--pl-bg); }
+.pl-info { max-width: 520px; width: 100%; }
+.pl-info h1 { font-size: 18px; overflow-wrap: anywhere; }
+.pl-info-table { border-collapse: collapse; margin: 8px 0 12px; }
+.pl-info-table th { text-align: left; color: var(--pl-dim); font-weight: 500; padding: 2px 16px 2px 0; vertical-align: top; }
+.pl-info-table td { overflow-wrap: anywhere; }
 .pl-toast {
   position: absolute; left: 50%; bottom: 24px; transform: translateX(-50%); z-index: 8; padding: 6px 12px;
   background: var(--pl-fg); color: var(--pl-bg); border-radius: 999px; font-size: 13px; opacity: .92;

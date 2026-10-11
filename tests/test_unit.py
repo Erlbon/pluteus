@@ -89,11 +89,12 @@ def test_misplaced_settings_are_errors_not_silently_ignored():
 
 
 def test_settings_work_in_server_or_at_the_top_level_and_server_wins():
-    top = parse_config(_base(exclude=["A"], cache_dir="top", metadata=False))
+    top = parse_config(_base(exclude=["A"], cache_dir="top", metadata=False, server={"show_all_files": False}))
     assert "a" in top.excludes and top.cache_dir == "top" and top.metadata is False
-    inside = parse_config(_base(server={"exclude": ["B"], "cache_dir": "srv", "adult_marker": ".x"}))
+    inside = parse_config(_base(server={"exclude": ["B"], "cache_dir": "srv", "adult_marker": ".x",
+                                        "show_all_files": False}))
     assert "b" in inside.excludes and inside.cache_dir == "srv" and inside.adult_marker == ".x"
-    both = parse_config(_base(cache_dir="top", server={"cache_dir": "srv"}))
+    both = parse_config(_base(cache_dir="top", server={"cache_dir": "srv", "show_all_files": False}))
     assert both.cache_dir == "srv"
 
 

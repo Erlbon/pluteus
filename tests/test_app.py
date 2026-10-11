@@ -113,14 +113,28 @@ def test_book_feed_is_acquisition_with_download_links(client, alice):
     assert titles(feed(client.get(url + "?page=2", headers=alice))) == ["Amazing 003", "Amazing 010"]
 
 
-def test_non_book_files_and_excluded_folders_are_not_listed(client, alice):
+def test_opds_lists_only_books_and_excluded_folders_stay_hidden(client, alice):
+    # OPDS feeds are for reader apps: books only, even though the web listing shows every file
     assert titles(feed(client.get("/opds/comics/Plain", headers=alice))) == []
     all_titles = []
     for page in (1, 2, 3):
         all_titles += titles(feed(client.get("/opds/comics?page=%d" % page, headers=alice)))
     assert "_incoming" not in all_titles
     assert client.get("/opds/comics/_incoming", headers=alice).status_code == 404
-    assert client.get("/dl/comics/Plain/notes.txt", headers=alice).status_code == 404
+
+
+def test_book_server_mode_hides_and_refuses_everything_but_the_book_types(cfg, alice):
+    import dataclasses
+    from starlette.testclient import TestClient
+    from pluteus.app import create_app
+    narrow = TestClient(create_app(dataclasses.replace(cfg, show_all_files=False)))
+    assert narrow.get("/dl/comics/Plain/notes.txt", headers=alice).status_code == 404
+    assert narrow.get("/view/comics/Plain/notes.txt", headers=alice).status_code == 404
+    assert narrow.get("/raw/comics/Plain/notes.txt", headers=alice).status_code == 404
+    assert "notes.txt" not in narrow.get("/browse/comics/Plain", headers=dict(alice, accept="text/html")).text
+    wide = TestClient(create_app(cfg))
+    assert wide.get("/dl/comics/Plain/notes.txt", headers=alice).status_code == 200
+    assert "notes.txt" in wide.get("/browse/comics/Plain", headers=dict(alice, accept="text/html")).text
 
 
 # ---- adult marker ----------------------------------------------------------

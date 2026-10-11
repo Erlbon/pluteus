@@ -216,3 +216,33 @@ and stays downloadable. Built from the spec text and tested against it; **not ye
 
 The first time a feed page lists its comics, each CBZ's page list is read once (a full page of 50 comics took about
 2.2 s over SMB, 22 ms afterwards, because the lists are cached). Set `opds_pse = false` in `[server]` to turn it off.
+
+## File viewers (show all files)
+
+With `show_all_files = true` (the default) the web listing shows **every** file, and each one opens in a viewer chosen
+by its type at `/view/{root}/{path}`. Set `show_all_files = false` to go back to a books-only server (only the types in
+`extensions` are listed or served). **OPDS feeds always list books only**, whatever this is set to.
+
+| Type | Viewer |
+|---|---|
+| EPUB, CBZ | the book readers (above) |
+| images (jpg, png, gif, webp, avif, bmp, ico, svg) | fit to window / to width / actual size (click), the other images of the folder one key press away, next image preloaded |
+| audio (mp3, m4a, aac, ogg, opus, wav, flac), video (mp4, m4v, webm, ogv, mov, mkv) | the browser's own player; the position is saved per user and resumes; Range requests work, so seeking is instant |
+| text, code, logs, csv, json, xml, html source, ... | server-rendered, always HTML-escaped; encoding detected (UTF-8/16/32 with BOM, UTF-8, Windows-1252, Latin-1) and named in the footer; text size and wrap; shows the first `text_view_kb` KB (default 1024) with a clear notice and a download link |
+| **anything else** | plainly-text files (a README, an unknown extension) open as text; binary files get an info page (type, size, date) with **Download** and **View as text**, which opens even binary data as text |
+
+Progress (position, page, time) is kept for books, PDFs, audio and video and feeds "Continue reading".
+
+### How files are served safely
+
+Listing every file means serving files from the same web address as the login, so active content must never run there:
+
+- `/dl` is **always an attachment** (never displayed), with `nosniff`, so an HTML or SVG file can only be saved.
+- `/raw` is the only inline route, and only for images, audio, video and PDF, each with **the type pluteus states** (a file
+  named `x.png` that contains HTML is still served as `image/png`). Nothing scriptable (html, xml, js, css, ...) is ever inline.
+- SVG is only shown through an `<img>` tag (scripts never run there) and, if opened directly, carries
+  `Content-Security-Policy: sandbox`.
+- Text is rendered escaped inside a `<pre>`, so viewing an HTML file shows its source.
+- Hidden folders, the `.adult` marker, excludes and per-user roots apply to every route, exactly as before.
+- With `show_all_files`, pluteus **refuses to start** if `data_dir`, `cache_dir`, `themes_dir` or the config file itself sit
+  inside a library root (the sessions and password hashes would otherwise be listed and downloadable).

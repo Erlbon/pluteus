@@ -20,6 +20,7 @@
 .pl-i-minus      { -webkit-mask-image: url(../_/icons/minus.svg);      mask-image: url(../_/icons/minus.svg); }
 .pl-i-fit        { -webkit-mask-image: url(../_/icons/fit.svg);        mask-image: url(../_/icons/fit.svg); }
 .pl-i-contrast   { -webkit-mask-image: url(../_/icons/contrast.svg);   mask-image: url(../_/icons/contrast.svg); }
+.pl-i-download   { -webkit-mask-image: url(../_/icons/download.svg);   mask-image: url(../_/icons/download.svg); }
 
 /* The book icon above the sign-in form. A theme can hide it (.pl-logo { display: none; }) or swap the image
    (background-image: url(logo.png), relative to that theme's folder). ../../static is the site's /static/. */

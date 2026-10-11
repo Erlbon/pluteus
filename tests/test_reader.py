@@ -190,7 +190,7 @@ def test_home_lists_unfinished_epubs_newest_first(signed_in):
     st = app.state.state
     st.put_progress("alice", "books", "Good Author/Real Book.epub", "a", 0.5, now=100)
     st.put_progress("alice", "books", "Good Author/Plain Filename.epub", "b", 0.99, now=200)       # finished: hidden
-    st.put_progress("alice", "comics", "Plain/notes.pdf", "c", 0.2, now=300)                       # no reader for it: hidden
+    st.put_progress("alice", "comics", "Plain/notes.txt", "c", 0.2, now=300)                       # no progress kind: hidden
     st.put_progress("alice", "gone", "x.epub", "d", 0.2, now=400)                                  # root no longer exists
     html = client.get("/", headers=HTML).text
     assert "Continue reading" in html and "50%" in html

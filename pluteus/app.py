@@ -24,7 +24,7 @@ from starlette.responses import (FileResponse, HTMLResponse, JSONResponse, Plain
                                  RedirectResponse, Response)
 from starlette.routing import Route
 
-from . import cbz, opds, web
+from . import cbz, kinds, opds, textview, web
 from .auth import Authenticator
 from .cbz import CbzError
 from .config import MIME_TYPES, Config
@@ -306,10 +306,12 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
         """(link, label, fraction) for the books this user left unfinished, newest first."""
         out = []
         for r in state.recent_progress(user.name, 20):
+            kind = kinds.kind_of(r["path"])
             if r["root"] in cfg.roots and user.may_use(r["root"]) and r["percent"] < 0.98 \
-                    and r["path"].lower().endswith((".epub", ".cbz")):
+                    and kind in kinds.KINDS_WITH_PROGRESS:
                 parts = tuple(r["path"].split("/"))
-                out.append((urls.read(r["root"], parts), os.path.splitext(parts[-1])[0], r["percent"]))
+                link = urls.read(r["root"], parts) if kind in ("epub", "comic") else urls.view(r["root"], parts)
+                out.append((link, os.path.splitext(parts[-1])[0], r["percent"]))
         return out[:6]
 
     @guarded("web")
@@ -321,7 +323,7 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
     async def browse(request: Request, user):
         root = request.path_params["root"]
         parts = _parts(request.path_params.get("path", ""))
-        entries = await run_in_threadpool(lib.list_dir, user, root, parts)
+        entries = await run_in_threadpool(lib.list_dir, user, root, parts, cfg.show_all_files)
         shown, page, pages = opds.paginate(entries, _page_number(request), cfg.page_size)
         metas = await run_in_threadpool(meta.lookup_many, shown)
         book_paths = ["/".join(e.parts) for e in shown if not e.is_dir]
@@ -342,7 +344,7 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
     async def read(request: Request, user):
         root = request.path_params["root"]
         parts = _parts(request.path_params["path"])
-        info = await run_in_threadpool(lib.file_info, user, root, parts)      # exists, allowed, not hidden
+        info = await run_in_threadpool(lib.file_info, user, root, parts, cfg.show_all_files)   # exists, allowed, not hidden
         key = hashlib.sha1(("%s-%s" % (info.size, info.mtime)).encode()).hexdigest()[:12]
         if info.name.lower().endswith(".cbz"):
             try:
@@ -361,6 +363,77 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
             book_url=urls.download(root, parts), progress_url=urls.api("progress", root, parts),
             back_url=urls.browse(root, parts[:-1]), content_css_url=urls.theme("_", "reader-content.css"), key=key))
 
+    # ---- the universal viewer: /view picks the viewer, /raw serves the few types that are safe inline ----------------
+    def neighbours(user, root: str, parts: tuple, kind: str):
+        """(previous entry, next entry, 1-based position, total) among the same kind of file in this folder."""
+        entries = lib.list_dir(user, root, parts[:-1], True)
+        same = [e for e in entries if not e.is_dir and kinds.kind_of(e.name) == kind]
+        names = [e.name for e in same]
+        i = names.index(parts[-1]) if parts[-1] in names else 0
+        return (same[i - 1] if i > 0 else None, same[i + 1] if i + 1 < len(same) else None, i + 1, len(same))
+
+    def text_page(user, root: str, parts: tuple, info, forced: bool):
+        raw, truncated = textview.read_head(info.path, cfg.text_view_kb * 1024)
+        binary = textview.looks_binary(raw)
+        if binary and not forced:
+            return None
+        text, encoding = textview.decode(raw, truncated, force=binary or forced)
+        return web.text_viewer_page(ctx_for(user), info.name, text=text, encoding=encoding, size=info.size,
+                                    shown=len(raw), truncated=truncated, download_url=urls.download(root, parts),
+                                    back_url=urls.browse(root, parts[:-1]), forced=binary or forced)
+
+    def view_page(user, root: str, parts: tuple, info, kind: str, as_text: bool):
+        ctx, back, download = ctx_for(user), urls.browse(root, parts[:-1]), urls.download(root, parts)
+        if not as_text and kind in ("image", "audio", "video"):
+            prev, nxt, position, total = neighbours(user, root, parts, kind)
+            prev_url = urls.view(root, prev.parts) if prev else None
+            next_url = urls.view(root, nxt.parts) if nxt else None
+            if kind == "image":
+                return web.image_viewer_page(
+                    ctx, info.name, raw_url=urls.raw(root, parts), download_url=download, back_url=back,
+                    prev_url=prev_url, next_url=next_url, next_raw=urls.raw(root, nxt.parts) if nxt else None,
+                    position=position, total=total)
+            return web.media_viewer_page(
+                ctx, info.name, kind=kind, raw_url=urls.raw(root, parts), mime=kinds.INLINE_MIME[kinds.extension(info.name)],
+                download_url=download, back_url=back, progress_url=urls.api("progress", root, parts),
+                prev_url=prev_url, next_url=next_url, position=position, total=total)
+        # text: known text types, anything that looks like text, or whatever the user asked to see as text
+        page = text_page(user, root, parts, info, as_text) if (as_text or kind in ("text", "other")) else None
+        if page is not None:
+            return page
+        rows = [("Name", info.name), ("Type", info.mime), ("Size", web._size(info.size)),
+                ("Modified", time.strftime("%Y-%m-%d %H:%M", time.localtime(info.mtime)))]
+        note = "This looks like a binary file." if kind in ("text", "other") else ""
+        return web.info_page(ctx, info.name, rows=rows, download_url=download, back_url=back, note=note,
+                             text_url=urls.view(root, parts) + "?as=text")
+
+    @guarded("web")
+    async def view(request: Request, user):
+        root = request.path_params["root"]
+        parts = _parts(request.path_params["path"])
+        info = await run_in_threadpool(lib.file_info, user, root, parts, cfg.show_all_files)
+        kind = kinds.kind_of(info.name)
+        if kind in ("epub", "comic"):
+            return RedirectResponse(urls.read(root, parts), 303)
+        as_text = request.query_params.get("as") == "text"
+        page = await run_in_threadpool(view_page, user, root, parts, info, kind, as_text)
+        return HTMLResponse(page)
+
+    @guarded("api")
+    async def raw(request: Request, user):
+        """Inline display for the types we chose to allow, each with the type WE state; never anything else."""
+        root = request.path_params["root"]
+        parts = _parts(request.path_params["path"])
+        info = await run_in_threadpool(lib.file_info, user, root, parts, cfg.show_all_files)
+        ext = kinds.extension(info.name)
+        mime = kinds.INLINE_MIME.get(ext)
+        if mime is None:
+            raise NotFound("not shown inline")
+        headers = {"X-Content-Type-Options": "nosniff", "Cache-Control": "private, max-age=3600"}
+        if ext in kinds.SANDBOXED:
+            headers["Content-Security-Policy"] = "sandbox; default-src 'none'; style-src 'unsafe-inline'"
+        return FileResponse(info.path, media_type=mime, headers=headers)       # no filename: displayed, not downloaded
+
     @guarded("api")
     async def cbz_page(request: Request, user):
         """One page of a comic, read straight out of the archive. 0-based: ?page=0 is the first page."""
@@ -370,7 +443,7 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
             number = int(request.query_params.get("page", "0"))
         except ValueError:
             raise PathError("page must be a number")
-        info = await run_in_threadpool(lib.file_info, user, root, parts)
+        info = await run_in_threadpool(lib.file_info, user, root, parts, cfg.show_all_files)
         if not info.name.lower().endswith(".cbz"):
             raise NotFound("not a comic archive")
         try:
@@ -391,7 +464,7 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
     async def progress(request: Request, user):
         root = request.path_params["root"]
         parts = _parts(request.path_params["path"])
-        await run_in_threadpool(lib.file_info, user, root, parts)             # no progress for files you cannot see
+        await run_in_threadpool(lib.file_info, user, root, parts, cfg.show_all_files)   # none for files you cannot see
         path = "/".join(parts)
         if request.method == "PUT":
             if "application/json" not in request.headers.get("content-type", ""):
@@ -476,7 +549,8 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
     async def download(request: Request, user):
         root = request.path_params["root"]
         parts = _parts(request.path_params["path"])
-        info = await run_in_threadpool(lib.file_info, user, root, parts)
+        info = await run_in_threadpool(lib.file_info, user, root, parts, cfg.show_all_files)
+        # Always a download, never displayed in our origin: unknown and active types (html, svg, ...) cannot run here.
         return FileResponse(info.path, media_type=info.mime, filename=info.name)
 
     routes = [
@@ -492,6 +566,8 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
         Route("/browse/{root}", browse),
         Route("/browse/{root}/{path:path}", browse),
         Route("/read/{root}/{path:path}", read),
+        Route("/view/{root}/{path:path}", view),
+        Route("/raw/{root}/{path:path}", raw),
         Route("/cbz/{root}/{path:path}", cbz_page),
         Route("/api/progress/{root}/{path:path}", progress, methods=["GET", "PUT"]),
         Route("/opds", opds_root),

@@ -7,6 +7,7 @@ form) stay reachable.
 """
 from __future__ import annotations
 
+import mimetypes
 import os
 import re
 import time
@@ -139,8 +140,9 @@ class Library:
     def roots_for(self, user: User) -> list:
         return [r for r in self.cfg.roots.values() if user.may_use(r.name)]
 
-    def list_dir(self, user: User, root_name: str, parts) -> list:
-        """Folders first, then books, each in natural order."""
+    def list_dir(self, user: User, root_name: str, parts, all_files: bool = False) -> list:
+        """Folders first, then files, each in natural order. By default only the configured book types are listed
+        (what OPDS feeds want); all_files=True lists every regular file (the web listing and the viewers)."""
         parts = tuple(parts)
         path = self._dir_path(user, root_name, parts)
         if not os.path.isdir(path):
@@ -158,7 +160,7 @@ class Library:
                         if is_dir:
                             if not user.adult and self._has_marker(e.path):
                                 continue
-                        elif os.path.splitext(name)[1].lower() not in self.cfg.extensions \
+                        elif (not all_files and os.path.splitext(name)[1].lower() not in self.cfg.extensions) \
                                 or not e.is_file():
                             continue
                         st = e.stat()
@@ -174,7 +176,8 @@ class Library:
         files.sort(key=lambda x: natural_key(x.name))
         return dirs + files
 
-    def file_info(self, user: User, root_name: str, parts) -> FileInfo:
+    def file_info(self, user: User, root_name: str, parts, any_type: bool = False) -> FileInfo:
+        """One servable file. any_type=True allows every regular file, not just the configured book types."""
         parts = tuple(parts)
         if not parts:
             raise NotFound("no file named")
@@ -182,12 +185,12 @@ class Library:
         name = parts[-1]
         check_segment(name)
         ext = os.path.splitext(name)[1].lower()
-        if self._excluded(name) or ext not in self.cfg.extensions:
+        if self._excluded(name) or (ext not in self.cfg.extensions and not any_type):
             raise NotFound(name)
         path = os.path.join(dir_path, name)
         if not os.path.isfile(path):
             raise NotFound(name)
         self._inside(root_name, path)
         st = os.stat(path)
-        return FileInfo(path, name, MIME_TYPES.get(ext, "application/octet-stream"),
+        return FileInfo(path, name, MIME_TYPES.get(ext) or mimetypes.guess_type(name)[0] or "application/octet-stream",
                         st.st_size, st.st_mtime)
