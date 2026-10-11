@@ -13,6 +13,11 @@
 services:
   pluteus:
     build: .
+    # How the port is reached (pick one; see docs/running.md):
+    #  - directly on the LAN:                          "8080:8080"
+    #  - behind a Caddy that reaches the host
+    #    (host.docker.internal:8100):                  "8100:8080"
+    #  - behind a Caddy on the same Docker network:    no ports at all, Caddy uses pluteus:8080
     ports:
       - "8080:8080"
     volumes:

@@ -75,6 +75,9 @@ Apps that drop URL credentials and have no login fields can use `anonymous_user`
 
 ## Docker
 
+Docker and a native install are equally supported: **[docs/running.md](docs/running.md)** compares them and has the steps for
+both (including moving from one to the other).
+
 `Dockerfile` + `docker-compose.example.yml` were built and run on Docker Desktop (Windows, 2026-10-11) with a small
 sample library. Checked and passing: the image builds (191 MB, about 20 s); it runs as an unprivileged user
 (uid 10001); healthcheck turns healthy; login, OPDS, EPUB metadata, downloads with Range, the reader page and the
