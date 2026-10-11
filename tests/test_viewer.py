@@ -378,3 +378,31 @@ def test_pdf_wasm_decoders_are_served_as_webassembly_and_the_csp_allows_only_was
     assert r.status_code == 200 and r.headers["content-type"] == "application/wasm" and r.content[:4] == b"\0asm"
     csp = client.get("/", headers=HTML).headers["content-security-policy"]
     assert "'wasm-unsafe-eval'" in csp and "'unsafe-eval'" not in csp.replace("'wasm-unsafe-eval'", "")
+
+
+# ---- audiobooks (.m4b) and the listening controls --------------------------------------------------------------------------------------
+def test_m4b_is_audio():
+    assert kinds.kind_of("The Hobbit.m4b") == "audio" and kinds.kind_of("X.M4B") == "audio"
+    assert kinds.INLINE_MIME[".m4b"] == "audio/mp4"
+
+
+def test_m4b_plays_seeks_and_has_the_listening_controls(signed_in, docs):
+    client, _ = signed_in
+    (docs / "Zebra book.m4b").write_bytes(b"\x00\x00\x00\x20ftypM4B " + b"\x00" * 5000)
+    raw = client.get("/raw/books/" + d("Zebra book.m4b"))
+    assert raw.status_code == 200 and raw.headers["content-type"] == "audio/mp4" and raw.headers["accept-ranges"] == "bytes"
+    part = client.get("/raw/books/" + d("Zebra book.m4b"), headers={"Range": "bytes=100-199"})
+    assert part.status_code == 206 and len(part.content) == 100                       # seeking in a 900 MB file is a range request
+    page = client.get("/view/books/" + d("Zebra book.m4b"), headers=HTML).text
+    assert "<audio id='media' controls" in page and "src='/raw/books/Docs/Zebra%20book.m4b'" in page
+    for ident in ("back30", "fwd30", "speed", "sleep"):
+        assert "id='%s'" % ident in page
+    assert "data-title='Zebra book'" in page and "data-album='Docs'" in page            # for the lock screen
+    assert "data-artwork='/static/icon/icon-512.png'" in page and "data-prev='" in page and "data-next='" in page
+    assert "data-progress='/api/progress/books/Docs/Zebra%20book.m4b'" in page
+
+
+def test_the_viewer_script_has_the_features_it_promises():
+    js = (STATIC / "viewer-media.js").read_text(encoding="utf-8")
+    for needle in ("mediaSession", "seekbackward", "nexttrack", "playbackRate", "pluteus-media-rate", "autoplay=1", "STEPS"):
+        assert needle in js, needle

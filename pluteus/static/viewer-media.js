@@ -1,11 +1,29 @@
-/* pluteus audio/video viewer: resumes where this user stopped (position saved per user on the server). */
+/* pluteus audio/video viewer.
+   - resumes where this user stopped (position saved per user on the server)
+   - big buttons for listening on a phone: 30 second skips, playback speed (remembered), sleep timer
+   - plays the next file of the folder when one ends (best effort: the browser may ask for a tap)
+   - lock-screen / notification controls through the Media Session API (title, skip, next/previous)
+   Everything here is optional: without it the page is still a working audio or video player. */
 (function () {
   "use strict";
   var root = document.getElementById("reader"), media = document.getElementById("media");
   if (!root || !media) return;
-  var progressUrl = root.dataset.progress;
+  var data = root.dataset;
+  var progressUrl = data.progress, prevUrl = data.prev || "", nextUrl = data.next || "";
+  var statusEl = document.getElementById("status");
+  var statusTimer = null;
   var timer = null, lastSent = -1;
+  var SKIP = 30;
 
+  function say(text, ms) {
+    if (!statusEl) return;
+    statusEl.textContent = text;
+    statusEl.hidden = false;
+    clearTimeout(statusTimer);
+    if (ms) statusTimer = setTimeout(function () { statusEl.hidden = true; }, ms);
+  }
+
+  /* ---- progress ---- */
   function send(done, keepalive) {
     var t = media.currentTime || 0, d = media.duration || 0;
     if (!done && Math.abs(t - lastSent) < 1) return;
@@ -23,7 +41,7 @@
     .then(function (saved) {
       var m = saved && typeof saved.locator === "string" && /^t:(\d+(?:\.\d+)?)$/.exec(saved.locator);
       var at = m ? parseFloat(m[1]) : 0;
-      if (at > 3) {
+      if (at > 3 && !/[?&]autoplay=1/.test(location.search)) {      // a file started by auto-advance begins at 0
         var seek = function () { try { media.currentTime = at; } catch (e) { /* not seekable yet */ } };
         if (media.readyState >= 1) seek(); else media.addEventListener("loadedmetadata", seek, { once: true });
       }
@@ -31,7 +49,99 @@
 
   media.addEventListener("play", function () { clearInterval(timer); timer = setInterval(function () { send(false); }, 5000); });
   media.addEventListener("pause", function () { clearInterval(timer); if (!media.ended) send(false); });
-  media.addEventListener("ended", function () { clearInterval(timer); send(true); });
   document.addEventListener("visibilitychange", function () { if (document.visibilityState === "hidden" && !media.paused) send(false, true); });
   window.addEventListener("pagehide", function () { if (!media.paused) send(false, true); });
+
+  /* ---- skip ---- */
+  function jump(seconds) {
+    var t = (media.currentTime || 0) + seconds;
+    if (isFinite(media.duration)) t = Math.min(t, media.duration);
+    try { media.currentTime = Math.max(0, t); } catch (e) { /* not seekable yet */ }
+  }
+  var back = document.getElementById("back30"), forward = document.getElementById("fwd30");
+  if (back) back.addEventListener("click", function () { jump(-SKIP); });
+  if (forward) forward.addEventListener("click", function () { jump(SKIP); });
+
+  /* ---- speed (remembered in this browser) ---- */
+  var RATES = [0.75, 1, 1.25, 1.5, 1.75, 2, 2.5];
+  var speedButton = document.getElementById("speed");
+  var rate = 1;
+  try { rate = parseFloat(localStorage.getItem("pluteus-media-rate")) || 1; } catch (e) { /* storage blocked */ }
+  if (RATES.indexOf(rate) < 0) rate = 1;
+  function applyRate() {
+    media.defaultPlaybackRate = rate;
+    media.playbackRate = rate;
+    if (speedButton) speedButton.textContent = (rate % 1 === 0 ? rate.toFixed(0) : String(rate)) + "×";
+  }
+  applyRate();
+  media.addEventListener("loadedmetadata", applyRate);              // some browsers reset it when a file loads
+  if (speedButton) speedButton.addEventListener("click", function () {
+    rate = RATES[(RATES.indexOf(rate) + 1) % RATES.length];
+    try { localStorage.setItem("pluteus-media-rate", String(rate)); } catch (e) { /* storage blocked */ }
+    applyRate();
+    say("Speed " + speedButton.textContent, 1200);
+  });
+
+  /* ---- sleep timer: off -> 15 -> 30 -> 60 minutes -> end of this file -> off ---- */
+  var STEPS = [0, 15, 30, 60, -1];
+  var sleepButton = document.getElementById("sleep");
+  var step = 0, deadline = 0, sleepTick = null;
+  function sleepLabel() {
+    if (!sleepButton) return;
+    if (STEPS[step] === 0) sleepButton.textContent = "Sleep";
+    else if (STEPS[step] === -1) sleepButton.textContent = "Sleep: file end";
+    else sleepButton.textContent = "Sleep " + Math.max(1, Math.ceil((deadline - Date.now()) / 60000)) + " min";
+  }
+  function stopSleepTick() { clearInterval(sleepTick); sleepTick = null; }
+  if (sleepButton) sleepButton.addEventListener("click", function () {
+    step = (step + 1) % STEPS.length;
+    stopSleepTick();
+    if (STEPS[step] > 0) {
+      deadline = Date.now() + STEPS[step] * 60000;
+      sleepTick = setInterval(function () {
+        if (Date.now() >= deadline) { stopSleepTick(); media.pause(); step = 0; sleepLabel(); say("Sleep timer: paused", 4000); }
+        else sleepLabel();
+      }, 10000);
+    }
+    sleepLabel();
+    say(STEPS[step] === 0 ? "Sleep timer off" : STEPS[step] === -1 ? "Stops at the end of this file" : "Pauses in " + STEPS[step] + " minutes", 2000);
+  });
+
+  /* ---- the end of a file: play the next one, unless the sleep timer says stop ---- */
+  media.addEventListener("ended", function () {
+    clearInterval(timer);
+    send(true, true);
+    if (STEPS[step] === -1) { step = 0; sleepLabel(); say("Sleep timer: stopped at the end of the file", 4000); return; }
+    if (nextUrl) location.href = nextUrl + (nextUrl.indexOf("?") < 0 ? "?" : "&") + "autoplay=1";
+  });
+  if (/[?&]autoplay=1/.test(location.search)) {
+    var started = media.play();
+    if (started && started.catch) started.catch(function () { say("Tap play to continue", 6000); });
+  }
+
+  /* ---- lock screen and notification controls ---- */
+  if ("mediaSession" in navigator && window.MediaMetadata) {
+    var session = navigator.mediaSession;
+    var handle = function (action, fn) { try { session.setActionHandler(action, fn); } catch (e) { /* not supported here */ } };
+    try {
+      session.metadata = new MediaMetadata({
+        title: data.title || document.title, album: data.album || "", artist: "",
+        artwork: data.artwork ? [{ src: data.artwork, sizes: "512x512", type: "image/png" }] : []
+      });
+    } catch (e) { /* ignore */ }
+    handle("play", function () { media.play(); });
+    handle("pause", function () { media.pause(); });
+    handle("seekbackward", function (d) { jump(-((d && d.seekOffset) || SKIP)); });
+    handle("seekforward", function (d) { jump((d && d.seekOffset) || SKIP); });
+    handle("seekto", function (d) { if (d && typeof d.seekTime === "number") media.currentTime = d.seekTime; });
+    if (prevUrl) handle("previoustrack", function () { location.href = prevUrl; });
+    if (nextUrl) handle("nexttrack", function () { location.href = nextUrl + (nextUrl.indexOf("?") < 0 ? "?" : "&") + "autoplay=1"; });
+    var lastPosition = 0;
+    media.addEventListener("timeupdate", function () {
+      var now = Date.now();
+      if (now - lastPosition < 1000 || !isFinite(media.duration)) return;
+      lastPosition = now;
+      try { session.setPositionState({ duration: media.duration, playbackRate: media.playbackRate, position: Math.min(media.currentTime, media.duration) }); } catch (e) { /* ignore */ }
+    });
+  }
 })();

@@ -636,7 +636,8 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
             return web.media_viewer_page(
                 ctx, info.name, kind=kind, raw_url=urls.raw(root, parts), mime=kinds.INLINE_MIME[kinds.extension(info.name)],
                 download_url=download, back_url=back, progress_url=urls.api("progress", root, parts),
-                prev_url=prev_url, next_url=next_url, position=position, total=total)
+                prev_url=prev_url, next_url=next_url, position=position, total=total,
+                album=lib.display_name(parts[-2]) if len(parts) > 1 else root)
         if not as_text and kind == "pdf":
             return web.pdf_viewer_page(ctx, info.name, raw_url=urls.raw(root, parts), download_url=download, back_url=back,
                                        progress_url=urls.api("progress", root, parts))

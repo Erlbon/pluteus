@@ -320,3 +320,8 @@ a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible
 .pl-recent-text .pl-title { overflow-wrap: anywhere; }
 .pl-where { font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pl-foot { margin-top: 28px; }
+
+/* ---- audio/video viewer: buttons made for a thumb ---- */
+.pl-media-controls { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; margin: 22px 0 6px; }
+.pl-media-controls .pl-btn { min-width: 92px; min-height: 54px; padding: 8px 16px; font-size: 17px; border-radius: 14px; }
+.pl-media-box { position: relative; }

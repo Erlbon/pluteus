@@ -387,18 +387,29 @@ def text_viewer_page(ctx: Ctx, title: str, *, text: str, encoding: str, size: in
 
 
 def media_viewer_page(ctx: Ctx, title: str, *, kind: str, raw_url: str, mime: str, download_url: str, back_url: str,
-                      progress_url: str, prev_url, next_url, position: int, total: int) -> str:
+                      progress_url: str, prev_url, next_url, position: int, total: int, album: str = "") -> str:
+    """The audio/video viewer: the browser's own player plus big buttons made for listening on a phone (30 second skips,
+    speed, sleep timer). viewer-media.js adds resume, auto-advance to the next file and the lock-screen controls."""
     tag = "video" if kind == "video" else "audio"
+    controls = ("<div class='pl-media-controls'>"
+                "<button class='pl-btn' id='back30' type='button' aria-label='Back 30 seconds'>&minus;30 s</button>"
+                "<button class='pl-btn' id='speed' type='button' aria-label='Playback speed'>1&times;</button>"
+                "<button class='pl-btn' id='sleep' type='button' aria-label='Sleep timer'>Sleep</button>"
+                "<button class='pl-btn' id='fwd30' type='button' aria-label='Forward 30 seconds'>+30 s</button></div>")
     stage = ("<div class='pl-media-box'><div class='pl-media-title'>%s</div>"
              "<%s id='media' controls preload='metadata' %s src='%s'><p>Your browser cannot play this file; "
-             "<a href='%s'>download it</a>.</p></%s></div>"
-             % (escape(title), tag, "playsinline" if kind == "video" else "", escape(raw_url), escape(download_url), tag))
+             "<a href='%s'>download it</a>.</p></%s>%s<div class='pl-toast' id='status' hidden></div></div>"
+             % (escape(title), tag, "playsinline" if kind == "video" else "", escape(raw_url), escape(download_url), tag,
+                controls))
     foot = ("%s<span style='flex:1'></span><span>%d / %d</span>%s"
             % (_nav_link("prev", "prev", "Previous file", prev_url), position, total,
                _nav_link("next", "next", "Next file", next_url)))
     tools = _download_link(download_url) + _reader_scheme()
+    name = title.rsplit(".", 1)[0] if "." in title else title
     return _viewer(ctx, title, back_url, tools=tools, stage=stage, foot=foot, classes="pl-mediaview",
-                   stage_class="pl-media-stage", data=(("progress", progress_url), ("kind", kind)),
+                   stage_class="pl-media-stage",
+                   data=(("progress", progress_url), ("kind", kind), ("prev", prev_url or ""), ("next", next_url or ""),
+                         ("title", name), ("album", album), ("artwork", ctx.urls.static("icon/icon-512.png"))),
                    scripts=(ctx.urls.static("viewer-media.js"),))
 
 
