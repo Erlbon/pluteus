@@ -310,3 +310,13 @@ a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible
   .pl-file .pl-meta { grid-column: 3; grid-row: 1; padding: 0 6px; white-space: nowrap; }
   .pl-file .pl-actions { grid-column: 2 / span 2; grid-row: 2; }
 }
+
+/* ---- home page: icons in front, a second line saying where a started book lives ---- */
+.pl-kind { display: inline-block; min-width: 1.7em; margin-right: 6px; text-align: center; }
+.pl-root-link { display: block; padding: 12px 0; flex: 1; }
+.pl-recent-row { align-items: center; }
+.pl-recent-link { display: flex; align-items: center; flex: 1; min-width: 0; padding: 8px 0; }
+.pl-recent-text { display: flex; flex-direction: column; min-width: 0; }
+.pl-recent-text .pl-title { overflow-wrap: anywhere; }
+.pl-where { font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pl-foot { margin-top: 28px; }

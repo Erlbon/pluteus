@@ -378,7 +378,8 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
 
     # ---- browser pages ------------------------------------------------------------
     def continue_reading(user) -> list:
-        """(link, label, fraction) for the books this user left unfinished, newest first."""
+        """The files this user left unfinished, newest first: link, title, fraction, kind (for the icon) and where it
+        lives (the library and the folder it is in, e.g. 'comics / Ablaze')."""
         out = []
         for r in state.recent_progress(user.name, 40):
             kind = kinds.kind_of(r["path"])
@@ -390,7 +391,9 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
                 except (NotFound, PathError, OSError):
                     continue
                 link = urls.read(r["root"], parts) if kind in ("epub", "comic") else urls.view(r["root"], parts)
-                out.append((link, os.path.splitext(parts[-1])[0], r["percent"]))
+                parent = lib.display_name(parts[-2]) if len(parts) > 1 else ""
+                out.append({"href": link, "label": os.path.splitext(parts[-1])[0], "percent": r["percent"], "kind": kind,
+                            "where": r["root"] + (" / " + parent if parent else "")})
         return out[:6]
 
     @guarded("web")

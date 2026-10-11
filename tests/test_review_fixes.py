@@ -259,3 +259,20 @@ def test_login_page_shows_the_wordmark_above_the_card_and_the_version(cfg, tmp_p
     html = client.get("/login").text
     assert "pl-brand pl-wordmark'>PLUTEUS<" in html and "pluteus %s</p>" % __version__ in html
     assert html.index("pl-wordmark") < html.index("class='pl-card pl-login'") < html.index("pl-version")
+
+
+def test_home_page_icons_where_a_started_book_lives_and_the_opds_link_in_the_footer(cfg, tmp_path, library):
+    client, app = make(cfg, tmp_path, uploads_dir=str(tmp_path / "up"))
+    me = TestClient(app, follow_redirects=False)
+    me.post("/login", content="username=alice&password=pw-alice",
+            headers={"content-type": "application/x-www-form-urlencoded", "origin": "http://testserver"})
+    h = {"origin": "http://testserver"}
+    assert me.put("/api/progress/books/Good%20Author/Real%20Book.epub", json={"locator": "x", "percent": 0.3}, headers=h).status_code == 200
+    assert me.put("/api/progress/comics/3%20-%20Marvel%20%281961-2012%29/Spider-Man%20%281963-%29/Amazing%20001.cbz",
+                  json={"locator": "page:2", "percent": 0.1}, headers=h).status_code == 200
+    html = me.get("/", headers=HTML).text
+    assert "&#128214;" in html and "&#128172;" in html                           # a book icon and a comic icon in "Continue reading"
+    assert "books / Good Author" in html and "comics / Spider-Man (1963-)" in html   # which library, which folder
+    assert html.count("class='pl-kind'>&#128193;") == 2 and "class='pl-kind'>&#128228;" in html   # folder icons; uploads has its own
+    assert "OPDS catalogue" not in html
+    assert re.search(r"<p class='pl-muted pl-foot'><a href='/opds'>OPDS feed</a> for reader apps &middot; pluteus \d", html)
