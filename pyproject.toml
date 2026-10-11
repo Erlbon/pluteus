@@ -7,7 +7,7 @@ name = "pluteus"
 version = "0.1.0"
 description = "Filesystem-first book and comic server: OPDS, web browsing, download"
 requires-python = ">=3.11"
-dependencies = ["starlette>=0.40", "uvicorn>=0.30", "python-multipart>=0.0.13"]
+dependencies = ["starlette>=0.40", "uvicorn>=0.30", "python-multipart>=0.0.13", "mistune>=3.0"]
 
 [project.optional-dependencies]
 dev = ["pytest>=8", "httpx>=0.27", "pillow>=10"]     # pillow: tests, and tools/make_icon.py

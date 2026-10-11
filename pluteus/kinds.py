@@ -16,6 +16,9 @@ VIDEO = {".mp4": "video/mp4", ".m4v": "video/mp4", ".webm": "video/webm", ".ogv"
          ".mov": "video/quicktime", ".mkv": "video/x-matroska"}
 PDF = {".pdf": "application/pdf"}
 BOOKS = {".epub": "epub", ".cbz": "comic"}
+MARKDOWN = {".md", ".markdown"}
+TABLE = {".csv", ".tsv"}
+ARCHIVE = {".zip"}
 TEXT = {".txt", ".md", ".markdown", ".rst", ".log", ".csv", ".tsv", ".json", ".jsonl", ".xml", ".yaml", ".yml", ".ini",
         ".cfg", ".conf", ".toml", ".nfo", ".diz", ".srt", ".vtt", ".sub", ".ass", ".url", ".m3u", ".m3u8", ".pls",
         ".reg", ".tex", ".bib", ".py", ".js", ".mjs", ".ts", ".css", ".html", ".htm", ".xhtml", ".sh", ".bat", ".cmd",
@@ -34,7 +37,7 @@ def extension(name: str) -> str:
 
 
 def kind_of(name: str) -> str:
-    """'epub' | 'comic' | 'pdf' | 'image' | 'audio' | 'video' | 'text' | 'other'."""
+    """'epub' | 'comic' | 'pdf' | 'image' | 'audio' | 'video' | 'markdown' | 'table' | 'archive' | 'text' | 'other'."""
     ext = extension(name)
     if ext in BOOKS:
         return BOOKS[ext]
@@ -46,6 +49,12 @@ def kind_of(name: str) -> str:
         return "audio"
     if ext in VIDEO:
         return "video"
+    if ext in MARKDOWN:
+        return "markdown"
+    if ext in TABLE:
+        return "table"
+    if ext in ARCHIVE:
+        return "archive"
     if ext in TEXT:
         return "text"
     return "other"

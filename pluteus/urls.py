@@ -43,6 +43,10 @@ class Urls:
         url = self.base + "/cbz/" + "/".join(quote(s, safe="") for s in (root, *parts))
         return url + ("/" + tail if tail else "")
 
+    def zip_entry(self, root: str, parts, index: int, mode: str) -> str:
+        """An entry inside a zip file: mode is dl (download), raw (an image, inline) or text (the text viewer)."""
+        return "%s/zip/%s?i=%d&as=%s" % (self.base, "/".join(quote(s, safe="") for s in (root, *parts)), index, mode)
+
     def static(self, path: str) -> str:
         return self.base + "/static/" + path
 

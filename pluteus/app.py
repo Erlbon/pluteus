@@ -15,7 +15,7 @@ import os
 import re
 import time
 from pathlib import Path
-from urllib.parse import parse_qs, urlencode, urlsplit
+from urllib.parse import parse_qs, quote, urlencode, urlsplit
 
 from python_multipart.exceptions import MultipartParseError
 from starlette.applications import Starlette
@@ -24,10 +24,10 @@ from starlette.datastructures import MutableHeaders
 from starlette.middleware import Middleware
 from starlette.requests import Request
 from starlette.responses import (FileResponse, HTMLResponse, JSONResponse, PlainTextResponse,
-                                 RedirectResponse, Response)
+                                 RedirectResponse, Response, StreamingResponse)
 from starlette.routing import Route
 
-from . import cbz, kinds, opds, textview, uploads, web
+from . import cbz, kinds, markdown, opds, tabular, textview, uploads, web, ziputil
 from .auth import Authenticator
 from .cbz import CbzError
 from .config import MIME_TYPES, UPLOADS_ROOT, Config
@@ -541,8 +541,62 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
                                     shown=len(raw), truncated=truncated, download_url=urls.download(root, parts),
                                     back_url=urls.browse(root, parts[:-1]), forced=binary or forced)
 
+    def decoded_head(info):
+        """(text, size shown, truncated) for a text-like file, or None when it looks binary."""
+        raw, truncated = textview.read_head(info.path, cfg.text_view_kb * 1024)
+        if textview.looks_binary(raw):
+            return None
+        return textview.decode(raw, truncated)[0], len(raw), truncated
+
+    def markdown_view(user, root: str, parts: tuple, info):
+        head = decoded_head(info)
+        if head is None:
+            return None
+        text, shown, truncated = head
+        try:
+            html = markdown.render(text, urls, root, parts[:-1])
+        except markdown.TooLarge:
+            return None                                       # too big to render: the plain text viewer takes over
+        return web.markdown_page(ctx_for(user), info.name, html=html, size=info.size, shown=shown, truncated=truncated,
+                                 download_url=urls.download(root, parts), back_url=urls.browse(root, parts[:-1]),
+                                 source_url=urls.view(root, parts) + "?as=text")
+
+    def table_view(user, root: str, parts: tuple, info):
+        head = decoded_head(info)
+        if head is None:
+            return None
+        text, shown, truncated = head
+        try:
+            table = tabular.parse(text, kinds.extension(info.name))
+        except tabular.TableError:
+            return None                                       # not a table after all: shown as text
+        return web.table_page(ctx_for(user), info.name, table=table, size=info.size, shown=shown, truncated=truncated,
+                              download_url=urls.download(root, parts), back_url=urls.browse(root, parts[:-1]),
+                              source_url=urls.view(root, parts) + "?as=text")
+
+    def zip_view(user, root: str, parts: tuple, info):
+        ctx, back, download = ctx_for(user), urls.browse(root, parts[:-1]), urls.download(root, parts)
+        try:
+            entries, total, comment = ziputil.list_entries(info.path)
+        except ziputil.ZipError as e:
+            rows = [("Name", info.name), ("Size", web._size(info.size))]
+            return web.info_page(ctx, info.name, rows=rows, download_url=download, back_url=back,
+                                 note="This zip file cannot be opened: %s." % e, text_url=urls.view(root, parts) + "?as=text")
+        return web.zip_page(ctx, info.name, root=root, parts=parts, entries=entries, total=total, comment=comment,
+                            size=info.size, download_url=download, back_url=back)
+
     def view_page(user, root: str, parts: tuple, info, kind: str, as_text: bool):
         ctx, back, download = ctx_for(user), urls.browse(root, parts[:-1]), urls.download(root, parts)
+        if not as_text and kind == "markdown":
+            page = markdown_view(user, root, parts, info)
+            if page is not None:
+                return page
+        if not as_text and kind == "table":
+            page = table_view(user, root, parts, info)
+            if page is not None:
+                return page
+        if not as_text and kind == "archive":
+            return zip_view(user, root, parts, info)
         if not as_text and kind in ("image", "audio", "video"):
             prev, nxt, position, total = neighbours(user, root, parts, kind)
             prev_url = urls.view(root, prev.parts) if prev else None
@@ -560,12 +614,13 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
             return web.pdf_viewer_page(ctx, info.name, raw_url=urls.raw(root, parts), download_url=download, back_url=back,
                                        progress_url=urls.api("progress", root, parts))
         # text: known text types, anything that looks like text, or whatever the user asked to see as text
-        page = text_page(user, root, parts, info, as_text) if (as_text or kind in ("text", "other")) else None
+        page = text_page(user, root, parts, info, as_text) if (
+            as_text or kind in ("text", "other", "markdown", "table")) else None
         if page is not None:
             return page
         rows = [("Name", info.name), ("Type", info.mime), ("Size", web._size(info.size)),
                 ("Modified", time.strftime("%Y-%m-%d %H:%M", time.localtime(clamp_time(info.mtime))))]
-        note = "This looks like a binary file." if kind in ("text", "other") else ""
+        note = "This looks like a binary file." if kind in ("text", "other", "markdown", "table") else ""
         return web.info_page(ctx, info.name, rows=rows, download_url=download, back_url=back, note=note,
                              text_url=urls.view(root, parts) + "?as=text")
 
@@ -595,6 +650,56 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
         if ext in kinds.SANDBOXED:
             headers["Content-Security-Policy"] = "sandbox; default-src 'none'; style-src 'unsafe-inline'"
         return FileResponse(info.path, media_type=mime, headers=headers)       # no filename: displayed, not downloaded
+
+    def attachment(name: str) -> str:
+        """Content-Disposition for a download of something named by an archive: a safe local name, never the entry's own."""
+        safe = uploads.sanitize_name(name) or "file"
+        ascii_name = safe.encode("ascii", "replace").decode("ascii").replace("?", "_").replace('"', "_")
+        return 'attachment; filename="%s"; filename*=UTF-8\'\'%s' % (ascii_name, quote(safe))
+
+    @guarded("web")
+    async def zip_entry(request: Request, user):
+        """One entry of a zip file: as=dl downloads it, as=raw shows an image, as=text opens the text viewer.
+        The entry is chosen by its number (i), never by a name, and everything is size-checked while it is read."""
+        root = request.path_params["root"]
+        parts = _parts(request.path_params["path"])
+        info = await run_in_threadpool(lib.file_info, user, root, parts, cfg.show_all_files)
+        if kinds.kind_of(info.name) != "archive":
+            raise NotFound("not a zip file")
+        try:
+            index = int(request.query_params.get("i", ""))
+        except ValueError:
+            raise PathError("i must be a number")
+        mode = request.query_params.get("as", "dl")
+        try:
+            facts = await run_in_threadpool(ziputil.entry_facts, info.path, index)
+            base = facts["name"].replace(chr(92), "/").rsplit("/", 1)[-1]
+            if mode == "dl":
+                if facts["size"] > ziputil.MAX_DOWNLOAD_BYTES:
+                    return PlainTextResponse("That entry is too large to download through the page.", 413)
+                return StreamingResponse(ziputil.stream_entry(info.path, index), media_type="application/octet-stream",
+                                         headers={"Content-Disposition": attachment(base),
+                                                  "X-Content-Type-Options": "nosniff", "Cache-Control": "no-store"})
+            if mode == "raw":
+                ext = kinds.extension(base)
+                if ext not in kinds.IMAGE:
+                    raise NotFound("not an image")
+                data = await run_in_threadpool(ziputil.read_entry, info.path, index, ziputil.MAX_IMAGE_BYTES)
+                headers = {"X-Content-Type-Options": "nosniff", "Cache-Control": "private, max-age=300"}
+                if ext in kinds.SANDBOXED:
+                    headers["Content-Security-Policy"] = "sandbox; default-src 'none'; style-src 'unsafe-inline'"
+                return Response(data, media_type=kinds.IMAGE[ext], headers=headers)
+            if mode == "text":
+                data, cut = await run_in_threadpool(ziputil.read_head, info.path, index, cfg.text_view_kb * 1024)
+                if textview.looks_binary(data):
+                    return PlainTextResponse("That entry looks like a binary file: download it instead.", 415)
+                text, encoding = textview.decode(data, cut)
+                return HTMLResponse(web.text_viewer_page(
+                    ctx_for(user), base, text=text, encoding=encoding, size=facts["size"], shown=len(data), truncated=cut,
+                    download_url=urls.zip_entry(root, parts, index, "dl"), back_url=urls.view(root, parts), forced=False))
+            raise PathError("unknown mode")
+        except ziputil.ZipError as e:
+            return PlainTextResponse(str(e).capitalize() + ".", 422)
 
     @guarded("media")
     async def cbz_page(request: Request, user):
@@ -730,6 +835,7 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
         Route("/read/{root}/{path:path}", read),
         Route("/view/{root}/{path:path}", view),
         Route("/raw/{root}/{path:path}", raw),
+        Route("/zip/{root}/{path:path}", zip_entry),
         Route("/cbz/{root}/{path:path}", cbz_page),
         Route("/manifest.webmanifest", manifest),
         Route("/share", share, methods=["POST"]),

@@ -238,7 +238,10 @@ by its type at `/view/{root}/{path}`. Set `show_all_files = false` to go back to
 | images (jpg, png, gif, webp, avif, bmp, ico, svg) | fit to window / to width / actual size (click), the other images of the folder one key press away, next image preloaded |
 | audio (mp3, m4a, aac, ogg, opus, wav, flac), video (mp4, m4v, webm, ogv, mov, mkv) | the browser's own player; the position is saved per user and resumes; Range requests work, so seeking is instant |
 | PDF | pdf.js (vendored under `static/vendor/pdfjs`, nothing from a CDN) draws one page at a time; range requests show page 1 of a big file before it has downloaded; fit width/page, zoom, invert for night reading, page seek bar, swipe/tap/keys; the page is saved per user. Needs `blob:` in the CSP `style-src` (set) |
-| text, code, logs, csv, json, xml, html source, ... | server-rendered, always HTML-escaped; encoding detected (UTF-8/16/32 with BOM, UTF-8, Windows-1252, Latin-1) and named in the footer; text size and wrap; shows the first `text_view_kb` KB (default 1024) with a clear notice and a download link |
+| Markdown (`.md`, `.markdown`) | rendered as a page: headings, lists, task lists, tables, code blocks, quotes, links; images and links to other files in the same library work. **Raw HTML in the file is shown as text, never run**; links may only go to http(s), mailto or the library; remote images are not loaded. A **Source** button shows the file as plain text. Files over 256 KB are shown as text instead. Rendered by the small `mistune` package |
+| CSV / TSV (`.csv`, `.tsv`) | a table: separator guessed (comma, semicolon, tab, bar), sticky header row, zebra rows, numbers right-aligned, **click a header to sort** (numbers sort as numbers, also with decimal commas), a **filter box**, quoted cells with commas and line breaks handled. Shows at most 5000 rows and 100 columns (cut with a notice); anything that is not really a table falls back to text. **Source** shows the raw text |
+| ZIP (`.zip`) | lists what is inside (path, size, date) with **View** for text and image entries and **Download** for any entry; nothing is unpacked to disk. Entries are chosen by their number, never by name. See "Zip files" below |
+| text, code, logs, json, xml, html source, ... | server-rendered, always HTML-escaped; encoding detected (UTF-8/16/32 with BOM, UTF-8, Windows-1252, Latin-1) and named in the footer; text size and wrap; shows the first `text_view_kb` KB (default 1024) with a clear notice and a download link |
 | **anything else** | plainly-text files (a README, an unknown extension) open as text; binary files get an info page (type, size, date) with **Download** and **View as text**, which opens even binary data as text |
 
 Progress (position, page, time) is kept for books, PDFs, audio and video and feeds "Continue reading".
@@ -253,6 +256,12 @@ Listing every file means serving files from the same web address as the login, s
 - SVG is only shown through an `<img>` tag (scripts never run there) and, if opened directly, carries
   `Content-Security-Policy: sandbox`.
 - Text is rendered escaped inside a `<pre>`, so viewing an HTML file shows its source.
+- **Zip files** (`/zip/{root}/{path}?i=N&as=dl|raw|text`): an entry is picked by its number in the archive, so an entry
+  named `../../x` or `C:\x` can never become a path; downloads are always attachments named with a sanitised local name;
+  only images are shown inline (30 MB at most, with the type pluteus states, SVG sandboxed); the text viewer reads at most
+  `text_view_kb` KB of an entry however large it is (a zip bomb costs one limit's worth of work); an entry that claims
+  or turns out to be larger than the limit is refused; encrypted entries are listed but never opened; very large listings
+  show the first 2000 entries. Names are decoded as UTF-8 when the archive did not say.
 - Hidden folders, the `.adult` marker, excludes and per-user roots apply to every route, exactly as before.
 - With `show_all_files`, pluteus **refuses to start** if `data_dir`, `cache_dir`, `themes_dir` or the config file itself sit
   inside a library root (the sessions and password hashes would otherwise be listed and downloadable).

@@ -5,6 +5,7 @@ import time
 from dataclasses import dataclass
 from html import escape
 
+from . import kinds
 from .themes import DEFAULT
 from .urls import Urls
 
@@ -403,6 +404,87 @@ def info_page(ctx: Ctx, title: str, *, rows: list, download_url: str, text_url: 
                 escape(download_url), escape(text_url)))
     return _viewer(ctx, title, back_url, tools=_download_link(download_url) + _reader_scheme(), stage=stage,
                    foot="<span>No viewer for this file type</span>", classes="pl-infoview", stage_class="pl-info-stage")
+
+
+def _source_button(url: str) -> str:
+    return ("<a class='pl-reader-btn' id='source' href='%s' title='Show the file as plain text' "
+            "aria-label='Show the file as plain text'>Source</a>" % escape(url))
+
+
+def _cut_note(shown: int, size: int, truncated: bool, download_url: str) -> str:
+    if not truncated:
+        return ""
+    return (" &middot; <strong>only the first %s of %s is shown</strong> &middot; <a href='%s'>download the whole file</a>"
+            % (_size(shown), _size(size), escape(download_url)))
+
+
+def markdown_page(ctx: Ctx, title: str, *, html: str, size: int, shown: int, truncated: bool, download_url: str,
+                  back_url: str, source_url: str) -> str:
+    """A Markdown file rendered as a page. `html` comes from markdown.render (raw HTML already escaped)."""
+    tools = _download_link(download_url) + _reader_scheme() + _source_button(source_url)
+    stage = "<article class='pl-markdown' id='doc'>%s</article>" % html
+    foot = "<span>Markdown &middot; %s%s</span>" % (_size(size), _cut_note(shown, size, truncated, download_url))
+    return _viewer(ctx, title, back_url, tools=tools, stage=stage, foot=foot, classes="pl-mdview", stage_class="pl-md-stage")
+
+
+def table_page(ctx: Ctx, title: str, *, table, size: int, shown: int, truncated: bool, download_url: str, back_url: str,
+               source_url: str) -> str:
+    """A CSV/TSV file as a table (see tabular.parse). The header row sticks; clicking a header sorts; a box filters rows."""
+    head, body = table.rows[0], table.rows[1:]
+    ths = "".join("<th scope='col' data-col='%d'%s>%s</th>" % (i, " data-num='1'" if table.numeric[i] else "", escape(h))
+                  for i, h in enumerate(head))
+    trs = "".join("<tr>%s</tr>" % "".join("<td%s>%s</td>" % (" class='pl-num'" if table.numeric[i] else "", escape(c))
+                                          for i, c in enumerate(row)) for row in body)
+    notes = []
+    if table.rows_cut:
+        notes.append("only the first %d rows are shown" % len(table.rows))
+    if table.cols_cut:
+        notes.append("only the first %d columns are shown" % len(head))
+    if table.cells_cut:
+        notes.append("%d very long cell%s shortened" % (table.cells_cut, "" if table.cells_cut == 1 else "s"))
+    sep = {"\t": "tab", ",": "comma", ";": "semicolon", "|": "bar"}.get(table.delimiter, table.delimiter)
+    tools = ("<input class='pl-table-filter' id='filter' type='search' placeholder='Filter rows' aria-label='Filter rows'>" +
+             _download_link(download_url) + _reader_scheme() + _source_button(source_url))
+    stage = ("<div class='pl-table-wrap'><table class='pl-table' id='table'><thead><tr>%s</tr></thead><tbody>%s</tbody></table></div>"
+             % (ths, trs))
+    foot = ("<span id='count'>%d rows &times; %d columns &middot; %s separated &middot; %s%s%s</span>"
+            % (len(body), len(head), sep, _size(size), " &middot; " + escape("; ".join(notes)) if notes else "",
+               _cut_note(shown, size, truncated, download_url)))
+    return _viewer(ctx, title, back_url, tools=tools, stage=stage, foot=foot, classes="pl-tableview",
+                   stage_class="pl-table-stage", scripts=(ctx.urls.static("viewer-table.js"),))
+
+
+def zip_page(ctx: Ctx, title: str, *, root: str, parts: tuple, entries: list, total: int, comment: str, size: int,
+             download_url: str, back_url: str) -> str:
+    """The contents of a zip file: every entry with its size, and View / Download where they are possible."""
+    urls = ctx.urls
+    rows = []
+    for e in entries:
+        name = escape(e["name"])
+        if e["is_dir"]:
+            rows.append("<tr class='pl-zip-dir'><td colspan='3'>&#128193; %s</td><td></td></tr>" % name)
+            continue
+        if e["encrypted"]:
+            action = "<span class='pl-muted'>password protected</span>"
+        else:
+            kind = kinds.kind_of(e["name"])
+            view = ""
+            if kind == "image":
+                view = "<a href='%s'>View</a> &middot; " % escape(urls.zip_entry(root, parts, e["index"], "raw"))
+            elif kind in ("text", "markdown", "table"):
+                view = "<a href='%s'>View</a> &middot; " % escape(urls.zip_entry(root, parts, e["index"], "text"))
+            action = "%s<a href='%s'>Download</a>" % (view, escape(urls.zip_entry(root, parts, e["index"], "dl")))
+        rows.append("<tr><td class='pl-zip-name'>%s</td><td class='pl-num'>%s</td><td>%s</td><td class='pl-zip-actions'>%s</td></tr>"
+                    % (name, _size(e["size"]), escape(e["date"]), action))
+    cut = ("<p class='pl-muted'>Only the first %d of %d entries are listed.</p>" % (len(entries), total)
+           if total > len(entries) else "")
+    note = "<p class='pl-muted'>%s</p>" % escape(comment) if comment else ""
+    stage = ("<div class='pl-zip-wrap'>%s%s<table class='pl-zip'><thead><tr><th>Name</th><th class='pl-num'>Size</th>"
+             "<th>Modified</th><th></th></tr></thead><tbody>%s</tbody></table>%s</div>" % (note, "", "".join(rows), cut))
+    tools = _download_link(download_url) + _reader_scheme()
+    foot = "<span>Zip file &middot; %s &middot; %d entr%s</span>" % (_size(size), total, "y" if total == 1 else "ies")
+    return _viewer(ctx, title, back_url, tools=tools, stage=stage, foot=foot, classes="pl-zipview",
+                   stage_class="pl-zip-stage")
 
 
 def settings_page(ctx: Ctx, themes: list, saved: bool = False) -> str:

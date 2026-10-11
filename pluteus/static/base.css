@@ -251,3 +251,34 @@ a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible
 .pl-actions { display: inline-flex; gap: 6px; margin-left: 10px; }
 .pl-actions form { display: inline; margin: 0; }
 .pl-btn-small { padding: 2px 8px; font-size: 0.85em; }
+
+/* Markdown, CSV tables and zip listings (file viewers) */
+.pl-md-stage, .pl-table-stage, .pl-zip-stage { overflow: auto; }
+.pl-markdown { max-width: 52rem; margin: 0 auto; padding: 18px 16px 48px; line-height: 1.6; overflow-wrap: anywhere; }
+.pl-markdown h1, .pl-markdown h2 { border-bottom: 1px solid var(--pl-line); padding-bottom: .25em; }
+.pl-markdown pre { overflow: auto; padding: 12px; border: 1px solid var(--pl-line); border-radius: 6px; }
+.pl-markdown code { font-family: Consolas, "Courier New", monospace; font-size: .92em; }
+.pl-markdown :not(pre) > code { padding: .1em .35em; border: 1px solid var(--pl-line); border-radius: 4px; }
+.pl-markdown blockquote { margin-left: 0; padding-left: 14px; border-left: 3px solid var(--pl-line); opacity: .85; }
+.pl-markdown img { max-width: 100%; height: auto; }
+.pl-markdown table { border-collapse: collapse; display: block; overflow-x: auto; }
+.pl-markdown th, .pl-markdown td { border: 1px solid var(--pl-line); padding: 4px 10px; }
+.pl-md-noimage { opacity: .7; font-style: italic; }
+.pl-table-wrap { overflow: auto; height: 100%; }
+.pl-table { border-collapse: collapse; width: max-content; min-width: 100%; font-size: .95em; }
+.pl-table th, .pl-table td { padding: 5px 12px; border-bottom: 1px solid var(--pl-line); text-align: left; max-width: 40ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pl-table td:hover { white-space: normal; overflow-wrap: anywhere; }
+.pl-table thead th { position: sticky; top: 0; z-index: 1; cursor: pointer; user-select: none; background: var(--pl-bg, Canvas); border-bottom: 2px solid var(--pl-accent, currentColor); }
+.pl-table tbody tr:nth-child(even) { background: color-mix(in srgb, currentColor 5%, transparent); }
+.pl-table tbody tr:hover { background: color-mix(in srgb, var(--pl-accent, currentColor) 14%, transparent); }
+.pl-table .pl-num, .pl-table th[data-num] { text-align: right; font-variant-numeric: tabular-nums; }
+.pl-sorted-asc::after { content: " \25B2"; font-size: .75em; }
+.pl-sorted-desc::after { content: " \25BC"; font-size: .75em; }
+.pl-table-filter { max-width: 14rem; margin-right: 8px; }
+.pl-zip-wrap { max-width: 60rem; margin: 0 auto; padding: 14px 16px 48px; }
+.pl-zip { border-collapse: collapse; width: 100%; }
+.pl-zip th, .pl-zip td { padding: 5px 10px; border-bottom: 1px solid var(--pl-line); text-align: left; }
+.pl-zip .pl-num { text-align: right; white-space: nowrap; }
+.pl-zip-name { overflow-wrap: anywhere; }
+.pl-zip-actions { white-space: nowrap; }
+.pl-zip-dir td { font-weight: 600; }

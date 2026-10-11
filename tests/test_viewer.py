@@ -335,7 +335,7 @@ def test_state_and_config_may_not_live_inside_a_library(tmp_path):
 
 
 # ---- scripts ---------------------------------------------------------------------------------------------------------------------------
-@pytest.mark.parametrize("name", ["viewer-image.js", "viewer-text.js", "viewer-media.js"])
+@pytest.mark.parametrize("name", ["viewer-image.js", "viewer-text.js", "viewer-media.js", "viewer-table.js"])
 def test_viewer_scripts_are_served_and_parse(signed_in, name):
     client, _ = signed_in
     assert client.get("/static/" + name).status_code == 200
