@@ -1,0 +1,17 @@
+.venv
+.git
+.githooks
+.gitignore
+.gitattributes
+.pytest_cache
+__pycache__
+*.pyc
+*.egg-info
+build
+dist
+tests
+tools
+config.toml
+docker-compose*.yml
+Dockerfile
+README.md

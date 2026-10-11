@@ -177,11 +177,17 @@ def read_config_text(path: str) -> str:
 
 
 def _save(path: str, text: str) -> None:
-    shutil.copy2(path, path + ".bak")
+    # copyfile, not copy2: the backup needs the content only, and copying timestamps fails (EPERM) for a
+    # non-root user on some bind mounts (found with Docker Desktop on Windows).
+    shutil.copyfile(path, path + ".bak")
     fd, tmp = tempfile.mkstemp(dir=os.path.dirname(os.path.abspath(path)), prefix=".config-", suffix=".tmp")
     try:
         with os.fdopen(fd, "w", encoding="utf-8", newline="") as f:
             f.write(text)
+        try:
+            shutil.copymode(path, tmp)      # mkstemp makes the file owner-only; keep the original's permissions
+        except OSError:
+            pass
         os.replace(tmp, path)
     except BaseException:
         if os.path.exists(tmp):

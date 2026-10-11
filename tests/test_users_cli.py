@@ -136,6 +136,25 @@ def test_a_backup_of_the_previous_file_is_kept(conf):
     assert open(conf + ".bak", encoding="utf-8", newline="").read() == SAMPLE
 
 
+def test_saving_works_where_timestamps_cannot_be_copied(conf, monkeypatch):
+    # Docker Desktop on Windows: a non-root user may create files on a bind mount but not set their timestamps.
+    def refuse(*args, **kwargs):
+        raise PermissionError(1, "Operation not permitted")
+    monkeypatch.setattr("shutil.copystat", refuse)
+    monkeypatch.setattr("os.utime", refuse)
+    useredit.add_user(conf, "dave", "scrypt$1$2$3$4$5")
+    assert "dave" in users(conf) and open(conf + ".bak", encoding="utf-8", newline="").read() == SAMPLE
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX file modes")
+def test_the_edited_file_keeps_its_permissions(conf):
+    import os
+    import stat
+    os.chmod(conf, 0o644)
+    useredit.add_user(conf, "dave", "scrypt$1$2$3$4$5")
+    assert stat.S_IMODE(os.stat(conf).st_mode) == 0o644                    # not the owner-only 0600 of a temp file
+
+
 def test_windows_line_endings_are_preserved(tmp_path):
     p = tmp_path / "config.toml"
     p.write_text(SAMPLE.replace("\n", "\r\n"), encoding="utf-8", newline="")

@@ -72,6 +72,27 @@ typed under `[[roots]]` or `[[users]]` is refused with an error instead of being
 
 Apps that drop URL credentials and have no login fields can use `anonymous_user` (LAN only, restricted user).
 
+## Docker
+
+`Dockerfile` + `docker-compose.example.yml` were built and run on Docker Desktop (Windows, 2026-10-11) with a small
+sample library. Checked and passing: the image builds (191 MB, about 20 s); it runs as an unprivileged user
+(uid 10001); healthcheck turns healthy; login, OPDS, EPUB metadata, downloads with Range, the reader page and the
+progress API all answer through the published port; every packaged CSS, script, icon and theme file is inside the
+image; sessions and reading progress survive `docker restart`; users added from the host or from inside the
+container (`docker exec ... python -m pluteus user add ...`) reach the running server within seconds. Idle use
+is about 77 MB of memory.
+
+Setup notes:
+
+- In `config.toml` set `host = "0.0.0.0"` and `data_dir = "/data"`, and use the container paths of the mounts.
+- `/data` (state, metadata cache, backups) needs a volume, or sessions and progress are lost on recreate. A named
+  volume is the safe default. A Windows folder mounted there also worked in a light test (20 writes, restart,
+  integrity check ok), but that was not stress-tested.
+- Mount the config **folder** (`./config:/config`), not the single file: replacing a file can leave a single-file
+  mount pointing at the old one on Linux hosts (known Docker behaviour; not seen on Docker Desktop for Windows).
+- **Not tested:** speed on real libraries. Docker Desktop on Windows reaches Windows drives through a slower layer;
+  benchmark on the machine that owns the disks before choosing Docker over running natively.
+
 ## EPUB metadata
 
 EPUB is the main use, so OPDS entries and web pages show what is inside each book: title, authors,
@@ -131,7 +152,7 @@ In priority order (search is only a nice-to-have, decided 2026-10-08):
    hot-reloading themes), CBZ page streaming (OPDS-PSE), reading progress per user (this is where the
    crash-safe SQLite store first appears).
 3. **Phase 3**: per-user upload/download areas, quotas, WebDAV (wsgidav).
-4. Docker image: the `Dockerfile` and compose file are written but **untested**; benchmark native vs Docker on the server first.
+4. Docker: tested (see "Docker" below). Still to do: benchmark native vs Docker on the server's own disks.
 5. No rate limiting on failed logins yet.
 6. **Nice to have**: filename search (background crawler, SQLite FTS5 cache keyed on path+size+mtime),
    OpenSearch link in feeds, epub/cbz metadata in feeds.

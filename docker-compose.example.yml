@@ -1,14 +1,26 @@
-# UNTESTED example. In config.toml use host = "0.0.0.0" and the container paths below.
-# On Windows, bind-mounting a Windows drive into Docker Desktop goes through the WSL2
-# file-sharing layer, which is slow for folder walks: benchmark before choosing Docker
-# over running pluteus natively (see README).
+# Example. In config.toml set host = "0.0.0.0", data_dir = "/data" and use the container paths below.
+#
+# Tested on Docker Desktop (Windows): builds, starts healthy, serves, keeps state across restarts (see README).
+#
+# Mount the config FOLDER, not the single file: `pluteus user ...` saves by replacing the file, and on Linux hosts
+# Docker can keep a single-file mount pointing at the old one (not seen on Docker Desktop for Windows).
+# Mount it read-write if you manage users from inside the container (docker compose exec pluteus ...);
+# read-only is fine if you only edit the file on the host.
+#
+# On Windows, bind-mounting a Windows drive into Docker Desktop goes through the WSL2 file-sharing layer, which is
+# slow for folder walks: benchmark before choosing Docker over running pluteus natively (see README). A named
+# volume for /data (below) is the safe default.
 services:
   pluteus:
     build: .
     ports:
       - "8080:8080"
     volumes:
-      - ./config.toml:/config/config.toml:ro
+      - ./config:/config
+      - pluteus-data:/data
       - /path/to/books:/library/books:ro
       - /path/to/comics:/library/comics:ro
     restart: unless-stopped
+
+volumes:
+  pluteus-data:
