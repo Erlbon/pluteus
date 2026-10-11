@@ -13,6 +13,7 @@ import os
 import time
 
 DEFAULT_N, DEFAULT_R, DEFAULT_P = 2 ** 14, 8, 1
+MIN_PASSWORD = 8             # shortest password the tools (command line and admin app) accept
 BAD_SECONDS = 300          # how long an identical failed Authorization header is refused without re-checking
 
 

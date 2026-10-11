@@ -32,9 +32,22 @@ an OPDS reader (KOReader, Panels, Moon+ Reader, Librera...). Reader apps log in 
 get a login page and a session cookie.
 Put it behind HTTPS (a reverse proxy such as Caddy) before exposing it beyond your LAN.
 
-## Users (command line)
+## Admin app (a window) and users (command line)
 
-No admin web page is needed for a household: manage users with the CLI, which edits `config.toml` in
+**`python -m pluteus admin`** (or the `pluteus-admin` executable, see below) opens a small window, standard library only:
+
+- **Users:** add a user, change a password, choose which folders a user may open, adult access and the personal upload
+  folder, remove a user. Passwords are typed twice and hashed on the spot.
+- **Config file:** the whole `config.toml` as text, with **Check** (is it valid?), **Save** (validated first, the old file
+  is kept as `config.toml.bak`) and a warning if the file changed on disk since you opened it.
+- It edits the **file**, not the running server, so nothing extra is exposed to the network or the internet. Point it at
+  the server's config through a network drive (for the Docker setup: `...\pluteus\config\config.toml`); it remembers the
+  last file. A running server picks up user changes within seconds; other settings need `docker compose restart pluteus`.
+
+Build the executable (Windows, needs PyInstaller in a scratch environment): `tools\build-admin-exe.ps1` makes
+`pluteus-admin.exe`, a single file you can copy anywhere; it needs no Python installed.
+
+The same user commands are available without a window, which edits `config.toml` in
 place (your comments are kept, the old file is saved as `config.toml.bak`, and an edit that would make
 the config invalid is refused before anything is written).
 
@@ -43,7 +56,7 @@ python -m pluteus user list   --config config.toml
 python -m pluteus user add    erlend --config config.toml --adult              # asks for a password (min 8 chars)
 python -m pluteus user add    guest  --config config.toml --roots books
 python -m pluteus user set    guest  --config config.toml --roots books,comics   # or --all-roots
-python -m pluteus user set    erlend --config config.toml --password / --adult / --no-adult
+python -m pluteus user set    erlend --config config.toml --password / --adult / --no-adult / --upload / --no-upload
 python -m pluteus user remove guest  --config config.toml                      # asks to confirm (or --yes)
 ```
 

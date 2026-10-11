@@ -1,4 +1,4 @@
-"""Command line: serve, check-config, hash-password, user list/add/set/remove."""
+"""Command line: serve, check-config, hash-password, user list/add/set/remove, admin (window)."""
 from __future__ import annotations
 
 import argparse
@@ -7,10 +7,8 @@ import os
 import sys
 
 from . import __version__, useredit
-from .auth import hash_password
+from .auth import MIN_PASSWORD, hash_password
 from .config import ConfigError, load_config
-
-MIN_PASSWORD = 8
 
 
 def _read_password(from_stdin: bool, who: str) -> str:
@@ -32,18 +30,20 @@ def _split_roots(value: str) -> list:
 def _user_command(a) -> int:
     if a.user_cmd == "list":
         cfg = load_config(a.config, check_roots=False)
-        print("%-20s %-8s %s" % ("user", "adult", "roots"))
+        print("%-20s %-8s %-8s %s" % ("user", "adult", "upload", "roots"))
         for u in cfg.users.values():
-            print("%-20s %-8s %s" % (u.name, "yes" if u.adult else "no", ", ".join(u.roots) or "(all)"))
+            print("%-20s %-8s %-8s %s" % (u.name, "yes" if u.adult else "no", "yes" if u.upload else "no",
+                                          ", ".join(u.roots) or "(all)"))
         return 0
     if a.user_cmd == "add":
         pw = _read_password(a.password_stdin, a.name)
-        useredit.add_user(a.config, a.name, hash_password(pw), _split_roots(a.roots or ""), a.adult)
+        useredit.add_user(a.config, a.name, hash_password(pw), _split_roots(a.roots or ""), a.adult, not a.no_upload)
         print("Added user %s." % a.name)
     elif a.user_cmd == "set":
         if not (a.password or a.password_stdin or a.roots is not None or a.all_roots
-                or a.adult or a.no_adult):
-            raise useredit.EditError("nothing to change: give --password, --roots, --all-roots, --adult or --no-adult")
+                or a.adult or a.no_adult or a.upload or a.no_upload):
+            raise useredit.EditError("nothing to change: give --password, --roots, --all-roots, --adult, --no-adult, "
+                                     "--upload or --no-upload")
         pw_hash = hash_password(_read_password(a.password_stdin, a.name)) if (a.password or a.password_stdin) else None
         roots = useredit.UNSET
         if a.all_roots:
@@ -51,7 +51,8 @@ def _user_command(a) -> int:
         elif a.roots is not None:
             roots = _split_roots(a.roots)
         useredit.set_user(a.config, a.name, password_hash=pw_hash, roots=roots,
-                          adult=True if a.adult else (False if a.no_adult else None))
+                          adult=True if a.adult else (False if a.no_adult else None),
+                          upload=True if a.upload else (False if a.no_upload else None))
         print("Updated user %s." % a.name)
     elif a.user_cmd == "remove":
         if not a.yes and input("Remove user %s? [y/N] " % a.name).strip().lower() != "y":
@@ -72,6 +73,8 @@ def main(argv=None) -> int:
     check = sub.add_parser("check-config", help="validate a config file and exit")
     check.add_argument("--config", required=True)
     sub.add_parser("hash-password", help="print a password hash (for editing config.toml by hand)")
+    admin = sub.add_parser("admin", help="open the admin window (users and config file)")
+    admin.add_argument("--config", help="path to config.toml (default: the one used last time)")
 
     user = sub.add_parser("user", help="manage users in config.toml")
     usub = user.add_subparsers(dest="user_cmd", required=True)
@@ -87,13 +90,19 @@ def main(argv=None) -> int:
         p.add_argument("--password-stdin", action="store_true", help="read the password from stdin (scripts)")
         p.add_argument("--roots", help="comma-separated roots this user may use (default: all)")
     u_add.add_argument("--adult", action="store_true", help="may see folders carrying the adult marker")
+    u_add.add_argument("--no-upload", action="store_true", help="no personal upload folder for this user")
     u_set.add_argument("--password", action="store_true", help="prompt for a new password")
     u_set.add_argument("--all-roots", action="store_true", help="allow every root again")
     u_set.add_argument("--adult", action="store_true")
     u_set.add_argument("--no-adult", action="store_true")
+    u_set.add_argument("--upload", action="store_true", help="give the user a personal upload folder (the default)")
+    u_set.add_argument("--no-upload", action="store_true", help="no personal upload folder for this user")
     u_rm.add_argument("--yes", action="store_true", help="do not ask for confirmation")
     a = ap.parse_args(argv)
 
+    if a.cmd == "admin":
+        from .admin_gui import main as admin_main
+        return admin_main(["--config", a.config] if a.config else [])
     if a.cmd == "hash-password":
         try:
             print(hash_password(_read_password(False, "the new hash")))
