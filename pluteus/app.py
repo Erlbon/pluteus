@@ -38,9 +38,11 @@ from .themes import DEFAULT, Themes
 from .urls import Urls, with_page
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
-STATIC_ALLOWED = {".css", ".js", ".svg", ".png", ".ico", ".woff2", ".webmanifest"}
+STATIC_ALLOWED = {".css", ".js", ".mjs", ".svg", ".png", ".ico", ".woff2", ".webmanifest", ".pfb", ".ttf"}
+# Browsers refuse an ES module that is not served as JavaScript, and mimetypes does not know .mjs everywhere.
+STATIC_TYPES = {".mjs": "text/javascript", ".pfb": "application/octet-stream"}
 SAFE_METHODS = {"GET", "HEAD", "OPTIONS"}
-CSP = ("default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; "
+CSP = ("default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' blob:; img-src 'self' data: blob:; "
        "font-src 'self' data: blob:; connect-src 'self'; frame-src 'self' blob:; object-src 'none'; "
        "base-uri 'self'; form-action 'self'; frame-ancestors 'self'")
 NO_CACHE = {"Cache-Control": "no-cache"}
@@ -232,7 +234,7 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
         sent = {t.strip().removeprefix("W/") for t in request.headers.get("if-none-match", "").split(",")}
         if etag in sent:
             return Response(status_code=304, headers={"ETag": etag, **NO_CACHE})
-        return FileResponse(path, headers={"ETag": etag, **NO_CACHE})
+        return FileResponse(path, media_type=STATIC_TYPES.get(path.suffix.lower()), headers={"ETag": etag, **NO_CACHE})
 
     async def static(request: Request):
         path = _file(STATIC_DIR, request.path_params["path"])
@@ -397,6 +399,9 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
                 ctx, info.name, kind=kind, raw_url=urls.raw(root, parts), mime=kinds.INLINE_MIME[kinds.extension(info.name)],
                 download_url=download, back_url=back, progress_url=urls.api("progress", root, parts),
                 prev_url=prev_url, next_url=next_url, position=position, total=total)
+        if not as_text and kind == "pdf":
+            return web.pdf_viewer_page(ctx, info.name, raw_url=urls.raw(root, parts), download_url=download, back_url=back,
+                                       progress_url=urls.api("progress", root, parts))
         # text: known text types, anything that looks like text, or whatever the user asked to see as text
         page = text_page(user, root, parts, info, as_text) if (as_text or kind in ("text", "other")) else None
         if page is not None:

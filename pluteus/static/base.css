@@ -211,6 +211,12 @@ a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible
 .pl-fit-orig .pl-page { max-width: none; max-height: none; margin: 0; }          /* image viewer: actual size */
 .pl-image .pl-page { cursor: zoom-in; } .pl-image.pl-actual .pl-page { cursor: zoom-out; }
 
+/* PDF viewer: one canvas; pages are white, so "Invert" offers a dark reading mode */
+.pl-pdf-stage { display: flex; flex-direction: column; overflow: auto; background: var(--pl-reader-stage-bg); }
+.pl-pdf-canvas { display: block; margin: 12px auto; flex: none; background: #fff; box-shadow: 0 2px 14px rgba(0, 0, 0, .35); }
+.pl-pdf.pl-inverted .pl-pdf-canvas { filter: invert(1) hue-rotate(180deg); }
+.pl-pdf-stage .pl-tap { width: 12%; }
+
 /* file viewers: text, audio/video, and the page for files with no viewer */
 .pl-text {
   margin: 0; padding: 16px 20px; height: 100%; overflow: auto; white-space: pre; tab-size: 4;

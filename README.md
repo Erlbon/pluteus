@@ -228,6 +228,7 @@ by its type at `/view/{root}/{path}`. Set `show_all_files = false` to go back to
 | EPUB, CBZ | the book readers (above) |
 | images (jpg, png, gif, webp, avif, bmp, ico, svg) | fit to window / to width / actual size (click), the other images of the folder one key press away, next image preloaded |
 | audio (mp3, m4a, aac, ogg, opus, wav, flac), video (mp4, m4v, webm, ogv, mov, mkv) | the browser's own player; the position is saved per user and resumes; Range requests work, so seeking is instant |
+| PDF | pdf.js (vendored under `static/vendor/pdfjs`, nothing from a CDN) draws one page at a time; range requests show page 1 of a big file before it has downloaded; fit width/page, zoom, invert for night reading, page seek bar, swipe/tap/keys; the page is saved per user. Needs `blob:` in the CSP `style-src` (set) |
 | text, code, logs, csv, json, xml, html source, ... | server-rendered, always HTML-escaped; encoding detected (UTF-8/16/32 with BOM, UTF-8, Windows-1252, Latin-1) and named in the footer; text size and wrap; shows the first `text_view_kb` KB (default 1024) with a clear notice and a download link |
 | **anything else** | plainly-text files (a README, an unknown extension) open as text; binary files get an info page (type, size, date) with **Download** and **View as text**, which opens even binary data as text |
 

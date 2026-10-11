@@ -342,3 +342,31 @@ def test_viewer_scripts_are_served_and_parse(signed_in, name):
     if shutil.which("node"):
         done = subprocess.run(["node", "--check", str(STATIC / name)], capture_output=True, text=True)
         assert done.returncode == 0, done.stderr
+
+
+# ---- PDF viewer ------------------------------------------------------------------------------------------------------------------------
+def test_pdf_page_loads_the_module_viewer_and_stays_inside_our_origin(signed_in):
+    client, _ = signed_in
+    r = client.get("/view/books/" + d("doc.pdf"), headers=HTML)
+    assert r.status_code == 200
+    assert "viewer-pdf.mjs" in r.text and "type='module'" in r.text
+    assert "http://" not in r.text.replace("http://testserver", "") and "cdn" not in r.text.lower()
+    csp = r.headers["content-security-policy"]
+    assert "script-src 'self'" in csp and "blob:" in csp.split("style-src")[1].split(";")[0]
+
+
+def test_pdf_assets_are_served_with_usable_types(signed_in):
+    client, _ = signed_in
+    mjs = client.get("/static/viewer-pdf.mjs")
+    assert mjs.status_code == 200 and mjs.headers["content-type"].startswith("text/javascript")
+    for name in ("pdf.min.mjs", "pdf.worker.min.mjs"):
+        r = client.get("/static/vendor/pdfjs/" + name)
+        assert r.status_code == 200 and r.headers["content-type"].startswith("text/javascript")
+    fonts = sorted((STATIC / "vendor" / "pdfjs" / "standard_fonts").iterdir())
+    assert fonts and client.get("/static/vendor/pdfjs/standard_fonts/" + fonts[0].name).status_code == 200
+
+
+def test_pdf_viewer_script_parses():
+    if shutil.which("node"):
+        done = subprocess.run(["node", "--check", str(STATIC / "viewer-pdf.mjs")], capture_output=True, text=True)
+        assert done.returncode == 0, done.stderr

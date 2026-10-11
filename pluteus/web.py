@@ -298,6 +298,23 @@ def media_viewer_page(ctx: Ctx, title: str, *, kind: str, raw_url: str, mime: st
                    scripts=(ctx.urls.static("viewer-media.js"),))
 
 
+def pdf_viewer_page(ctx: Ctx, title: str, *, raw_url: str, download_url: str, back_url: str, progress_url: str) -> str:
+    """The PDF viewer shell; viewer-pdf.mjs renders pages with pdf.js (vendored), one page at a time."""
+    stage = ("<canvas id='canvas' class='pl-pdf-canvas'></canvas>"
+             "<div class='pl-tap pl-tap-left' id='tap-prev'></div><div class='pl-tap pl-tap-right' id='tap-next'></div>"
+             "<div class='pl-toast' id='status'>Loading&hellip;</div>")
+    foot = ("%s<div class='pl-progress' id='seek' title='Jump to a page'><i id='bar'></i></div><span id='pct'>&ndash;</span>%s"
+            % (_icon_button("prev", "prev", "Previous page"), _icon_button("next", "next", "Next page")))
+    tools = (_download_link(download_url) + _reader_scheme() +
+             _icon_button("minus-btn", "minus", "Zoom out") + _icon_button("plus-btn", "plus", "Zoom in") +
+             _icon_button("fit-btn", "fit", "Fit to width / fit to page") +
+             "<button class='pl-reader-btn' id='invert-btn' type='button' title='Invert colours (dark pages)' "
+             "aria-label='Invert colours'>Invert</button>" + _icon_button("fs-btn", "fullscreen", "Full screen"))
+    return _viewer(ctx, title, back_url, tools=tools, stage=stage, foot=foot, classes="pl-pdf",
+                   stage_class="pl-pdf-stage", data=(("src", raw_url), ("progress", progress_url), ("download", download_url)),
+                   module_scripts=(ctx.urls.static("viewer-pdf.mjs"),))
+
+
 def info_page(ctx: Ctx, title: str, *, rows: list, download_url: str, text_url: str, back_url: str, note: str = "") -> str:
     table = "".join("<tr><th>%s</th><td>%s</td></tr>" % (escape(k), escape(v)) for k, v in rows)
     stage = ("<div class='pl-info pl-card'><h1>%s</h1><table class='pl-info-table'>%s</table>%s"
