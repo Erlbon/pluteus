@@ -265,6 +265,7 @@ files, with a progress bar), **create folders**, **rename** and **delete** (a fo
   Caddy or similar) and has **not been tried on a phone yet**. The server side is tested; browsers differ on what they send
   with a share (no `Origin`), so the share route accepts a request the browser itself started (`Sec-Fetch-Site: none`).
 - Needs the small `python-multipart` package (installed with pluteus).
+- **Caddy snippet, pluteus settings and the step-by-step phone test:** [docs/https-and-phone-test.md](docs/https-and-phone-test.md).
 
 | URL | What |
 |---|---|

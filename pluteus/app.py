@@ -9,6 +9,7 @@ from __future__ import annotations
 import functools
 import hashlib
 import json
+import logging
 import os
 import re
 import time
@@ -38,6 +39,7 @@ from .state import StateDB
 from .themes import DEFAULT, Themes
 from .urls import Urls, with_page
 
+log = logging.getLogger("pluteus")
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 STATIC_ALLOWED = {".css", ".js", ".mjs", ".svg", ".png", ".ico", ".woff2", ".webmanifest", ".pfb", ".ttf", ".wasm"}
 # Browsers refuse an ES module that is not served as JavaScript, and WebAssembly only compiles when it is served as
@@ -249,6 +251,9 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
                     return unauthorized(request, mode, wait)
                 if not csrf_ok(request) and not (
                         from_browser_navigation and request.headers.get("sec-fetch-site") in ("same-origin", "none")):
+                    log.warning("refused %s %s as cross-site: origin=%r host=%r sec-fetch-site=%r", request.method,
+                                request.url.path, request.headers.get("origin"), request.headers.get("host"),
+                                request.headers.get("sec-fetch-site"))
                     return PlainTextResponse("Cross-site request refused", 403)
                 try:
                     return await fn(request, user)

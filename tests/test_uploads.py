@@ -343,3 +343,13 @@ def test_limits_are_range_checked(library):
     for key, value in (("upload_max_mb", 0), ("upload_quota_mb", -1)):
         with pytest.raises(ConfigError, match=key):
             parse_config(conf(library, **{key: value}))
+
+
+def test_a_refused_cross_site_request_is_logged_with_the_deciding_headers_only(up, caplog):
+    import logging
+    client, _, _ = up
+    with caplog.at_level(logging.WARNING, logger="pluteus"):
+        client.post("/share", files=[("files", ("a.txt", b"x", "text/plain"))], headers={"sec-fetch-site": "cross-site"})
+    line = " ".join(r.getMessage() for r in caplog.records)
+    assert "refused POST /share" in line and "sec-fetch-site='cross-site'" in line
+    assert "pluteus_session" not in line and "pw-alice" not in line
