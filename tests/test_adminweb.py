@@ -301,3 +301,14 @@ def test_library_lights_are_green_yellow_or_red():
     assert "pl-dot-warn" in _root_light(dict(good, free=20)) and "low disk" in _root_light(dict(good, free=20))
     assert "pl-dot-bad" in _root_light(dict(good, ok=False))
     assert "pl-dot-ok" in _root_light({"ok": True, "free": None, "total": None})      # unknown disk size is not a warning
+
+
+def test_status_names_the_users_sessions_devices_and_locked_names(admin):
+    client, app, _ = admin
+    for i in range(5):
+        app.state.limiter.failure("mallory", "", now=time.time())
+    html = client.get("/", headers=BOSS).text
+    row = html[html.index("Locked names"):]
+    assert "mallory" in row[:row.index("</tr>")]
+    users = html[html.index("<td>Users</td>"):]
+    assert "alice" in users[:users.index("</tr>")]

@@ -146,12 +146,18 @@ def create_admin_app(main_app) -> Starlette:
             size = os.path.getsize(state.path) if state.persistent else 0
         except OSError:
             newest, size = None, 0
+        sessions = state.session_counts()
+        devices = state.list_devices()
+        locked = [r["name"] for r in limiter.snapshot() if r["locked_for"]]
         return {
             "version": __version__, "python": platform.python_version(), "uptime": time.time() - st.started,
             "roots": roots, "uploads": up,
             "state": {"persistent": state.persistent, "path": state.path, "size": size, "backups": len(names), "newest_backup": newest},
-            "counts": {"users": len(auth.users), "sessions": sum(state.session_counts().values()),
-                       "devices": len(state.list_devices()), "locked": sum(1 for r in limiter.snapshot() if r["locked_for"])}}
+            "counts": {"users": len(auth.users), "sessions": sum(sessions.values()),
+                       "devices": len(devices), "locked": len(locked)},
+            "names": {"users": sorted(auth.users), "sessions": dict(sessions),
+                      "devices": {n: sum(1 for d in devices if d["username"] == n) for n in sorted({d["username"] for d in devices})},
+                      "locked": sorted(locked)}}
 
     @guarded
     async def status(request, user):

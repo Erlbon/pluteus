@@ -103,10 +103,17 @@ def _root_light(r: dict) -> str:
 
 
 def status_page(ctx: Ctx, d: dict) -> str:
-    facts = _table(["", ""], [["Version", escape(d["version"])], ["Python", escape(d["python"])],
-                              ["Running for", escape(duration(d["uptime"]))],
-                              ["Users", str(d["counts"]["users"])], ["Active sessions", str(d["counts"]["sessions"])],
-                              ["Known devices", str(d["counts"]["devices"])], ["Locked names", str(d["counts"]["locked"])]], "")
+    n = d.get("names", {})
+
+    def counted(counts: dict) -> str:
+        return escape(", ".join("%s (%d)" % (name, c) if c > 1 else name for name, c in sorted(counts.items())))
+
+    facts = _table(["", "", ""], [["Version", escape(d["version"]), ""], ["Python", escape(d["python"]), ""],
+                                  ["Running for", escape(duration(d["uptime"])), ""],
+                                  ["Users", str(d["counts"]["users"]), escape(", ".join(n.get("users", [])))],
+                                  ["Active sessions", str(d["counts"]["sessions"]), counted(n.get("sessions", {}))],
+                                  ["Known devices", str(d["counts"]["devices"]), counted(n.get("devices", {}))],
+                                  ["Locked names", str(d["counts"]["locked"]), escape(", ".join(n.get("locked", [])))]], "")
     roots = []
     for r in d["roots"]:
         state = _root_light(r)
