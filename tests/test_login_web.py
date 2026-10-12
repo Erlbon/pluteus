@@ -174,7 +174,7 @@ def test_login_sets_a_safe_cookie_and_opens_the_site(web):
     assert cookie.startswith("pluteus_session=") and "HttpOnly" in cookie and "Path=/" in cookie
     assert "SameSite=lax" in cookie and "Max-Age=2592000" in cookie and "Secure" not in cookie
     page = client.get("/", headers=HTML)
-    assert page.status_code == 200 and "Sign out (alice)" in page.text and "comics" in page.text
+    assert page.status_code == 200 and "Sign out" in page.text and "(alice)" in page.text and "comics" in page.text
     assert client.get("/opds").status_code == 200                                    # the cookie also opens OPDS
     assert client.get(BOOK).status_code == 200                                       # ... and downloads
     assert client.get("/login", headers=HTML).status_code == 303                     # already in: skip the form
@@ -301,7 +301,7 @@ def test_the_anonymous_user_does_not_hide_the_login_form(cfg, tmp_path):
     client, _ = make(cfg, tmp_path, anonymous_user="carol")
     assert client.get("/login").status_code == 200
     page = client.get("/", headers=HTML)
-    assert page.status_code == 200 and "Sign out (carol)" in page.text                  # browsing as the guest
+    assert page.status_code == 200 and "Sign out" in page.text and "(carol)" in page.text                  # browsing as the guest
     assert login(client).status_code == 303
 
 

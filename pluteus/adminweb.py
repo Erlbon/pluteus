@@ -48,7 +48,7 @@ def _header(active: str) -> str:
     # The right-hand side is laid out like the main site's bar: contrast button, the link to the other site ("Admin" there,
     # "Pluteus" here), then Sign out.
     other = "<a href='%s'>Pluteus</a>" % escape(site) if site else ""
-    return ("<header class='pl-bar'><span class='pl-brand'>Pluteus Admin</span> <span class='pl-muted'>%s</span>"
+    return ("<header class='pl-bar'><span class='pl-brand'>Pluteus Admin</span> <span class='pl-muted pl-ver'>%s</span>"
             "<nav class='pl-admin-nav'>%s</nav><span class='pl-spacer'></span>%s%s"
             "<form class='pl-inline' method='post' action='/logout'>"
             "<button class='pl-btn' type='submit'>Sign out</button></form></header>"

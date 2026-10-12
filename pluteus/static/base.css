@@ -116,6 +116,11 @@ a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible
 .pl-brand { font-weight: 700; letter-spacing: .02em; color: var(--pl-accent); }
 .pl-spacer { flex: 1; }
 .pl-bar form { margin: 0; }
+.pl-bar .pl-btn, .pl-bar a { white-space: nowrap; }
+@media (max-width: 520px) {            /* a phone: keep the bar on one line */
+  .pl-bar .pl-who, .pl-bar .pl-ver { display: none; }
+  .pl-bar .pl-admin-nav { margin-left: 6px; }
+}
 .pl-main { max-width: 900px; margin: 0 auto; padding: 16px; }
 .pl-main h1 { font-size: 20px; margin: 4px 0; }
 .pl-main h2 { font-size: 16px; margin: 18px 0 4px; }

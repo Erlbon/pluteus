@@ -28,14 +28,17 @@ def layout(title: str, body: str, ctx: Ctx, *, head: str = "", scripts: tuple = 
         css.append("<link rel='stylesheet' href='%s'>" % escape(u.theme(ctx.theme, "theme.css")))
     chrome = ""
     if bar:
-        who = ""
+        who = nav = ""
         if ctx.user:
+            # Laid out like the admin page's bar: brand, version and the page links on the left; contrast button, the link
+            # to the admin page (an administrator on the local network only) and Sign out on the right.
+            nav = "<nav class='pl-admin-nav'><a class='pl-admin-tab' href='%s'>Settings</a></nav>" % escape(u.settings())
             admin = "<a href='%s'>Admin</a>" % escape(ctx.admin_link) if ctx.admin_link else ""
-            who = (admin + "<a href='%s'>Settings</a>"
-                   "<form method='post' action='%s'><button class='pl-btn' type='submit'>Sign out (%s)</button></form>"
-                   % (escape(u.settings()), escape(u.logout()), escape(ctx.user)))
-        chrome = ("<header class='pl-bar'><a class='pl-brand' href='%s'>Pluteus</a><span class='pl-spacer'></span>%s%s</header>"
-                  % (escape(u.home()), scheme_button(), who))
+            who = (admin + "<form method='post' action='%s'><button class='pl-btn' type='submit'>Sign out<span class='pl-who'> (%s)</span></button></form>"
+                   % (escape(u.logout()), escape(ctx.user)))
+        chrome = ("<header class='pl-bar'><a class='pl-brand' href='%s'>Pluteus</a> <span class='pl-muted pl-ver'>%s</span>%s"
+                  "<span class='pl-spacer'></span>%s%s</header>"
+                  % (escape(u.home()), escape(__version__), nav, scheme_button(), who))
     js = "".join("<script src='%s' defer></script>" % escape(s) for s in scripts)
     js += "".join("<script type='module' src='%s'></script>" % escape(s) for s in module_scripts)
     # scheme.js is NOT deferred: it must run before the first paint so a saved dark/light choice never flashes.
