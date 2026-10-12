@@ -112,6 +112,15 @@ class FileInfo:
     mtime: float
 
 
+@dataclass(frozen=True)
+class Marks:
+    """The marker files in one folder. private / hidden are None when the file is absent, else the set of user names
+    (lower-cased) written in it: allowed for .private, still shown in the listing for .hidden."""
+    adult: bool = False
+    private: frozenset | None = None
+    hidden: frozenset | None = None
+
+
 class Library:
     def __init__(self, cfg: Config):
         self.cfg = cfg
@@ -131,21 +140,57 @@ class Library:
         return name.startswith(".") or name.lower() in self.cfg.excludes
 
     # ---- visibility ------------------------------------------------------
-    def _has_marker(self, dirpath: str) -> bool:
+    @staticmethod
+    def _names_in(path: str) -> frozenset:
+        """The user names written in a marker file: one per line or comma separated, '#' starts a comment. An empty
+        file names nobody; a file that cannot be read also names nobody (closed, never open by mistake)."""
+        try:
+            with open(path, "rb") as fh:
+                text = fh.read(65536).decode("utf-8-sig", "replace")
+        except OSError:
+            return frozenset()
+        names = set()
+        for line in text.splitlines():
+            for name in line.split("#", 1)[0].split(","):
+                if name.strip():
+                    names.add(name.strip().casefold())
+        return frozenset(names)
+
+    def _marks(self, dirpath: str) -> Marks:
+        """Which marker files sit in this folder (cached for a minute): three existence checks, and a read only
+        for the markers that exist."""
         now = time.monotonic()
         hit = self._markers.get(dirpath)
         if hit and hit[1] > now:
             return hit[0]
-        found = os.path.exists(os.path.join(dirpath, self.cfg.adult_marker))
+        cfg = self.cfg
+
+        def names(marker: str):
+            path = os.path.join(dirpath, marker)
+            return self._names_in(path) if os.path.exists(path) else None
+
+        marks = Marks(os.path.exists(os.path.join(dirpath, cfg.adult_marker)), names(cfg.private_marker), names(cfg.hidden_marker))
         if len(self._markers) > 20000:
             self._markers.clear()
-        self._markers[dirpath] = (found, now + 60)
-        return found
+        self._markers[dirpath] = (marks, now + 60)
+        return marks
 
-    def _markers_many(self, dirpaths: list) -> list:
+    def _marks_many(self, dirpaths: list) -> list:
         if len(dirpaths) < 8:
-            return [self._has_marker(p) for p in dirpaths]
-        return list(_PROBES.map(self._has_marker, dirpaths))
+            return [self._marks(p) for p in dirpaths]
+        return list(_PROBES.map(self._marks, dirpaths))
+
+    @staticmethod
+    def _closed_to(user: User, marks: Marks) -> bool:
+        """The folder and everything below it is off limits to this user (.adult, .private)."""
+        if marks.adult and not user.adult:
+            return True
+        return marks.private is not None and user.name.casefold() not in marks.private
+
+    @classmethod
+    def _unlisted_for(cls, user: User, marks: Marks) -> bool:
+        """Left out of its parent's listing for this user: closed, or marked .hidden and the user is not named in it."""
+        return cls._closed_to(user, marks) or (marks.hidden is not None and user.name.casefold() not in marks.hidden)
 
     # ---- the personal upload folder: a virtual root called "uploads", different for every user ------------------
     def uploads_enabled(self, user: User) -> bool:
@@ -192,11 +237,11 @@ class Library:
             if self._excluded(seg):
                 raise NotFound(seg)
         path = longpath(root.path)
-        if not user.adult and self._has_marker(path):
+        if self._closed_to(user, self._marks(path)):
             raise NotFound(root_name)
         for seg in parts:
             path = os.path.join(path, seg)
-            if not user.adult and self._has_marker(path):
+            if self._closed_to(user, self._marks(path)):
                 raise NotFound(seg)
         return path
 
@@ -268,11 +313,11 @@ class Library:
             if err.errno in (errno.ENOENT, errno.ENOTDIR):
                 raise NotFound(str(err))
             raise Unavailable(err.errno, str(err))
-        if dirs and not user.adult:
-            # Each subfolder needs a "does .adult exist inside it" probe. Over SMB every probe is a network round
+        if dirs:
+            # Each subfolder needs a "which marker files are inside it" probe. Over SMB every probe is a network round
             # trip, so a folder with hundreds of subfolders is probed in parallel (results are cached for a minute).
-            hidden = self._markers_many([os.path.join(path, d.name) for d in dirs])
-            dirs = [d for d, gone in zip(dirs, hidden) if not gone]
+            marks = self._marks_many([os.path.join(path, d.name) for d in dirs])
+            dirs = [d for d, m in zip(dirs, marks) if not self._unlisted_for(user, m)]
         dirs.sort(key=lambda x: natural_key(x.name))
         files.sort(key=lambda x: natural_key(x.name))
         return dirs + files
@@ -345,4 +390,5 @@ class Library:
 
     def is_hidden_name(self, name: str) -> bool:
         """Names pluteus would hide or treat as a marker: a new file or folder must never get one."""
-        return self._excluded(name) or name.lower() == self.cfg.adult_marker.lower()
+        cfg = self.cfg
+        return self._excluded(name) or name.lower() in (cfg.adult_marker.lower(), cfg.private_marker.lower(), cfg.hidden_marker.lower())

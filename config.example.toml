@@ -77,6 +77,14 @@ extensions = [".epub", ".cbz", ".pdf"]
 # users who do not have adult = true. Hidden folders answer 404, like missing ones.
 adult_marker = ".adult"
 
+# A folder with a file of this name (and everything below it) is only for the users named inside the file, one name
+# per line. Everyone else gets 404. An empty file names nobody.
+private_marker = ".private"
+
+# A folder with a file of this name is left out of listings and feeds (a direct link still works), except for any
+# users named inside it.
+hidden_marker = ".hidden"
+
 # Folders to serve. The folder tree is read live from disk; nothing is indexed up front.
 # Names appear in URLs, so use letters, digits, - and _ only.
 [[roots]]

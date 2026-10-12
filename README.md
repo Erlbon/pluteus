@@ -145,6 +145,14 @@ Measured on 50 real EPUBs over SMB: about 1 s cold, 18 ms warm. Listing order is
 - **Adult folders:** put an empty file named `.adult` (configurable) in any folder; it and everything
   below it is hidden from users without `adult = true`, in feeds, pages and direct URLs (404).
   Works at any depth, so an adult imprint can sit inside a mainstream publisher folder.
+- **Private folders:** put a file named `.private` in a folder and list the user names that may open it, one per
+  line (or comma separated, `#` starts a comment). Everyone else gets a 404 for it and everything below it, in feeds,
+  pages and direct URLs, `adult = true` included. An empty file names nobody, so the folder is closed to everyone.
+  Nested `.private` files must all name the user.
+- **Unlisted folders:** a `.hidden` file leaves the folder out of its parent's listing and the OPDS feeds. Anyone
+  with the link can still open it. Names written inside (same format) still see it listed; an empty file names nobody.
+- Marker files are checked once a minute per folder, never indexed. Changes show within about a minute. The file
+  names are settings (`adult_marker`, `private_marker`, `hidden_marker`).
 - **Password guessing (for a server on the internet):** 5 wrong passwords for one user name within 5 minutes lock that name,
   and every further lock of the same name is 6 times longer (5 minutes, 30 minutes, 3 hours, then 6 hours at most). A name
   left alone for a day, or with a good login, starts again from the short lock. Every new lock is logged

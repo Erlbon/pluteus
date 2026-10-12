@@ -56,6 +56,8 @@ class Config:
     extensions: tuple = DEFAULT_EXTENSIONS
     excludes: frozenset = frozenset(DEFAULT_EXCLUDES)
     adult_marker: str = ".adult"
+    private_marker: str = ".private"   # folder (and below) only for the users named inside the file
+    hidden_marker: str = ".hidden"     # folder left out of listings and feeds (a direct link still works)
     realm: str = "pluteus"
     auth_cache_seconds: int = 300
     anonymous_user: str = ""   # requests with NO credentials act as this user (off by default)
@@ -83,7 +85,7 @@ class Config:
 _SERVER_KEYS = {"host", "port", "page_size", "base_path", "realm", "auth_cache_seconds", "anonymous_user",
                 "session_days", "cookie_secure", "trust_proxy", "allowed_hosts", "opds_pse", "show_all_files", "text_view_kb",
                 "admin_port", "admin_host"}
-_GLOBAL_KEYS = {"exclude", "extensions", "display_strip", "adult_marker", "metadata", "cache_dir",
+_GLOBAL_KEYS = {"exclude", "extensions", "display_strip", "adult_marker", "private_marker", "hidden_marker", "metadata", "cache_dir",
                 "data_dir", "themes_dir", "theme", "uploads_dir", "upload_max_mb", "upload_quota_mb"}
 _ROOT_KEYS = {"name", "path"}
 _USER_KEYS = {"name", "password_hash", "roots", "adult", "upload", "admin"}
@@ -242,6 +244,8 @@ def parse_config(data: dict, check_roots: bool = True) -> Config:
         page_size=_in_range(server, "page_size", 50, 1, 1000), base_path=base_path,
         display_strip=strip, extensions=extensions, excludes=excludes,
         adult_marker=str(opts.get("adult_marker", ".adult")),
+        private_marker=str(opts.get("private_marker", ".private")),
+        hidden_marker=str(opts.get("hidden_marker", ".hidden")),
         realm=str(server.get("realm", "pluteus")),
         auth_cache_seconds=int(server.get("auth_cache_seconds", 300)),
         anonymous_user=anonymous_user,
