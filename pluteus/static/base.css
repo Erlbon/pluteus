@@ -220,6 +220,10 @@ a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible
 .pl-comic-stage { display: flex; justify-content: center; overflow: auto; }
 .pl-fit-page .pl-page { max-width: 100%; max-height: 100%; margin: auto; object-fit: contain; }
 .pl-fit-width .pl-page { width: 100%; height: auto; align-self: flex-start; }
+/* zoomed: the page is --pl-zoom times the width of the window and scrolls both ways (drag to pan with the mouse) */
+.pl-comic-stage.pl-fit-zoom { display: block; cursor: grab; }
+.pl-comic-stage.pl-fit-zoom.pl-panning { cursor: grabbing; }
+.pl-fit-zoom .pl-page { display: block; margin: 0 auto; width: calc(var(--pl-zoom, 2) * 100%); max-width: none; height: auto; }
 .pl-progress[title] { cursor: pointer; }
 .pl-fit-orig .pl-page { max-width: none; max-height: none; margin: 0; }          /* image viewer: actual size */
 .pl-image .pl-page { cursor: zoom-in; } .pl-image.pl-actual .pl-page { cursor: zoom-out; }

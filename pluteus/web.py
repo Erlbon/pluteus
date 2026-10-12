@@ -330,7 +330,7 @@ def comic_reader_page(ctx: Ctx, title: str, *, pages_url: str, count: int, progr
         % (data, escape(back_url), escape(title), escape(title),
            "<button class='pl-reader-btn pl-scheme' type='button' title='Toggle dark / light' aria-label='Toggle dark / light'>"
            "<span class='pl-icon pl-i-contrast'></span></button>",
-           _icon_button("fit-btn", "fit", "Fit to width / fit to page"),
+           _icon_button("fit-btn", "fit", "Zoom: fit page, fit width, 150%, 200%, 300% (keys + - 0 F)"),
            _icon_button("fs-btn", "fullscreen", "Full screen"),
            _icon_button("prev", "prev", "Previous page"), _icon_button("next", "next", "Next page")))
     return layout(title, body, ctx, bar=False, body_class="pl-reader-page",
