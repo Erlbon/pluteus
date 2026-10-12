@@ -1,0 +1,48 @@
+{
+ "product": "Ubooquity",
+ "up_s": 2.7,
+ "scan_s": 173.0,
+ "scan_peak_mb": 292.9,
+ "after_scan_mb": 292.8,
+ "idle_mb": 168.8,
+ "crawl1": {
+  "comics": {
+   "requests": 68,
+   "seconds": 0.3,
+   "errors": 0,
+   "p50_ms": 20,
+   "p95_ms": 66,
+   "max_ms": 69
+  },
+  "books": {
+   "requests": 32,
+   "seconds": 0.1,
+   "errors": 0,
+   "p50_ms": 14,
+   "p95_ms": 26,
+   "max_ms": 38
+  },
+  "peak_mb": 181.0
+ },
+ "crawl2": {
+  "comics": {
+   "requests": 68,
+   "seconds": 0.2,
+   "errors": 0,
+   "p50_ms": 13,
+   "p95_ms": 24,
+   "max_ms": 26
+  },
+  "books": {
+   "requests": 32,
+   "seconds": 0.1,
+   "errors": 0,
+   "p50_ms": 9,
+   "p95_ms": 28,
+   "max_ms": 28
+  },
+  "peak_mb": 186.8
+ },
+ "after_load_mb": 186.8,
+ "db_mb": 10.4
+}

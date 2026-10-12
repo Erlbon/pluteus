@@ -1,0 +1,26 @@
+{
+ "product": "pluteus 0.4.0",
+ "up_s": 1.1,
+ "scan_s": 0.0,
+ "idle_mb": 29.2,
+ "after_scan_mb": 29.2,
+ "crawl1": {
+  "requests": 536,
+  "seconds": 71.1,
+  "errors": 0,
+  "p50_ms": 695,
+  "p95_ms": 2464,
+  "max_ms": 2960
+ },
+ "crawl2": {
+  "requests": 536,
+  "seconds": 7.6,
+  "errors": 0,
+  "p50_ms": 83,
+  "p95_ms": 250,
+  "max_ms": 304
+ },
+ "peak_mb": 54.6,
+ "after_load_mb": 54.0,
+ "db_mb": 7.0
+}

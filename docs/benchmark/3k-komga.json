@@ -1,0 +1,28 @@
+{
+ "product": "Komga",
+ "up_s": 12.4,
+ "idle_mb": 614.7,
+ "listed_s": 95.0,
+ "scan_s": 1157.0,
+ "scan_peak_mb": 839.2,
+ "after_scan_mb": 838.5,
+ "crawl1": {
+  "requests": 470,
+  "seconds": 67.8,
+  "errors": 0,
+  "p50_ms": 332,
+  "p95_ms": 510,
+  "max_ms": 1082
+ },
+ "crawl2": {
+  "requests": 470,
+  "seconds": 68.0,
+  "errors": 0,
+  "p50_ms": 342,
+  "p95_ms": 591,
+  "max_ms": 871
+ },
+ "peak_mb": 875.1,
+ "after_load_mb": 874.3,
+ "db_mb": 36.7
+}
