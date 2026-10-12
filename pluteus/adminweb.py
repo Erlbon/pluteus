@@ -71,6 +71,11 @@ def _post(action: str, fields: dict, label: str, confirm: str = "", danger: bool
             % (escape(action), data, hidden, " pl-btn-danger" if danger else "", escape(label)))
 
 
+USER_ICON = ("<svg class='pl-user-icon' viewBox='0 0 24 24' width='16' height='16' aria-hidden='true' fill='none' "
+             "stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'>"
+             "<circle cx='12' cy='8' r='4'/><path d='M4 21c0-4.4 3.6-7 8-7s8 2.6 8 7'/></svg>")
+
+
 def _box(title: str, inner: str) -> str:
     return "<section class='pl-card pl-admin-box'><h2>%s</h2>%s</section>" % (escape(title), inner)
 
@@ -202,7 +207,7 @@ def users_page(ctx: Ctx, users: list, root_names: list, me: str, flash: str = ""
                 % (escape(u.name), escape(u.name), _roots_boxes(root_names, u.roots), _flags(u.adult, u.upload, u.admin),
                    "" if u.name == me else _post("/users/remove", {"name": u.name}, "Remove user",
                                                  "Remove %s? Their upload folder and reading progress stay on the server." % u.name, True)))
-        rows.append([escape(u.name) + (" <span class='pl-muted'>(you)</span>" if u.name == me else ""),
+        rows.append([USER_ICON + escape(u.name) + (" <span class='pl-muted'>(you)</span>" if u.name == me else ""),
                      escape(", ".join(u.roots) or "all"), escape(flags), edit])
     table = _table(["User", "Folders", "Rights", ""], rows, "No users.")
     add = ("<form class='pl-admin-form' method='post' action='/users/add'>"

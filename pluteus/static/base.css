@@ -371,6 +371,7 @@ body.pl-reader-page, .pl-reader-stage { overscroll-behavior: contain; }
 .pl-admin-table code { font-size: .9em; overflow-wrap: anywhere; }
 .pl-inline { display: inline-block; margin: 0; }
 .pl-ok { color: var(--pl-accent); }
+.pl-user-icon { margin-right: .5em; vertical-align: -2px; opacity: .8; }
 .pl-dot { display: inline-block; width: .6em; height: .6em; border-radius: 50%; margin-right: .5em; vertical-align: baseline; }
 .pl-dot-ok { background: #3fa34d; }
 .pl-dot-warn { background: #d9a520; }
