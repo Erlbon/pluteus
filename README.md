@@ -348,3 +348,8 @@ files, with a progress bar), **create folders**, **rename** and **delete** (a fo
 | `POST /files/{mkdir,rename,delete}/uploads/{path}` | new folder (in `path`), rename (`name` field), delete |
 | `POST /share` | the Android share target |
 | `GET /manifest.webmanifest` | web app manifest (adds `share_target` when uploads are on) |
+
+## License
+
+MIT, see [LICENSE](LICENSE). The bundled third-party scripts keep their own licences: epub.js (BSD-2-Clause), JSZip (MIT), pdf.js (Apache-2.0)
+and its fonts and WebAssembly decoders; the licence texts sit next to the files in `pluteus/static/vendor/`.
