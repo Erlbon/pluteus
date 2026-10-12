@@ -89,11 +89,11 @@ hidden_marker = ".hidden"
 # Names appear in URLs, so use letters, digits, - and _ only.
 [[roots]]
 name = "books"
-path = 'D:\eLib\800 - Fiction'
+path = 'D:\Library\Books'
 
 [[roots]]
 name = "comics"
-path = 'E:\eLib\741.59 - Comic Books'
+path = 'E:\Library\Comics'
 
 # Users. Manage them with the CLI instead of editing by hand:
 #   python -m pluteus user add NAME --config config.toml
@@ -101,7 +101,7 @@ path = 'E:\eLib\741.59 - Comic Books'
 #   python -m pluteus user list | remove NAME
 # A running server picks up user changes within a few seconds.
 [[users]]
-name = "erlend"
+name = "alice"
 password_hash = "scrypt$16384$8$1$replace-with-output-of-hash-password"
 adult = true
 

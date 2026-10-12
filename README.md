@@ -2,9 +2,29 @@
 
 A small, filesystem-first book and comic server: browse your real folder tree, read it from an
 OPDS app, download files, with per-user logins. Python, no Java, low memory, no scanning step.
+Built as a light replacement for Ubooquity, for people who keep their library as plain folders on disk
+(tested on about 10 TB of books and comics).
 
-**Status: Phase 1 prototype (0.1.0).** Named after the *pluteus*, the sloping shelf or bookcase of a
+**Status: 0.3.0, in daily use, young.** Named after the *pluteus*, the sloping shelf or bookcase of a
 medieval library. Pronounced "PLOO-tee-us".
+
+## What you get
+
+- **OPDS feeds** for reader apps (with page streaming for comics), and a **web UI** that shows the real folder tree.
+- **Readers in the browser** for EPUB, CBZ and PDF, with reading progress per user; **viewers** for images, audio
+  and m4b audiobooks, video, text, Markdown, CSV and zip files.
+- **Per-user logins**, per-user folder access, `.adult`, `.private` and `.hidden` folder markers, and a personal
+  **upload folder** per user (also from the Android share sheet).
+- **Safe to put on the internet** behind HTTPS: login lockouts that escalate, known devices, same-site checks, a
+  read-only view of your libraries (pluteus never writes to them).
+- A **web admin page** on a separate, local-only port: status, locks, users.
+- Runs on **Docker** (hardened compose example included) or natively on Windows and Linux; skinnable themes.
+
+## What it deliberately does not do
+
+No library database, no search across the whole library, no "recently added", no duplicate detection, no covers
+or metadata scraping, no CBR, no HEIC conversion, no accounts for sign-up. Anything that would need scanning the
+tree is left out on purpose: that lightness is the point. It is not a replacement for Nextcloud, Calibre or Jellyfin.
 
 ## Why filesystem-first
 
@@ -39,7 +59,7 @@ It works in Docker, on Linux and on Windows alike, with nothing to install on th
 
 - **Reach:** `http://<server>:<admin_port>/`. It is a separate listener, so a reverse proxy that routes only the main port
   (Caddy, nginx) never exposes it. **Never route or forward this port to the internet**; in Docker publish it on the
-  LAN address only (`"192.168.1.99:8101:8101"`). The page says so at the bottom of every screen.
+  LAN address only (`"<lan-address>:8101:8101"`). The page says so at the bottom of every screen.
   An administrator who opens the main site directly on the local network (not through a proxy) sees an **Admin** link
   in the top bar, pointing at the same host name or address on the admin port (publish it under the same number as
   `admin_port`). Through the public address the link never appears.
@@ -76,10 +96,10 @@ the config invalid is refused before anything is written).
 
 ```powershell
 python -m pluteus user list   --config config.toml
-python -m pluteus user add    erlend --config config.toml --adult              # asks for a password (min 8 chars)
+python -m pluteus user add    alice --config config.toml --adult              # asks for a password (min 8 chars)
 python -m pluteus user add    guest  --config config.toml --roots books
 python -m pluteus user set    guest  --config config.toml --roots books,comics   # or --all-roots
-python -m pluteus user set    erlend --config config.toml --password / --adult / --no-adult / --upload / --no-upload
+python -m pluteus user set    alice --config config.toml --password / --adult / --no-adult / --upload / --no-upload
 python -m pluteus user remove guest  --config config.toml                      # asks to confirm (or --yes)
 ```
 
@@ -212,8 +232,7 @@ Nothing is indexed, so a folder costs the same however big the library is.
 1. Reader-app compatibility pass on real devices (KOReader, an iOS app, Android comic apps with page streaming);
    PocketBook is the only one tried so far.
 2. Try "Share to pluteus" on a real phone over HTTPS (built, untested there).
-3. Benchmark native vs Docker on the server's own disks.
-4. No covers by design (not wanted); no CBR support (not needed).
+3. No covers by design (not wanted); no CBR support (not needed).
 
 ## Icon
 
