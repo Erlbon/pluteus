@@ -1,6 +1,7 @@
 # Copies what Docker needs to build pluteus into the server's pluteus folder (the "src" subfolder), and nothing else:
 # no .git, no virtualenv, no tests. Run it from anywhere; safe to repeat. Then on the server:
-#   docker compose up -d --build
+#   docker compose build --pull
+#   docker compose up -d
 param(
     [string]$Source = (Split-Path -Parent $PSScriptRoot),
     [string]$Destination = 'Z:\temp\_docker\pluteus\src'

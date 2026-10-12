@@ -62,8 +62,10 @@ Notes:
 - Keep `/uploads` a separate folder from the libraries (pluteus refuses to start if they overlap).
 - Speed through Docker Desktop's Windows drive layer, measured: about 40 to 50 ms per folder feed, and about 40 ms warm
   for a folder of 900 comic archives. If a folder opens slowly anyway, compare against a native run first.
-- Upgrade: pull or copy the new source, then `docker compose up -d --build`. State lives in the `/data` volume, so
-  logins and reading progress survive.
+- Upgrade: pull or copy the new source, then `docker compose build --pull` and `docker compose up -d`. The `--pull` makes
+  Docker fetch the newest `python:3.12-slim` base image (Python and Debian security fixes); without it a rebuild reuses the
+  copy it already has. Do this at least monthly, even when pluteus itself has not changed. State lives in the `/data` volume,
+  so logins and reading progress survive.
 
 ## Native
 

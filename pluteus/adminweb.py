@@ -133,7 +133,7 @@ def _update_cell(u) -> str:
     if state == "security":
         return _light("bad", "security issue in this version")
     if state == "update":
-        return _light("warn", "%s is available (git pull, then docker compose up -d --build)" % u.get("latest", "a newer version"))
+        return _light("warn", "%s is available (git pull, then docker compose build --pull and docker compose up -d)" % u.get("latest", "a newer version"))
     if state == "ok":
         return _light("ok", "up to date")
     return _light("off", "checking..." if state == "checking" else "could not check for updates")
