@@ -565,12 +565,57 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
         data = {"id": urls.home(), "name": "pluteus", "short_name": "pluteus", "description": "Filesystem-first book and comic server",
                 "start_url": urls.home(), "scope": urls.home(), "display": "standalone",
                 "background_color": "#14171f", "theme_color": "#14171f",
-                "icons": [{"src": urls.static("icon/icon-192.png"), "sizes": "192x192", "type": "image/png"},
-                          {"src": urls.static("icon/icon-512.png"), "sizes": "512x512", "type": "image/png"}]}
+                "icons": [{"src": urls.static("icon/icon-192.png"), "sizes": "192x192", "type": "image/png", "purpose": "any"},
+                          {"src": urls.static("icon/icon-512.png"), "sizes": "512x512", "type": "image/png", "purpose": "any"},
+                          {"src": urls.static("icon/icon-192-maskable.png"), "sizes": "192x192", "type": "image/png", "purpose": "maskable"},
+                          {"src": urls.static("icon/icon-512-maskable.png"), "sizes": "512x512", "type": "image/png", "purpose": "maskable"}]}
         if cfg.uploads_dir and cfg.share_target:           # installed on Android, pluteus then appears in the Share menu
             data["share_target"] = {"action": urls.share(), "method": "POST", "enctype": "multipart/form-data",
                                     "params": {"files": [{"name": "files", "accept": SHARE_ACCEPT}]}}
         return JSONResponse(data, media_type="application/manifest+json", headers=NO_CACHE)
+
+    # ---- TEMPORARY (pwa_test = true): five test pages, each linking a manifest that adds one thing to the one before ----------------
+    def test_manifest(variant: str) -> dict:
+        page = urls.home().rstrip("/") + "/pwa-test/" + variant
+        icons = [{"src": urls.static("icon/icon-192.png"), "sizes": "192x192", "type": "image/png"},
+                 {"src": urls.static("icon/icon-512.png"), "sizes": "512x512", "type": "image/png"}]
+        data = {"name": "pluteus test " + variant, "short_name": "plu " + variant, "start_url": page, "display": "standalone",
+                "background_color": "#14171f", "theme_color": "#14171f", "icons": icons}
+        if variant >= "v2":
+            data.update(id=page, scope=urls.home())
+        if variant >= "v3":
+            data["icons"] = [dict(i, purpose="any") for i in icons] + [
+                {"src": urls.static("icon/icon-192-maskable.png"), "sizes": "192x192", "type": "image/png", "purpose": "maskable"},
+                {"src": urls.static("icon/icon-512-maskable.png"), "sizes": "512x512", "type": "image/png", "purpose": "maskable"}]
+        if variant >= "v4":
+            data["share_target"] = {"action": urls.share(), "method": "POST", "enctype": "multipart/form-data",
+                                    "params": {"files": [{"name": "files", "accept": SHARE_ACCEPT}]}}
+        return data
+
+    async def pwa_test_page(request: Request):
+        variant = request.path_params["variant"]
+        if variant not in ("v1", "v2", "v3", "v4"):
+            return PlainTextResponse("Not found", 404)
+        base = urls.home().rstrip("/") + "/pwa-test/" + variant
+        return HTMLResponse("<!doctype html><html lang='en'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>"
+                            "<title>pwa test %s</title><link rel='manifest' href='%s/manifest.webmanifest'>"
+                            "<script src='%s' defer></script></head><body style='font-family:sans-serif;margin:24px'>"
+                            "<h1>Install test %s</h1><p>Open the Chrome menu and tell what the install entry says.</p>"
+                            "<p><a href='%s'>All tests</a></p></body></html>"
+                            % (variant, base, urls.static("pwa-test.js"), variant, urls.home().rstrip("/") + "/pwa-test"))
+
+    async def pwa_test_manifest(request: Request):
+        variant = request.path_params["variant"]
+        if variant not in ("v1", "v2", "v3", "v4"):
+            return PlainTextResponse("Not found", 404)
+        return JSONResponse(test_manifest(variant), media_type="application/manifest+json", headers=NO_CACHE)
+
+    async def pwa_test_index(request: Request):
+        base = urls.home().rstrip("/") + "/pwa-test/"
+        items = "".join("<li><a href='%s%s'>%s</a> &mdash; %s</li>" % (base, v, v, d) for v, d in (
+            ("v1", "minimal manifest"), ("v2", "v1 + id + scope"), ("v3", "v2 + maskable icons"), ("v4", "v3 + share target")))
+        return HTMLResponse("<!doctype html><meta name='viewport' content='width=device-width, initial-scale=1'><body style='font-family:sans-serif;margin:24px'>"
+                            "<h1>Install tests</h1><ul>%s</ul><p>The real app: <a href='%s'>%s</a></p></body>" % (items, urls.home(), urls.home()))
 
     async def service_worker(request: Request):
         """A service worker that does nothing: it caches nothing and answers no request itself. It exists only so that Chrome
@@ -921,6 +966,8 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
         Route("/cbz/{root}/{path:path}", cbz_page),
         Route("/manifest.webmanifest", manifest),
         Route("/sw.js", service_worker),
+        *([Route("/pwa-test", pwa_test_index), Route("/pwa-test/{variant}", pwa_test_page),
+           Route("/pwa-test/{variant}/manifest.webmanifest", pwa_test_manifest)] if cfg.pwa_test else []),
         Route("/share", share, methods=["POST"]),
         Route("/upload/{root}", upload, methods=["POST"]),
         Route("/upload/{root}/{path:path}", upload, methods=["POST"]),

@@ -364,3 +364,16 @@ def test_manifest_has_an_id_an_explicit_share_list_and_the_share_entry_can_be_sw
     client, _ = make(cfg, tmp_path, uploads_dir=str(tmp_path / "up"), base_path="/lib", share_target=False)
     off = client.get("/manifest.webmanifest").json()
     assert "share_target" not in off and off["id"] == "/lib/"                               # the app itself stays installable
+
+
+def test_the_temporary_pwa_test_pages_exist_only_when_switched_on(cfg, tmp_path):
+    off, _ = make(cfg, tmp_path, uploads_dir=str(tmp_path / "up"), base_path="/lib")
+    assert off.get("/pwa-test/v1").status_code == 404 and off.get("/pwa-test").status_code == 404
+    on, _ = make(cfg, tmp_path, uploads_dir=str(tmp_path / "up"), base_path="/lib", pwa_test=True)
+    assert "pwa test v1" in on.get("/pwa-test/v1").text and "manifest.webmanifest" in on.get("/pwa-test/v1").text
+    assert on.get("/pwa-test/v9").status_code == 404
+    v1, v2, v3, v4 = (on.get("/pwa-test/%s/manifest.webmanifest" % v).json() for v in ("v1", "v2", "v3", "v4"))
+    assert "id" not in v1 and v2["id"] == "/lib/pwa-test/v2" and v2["scope"] == "/lib/"
+    assert not any(i.get("purpose") == "maskable" for i in v2["icons"]) and any(i.get("purpose") == "maskable" for i in v3["icons"])
+    assert "share_target" not in v3 and v4["share_target"]["action"] == "/lib/share"
+    assert "/lib/pwa-test/v4" in on.get("/pwa-test").text
