@@ -19,9 +19,11 @@
   var current = 0;
   if (count < 1) { say("This comic has no pages."); return; }
 
-  /* Zoom levels: fit the whole page, fit the width (scroll down), then 150 / 200 / 300 % of the width (scroll both ways). */
-  var LEVELS = ["page", "width", "1.5", "2", "3"];
-  var LABELS = { "page": "Fit to page", "width": "Fit to width", "1.5": "150%", "2": "200%", "3": "300%" };
+  /* Zoom levels: the whole page (fit to height), then 50 / 65 / 80 % of the window's width (the page scrolls down), the full
+     width, and 150 / 200 / 300 % of the width (scrolls both ways). */
+  var LEVELS = ["page", "0.5", "0.65", "0.8", "width", "1.5", "2", "3"];
+  var LABELS = { "page": "Fit to page", "0.5": "50% of width", "0.65": "65% of width", "0.8": "80% of width", "width": "Fit to width",
+                 "1.5": "150%", "2": "200%", "3": "300%" };
   var FIT_KEY = "pluteus-comic-fit";
   var fit = "page";
   try { var saved = localStorage.getItem(FIT_KEY); if (LEVELS.indexOf(saved) >= 0) fit = saved; } catch (e) { /* default */ }
@@ -79,7 +81,10 @@
     preload(current + 1); preload(current + 2);
     scheduleSave();
   }
-  img.addEventListener("load", function () { statusEl.hidden = true; centre(); });
+  img.addEventListener("load", function () {
+    statusEl.hidden = true; centre();
+    if (landBottom) { stage.scrollTop = stage.scrollHeight; landBottom = false; }     // arrived by scrolling backwards: the end of the page
+  });
   img.addEventListener("error", function () { say("This page could not be loaded."); });
 
   function next() { if (current < count - 1) show(current + 1); else say("That was the last page.", 1500); }
@@ -89,10 +94,22 @@
   $("tap-next").addEventListener("click", next);
   $("tap-prev").addEventListener("click", prev);
 
+  var landBottom = false, lastWheel = 0, wheelAt = 0;
+  function scrollable() { return stage.scrollHeight > stage.clientHeight + 1; }
+  function atBottom() { return stage.scrollTop + stage.clientHeight >= stage.scrollHeight - 2; }
+  function atTop() { return stage.scrollTop <= 1; }
+  /* Space and Page Down scroll a tall page first and turn the page once its end is reached (Shift / Page Up: the reverse) */
+  function forward() { if (scrollable() && !atBottom()) stage.scrollBy({ top: stage.clientHeight * 0.9 }); else next(); }
+  function backward() { if (scrollable() && !atTop()) stage.scrollBy({ top: -stage.clientHeight * 0.9 }); else { landBottom = true; prev(); } }
+
   document.addEventListener("keydown", function (e) {
     var k = e.key;
-    if (k === "ArrowRight" || k === "PageDown" || (k === " " && !e.shiftKey)) { e.preventDefault(); next(); }
-    else if (k === "ArrowLeft" || k === "PageUp" || (k === " " && e.shiftKey)) { e.preventDefault(); prev(); }
+    if (k === "ArrowRight") { e.preventDefault(); next(); }
+    else if (k === "ArrowLeft") { e.preventDefault(); prev(); }
+    else if (k === "PageDown" || (k === " " && !e.shiftKey)) { e.preventDefault(); forward(); }
+    else if (k === "PageUp" || (k === " " && e.shiftKey)) { e.preventDefault(); backward(); }
+    else if (k === "ArrowDown" && scrollable()) { e.preventDefault(); stage.scrollBy({ top: 100 }); }
+    else if (k === "ArrowUp" && scrollable()) { e.preventDefault(); stage.scrollBy({ top: -100 }); }
     else if (k === "Home") { e.preventDefault(); show(0); }
     else if (k === "End") { e.preventDefault(); show(count - 1); }
     else if (k === "+" || k === "=") { e.preventDefault(); zoomBy(1); }
@@ -101,8 +118,22 @@
     else if (k === "f" || k === "F") { e.preventDefault(); setFit(fit === "page" ? "width" : "page"); }
   });
 
-  /* ctrl + mouse wheel zooms; dragging pans a zoomed page */
-  stage.addEventListener("wheel", function (e) { if (e.ctrlKey) { e.preventDefault(); zoomBy(e.deltaY < 0 ? 1 : -1); } }, { passive: false });
+  /* Mouse wheel: scrolls a page that is taller than the window; a whole page (fit to page), or a push past the top or bottom
+     of a tall one, turns the page. Ctrl + wheel zooms. Dragging pans a zoomed page. */
+  stage.addEventListener("wheel", function (e) {
+    if (e.ctrlKey) { e.preventDefault(); zoomBy(e.deltaY < 0 ? 1 : -1); return; }
+    var dy = e.deltaY;
+    if (!dy || Math.abs(dy) < Math.abs(e.deltaX)) return;                              // sideways: the browser pans
+    var tall = scrollable(), now = Date.now(), pause = now - lastWheel;
+    lastWheel = now;
+    if (tall && !((dy > 0 && atBottom()) || (dy < 0 && atTop()))) return;               // the browser scrolls it
+    e.preventDefault();
+    /* At the edge only a NEW push turns the page (after a pause), so the end of one long scroll or a trackpad's coasting
+       never skips a page */
+    if (pause < 220 || now - wheelAt < 500) return;
+    wheelAt = now;
+    if (dy > 0) next(); else { landBottom = tall; prev(); }
+  }, { passive: false });
   var drag = null, moved = false;
   stage.addEventListener("mousedown", function (e) {
     if (!stage.classList.contains("pl-fit-zoom") || e.button !== 0) return;

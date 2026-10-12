@@ -277,8 +277,11 @@ The progress API is `GET/PUT /api/progress/{root}/{path}` (JSON `{locator, perce
 ## Reading comics (CBZ, CBR, CB7, CBT)
 
 Every comic archive (`.cbz`, `.cbr`, `.cb7`, `.cbt`) has a **Read** link too: a deliberately simple one-page-at-a-time reader (no libraries, `reader-comic.js`).
-Fit to page or fit to width (scrolls down), arrows / space / page keys / Home / End, edge taps and swipes, click the
-progress bar to jump, full screen, dark/light. The page number is saved per user like an EPUB's position, so comics
+**Zoom levels** (the fit button, or `+` `-` `0` `F`, or Ctrl + wheel): the whole page, 50 / 65 / 80 % of the window's width, the
+full width, and 150 / 200 / 300 %; a zoomed page scrolls (drag with the mouse to pan) and the choice is remembered.
+**Mouse wheel**: scrolls a page taller than the window, and a new push at its end (or the wheel on a whole page) turns the
+page. Arrows, Space and Page Up / Down (Space scrolls a tall page first, then turns it), Home / End, edge taps and swipes,
+click the progress bar to jump, full screen, dark/light. The page number is saved per user like an EPUB's position, so comics
 reopen where you stopped and appear under "Pick up where you left off" until finished.
 
 **Which archive it is** is decided by what the file contains, not by its name (many `.cbr` files are renamed ZIPs). ZIP and
