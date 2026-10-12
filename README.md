@@ -242,7 +242,9 @@ Nothing is indexed, so a folder costs the same however big the library is.
 
 1. Reader-app compatibility pass on real devices (KOReader, an iOS app, Android comic apps with page streaming);
    PocketBook is the only one tried so far.
-2. Try "Share to pluteus" on a real phone over HTTPS (built, untested there).
+2. "Share to pluteus": on one real phone (Chrome 154, Android 16, a dynamic-DNS address behind Caddy with a valid certificate) Chrome refused to
+   install the app ("This app cannot be installed"), even for a bare-bones manifest, while other sites installed fine. Cause unknown, so the
+   Share-menu entry is unproven. A home-screen shortcut and uploads from the page itself work.
 3. No covers by design (not wanted).
 
 ## Icon
@@ -378,7 +380,7 @@ files, with a progress bar), **create folders**, **rename** and **delete** (a fo
 - **Android "Share to pluteus":** when uploads are on, the web manifest declares a share target. Install pluteus from the
   browser's menu ("Add to Home screen" / "Install app"), then Share from any app and pick pluteus; the files land in the top
   of your upload folder. This needs **HTTPS** (browsers only install web apps from secure addresses, so put pluteus behind
-  Caddy or similar) and has **not been tried on a phone yet**. The server side is tested; browsers differ on what they send
+  Caddy or similar) and **did not install on the one phone it was tried on** (see Not yet). The server side is tested; browsers differ on what they send
   with a share (no `Origin`), so the share route accepts a request the browser itself started (`Sec-Fetch-Site: none`).
 - Needs the small `python-multipart` package (installed with pluteus).
 - **Caddy snippet, pluteus settings and the step-by-step phone test:** [docs/https-and-phone-test.md](docs/https-and-phone-test.md).
