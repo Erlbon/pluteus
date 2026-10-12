@@ -163,6 +163,13 @@ def create_admin_app(main_app) -> Starlette:
     async def status(request, user):
         return HTMLResponse(adminweb.status_page(ctx, await run_in_threadpool(collect_status)))
 
+    @guarded
+    async def logout(request, user):
+        """HTTP Basic has no real sign-out: forget the server's cached checks of this user, then answer 401 so the browser
+        drops the login it holds (it may show its prompt once; cancelling it leaves this page)."""
+        auth.forget_user(user.name)
+        return HTMLResponse(adminweb.signed_out_page(ctx), 401, headers=challenge)
+
     # ---- security ---------------------------------------------------------------------------------------------------------
     @guarded
     async def security(request, user):
@@ -278,7 +285,7 @@ def create_admin_app(main_app) -> Starlette:
         return await change(request, user, action)
 
     routes = [
-        Route("/", status), Route("/security", security),
+        Route("/", status), Route("/logout", logout, methods=["POST"]), Route("/security", security),
         Route("/security/unlock", unlock, methods=["POST"]), Route("/security/forget", forget, methods=["POST"]),
         Route("/security/signout", signout, methods=["POST"]),
         Route("/users", users), Route("/users/add", add_user, methods=["POST"]),

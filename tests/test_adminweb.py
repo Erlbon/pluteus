@@ -321,3 +321,14 @@ def test_users_table_has_one_column_per_right(admin):
     for label in ("User", "Folders", "Adult", "Uploads", "Admin"):
         assert "<th>%s</th>" % label in head
     assert "Rights" not in head and "pl-user-icon" in html
+
+
+def test_sign_out_forgets_the_login_and_asks_the_browser_to_drop_it(admin):
+    client, app, _ = admin
+    assert client.get("/", headers=BOSS).status_code == 200
+    assert app.state.auth.cached_user(BOSS["Authorization"]) is not None
+    r = client.post("/logout", headers=dict(BOSS, Origin="http://testserver"))
+    assert r.status_code == 401 and "Basic" in r.headers["www-authenticate"] and "Signed out" in r.text
+    assert app.state.auth.cached_user(BOSS["Authorization"]) is None
+    assert client.post("/logout", headers=BOSS).status_code == 403                  # still needs a same-site request
+    assert "Sign out" in client.get("/", headers=BOSS).text
