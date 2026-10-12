@@ -312,3 +312,12 @@ def test_status_names_the_users_sessions_devices_and_locked_names(admin):
     assert "mallory" in row[:row.index("</tr>")]
     users = html[html.index("<td>Users</td>"):]
     assert "alice" in users[:users.index("</tr>")]
+
+
+def test_users_table_has_one_column_per_right(admin):
+    client, _, _ = admin
+    html = client.get("/users", headers=BOSS).text
+    head = html[html.index("<thead>"):html.index("</thead>")]
+    for label in ("User", "Folders", "Adult", "Uploads", "Admin"):
+        assert "<th>%s</th>" % label in head
+    assert "Rights" not in head and "pl-user-icon" in html

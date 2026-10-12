@@ -188,6 +188,9 @@ def _flags(adult: bool, upload: bool, admin: bool) -> str:
             % (" checked" if adult else "", " checked" if upload else "", " checked" if admin else ""))
 
 
+RIGHTS = (("Adult", "adult"), ("Uploads", "upload"), ("Admin", "admin"))    # one table column each; add a pair for a new right
+
+
 def users_page(ctx: Ctx, users: list, root_names: list, me: str, flash: str = "", error: str = "",
                can_edit: bool = True) -> str:
     if not can_edit:
@@ -195,7 +198,7 @@ def users_page(ctx: Ctx, users: list, root_names: list, me: str, flash: str = ""
                     "changed here.</p>", flash, error)
     rows = []
     for u in users:
-        flags = ", ".join(f for f, on in (("adult", u.adult), ("uploads", u.upload), ("admin", u.admin)) if on) or "-"
+        rights = [_light("ok", "yes") if getattr(u, attr) else "<span class='pl-muted'>-</span>" for _, attr in RIGHTS]
         edit = ("<details><summary>Edit</summary>"
                 "<form class='pl-admin-form' method='post' action='/users/password'><input type='hidden' name='name' value='%s'>"
                 "<label class='pl-field'><span>New password (at least 8 characters)</span><input type='password' name='password' "
@@ -208,8 +211,8 @@ def users_page(ctx: Ctx, users: list, root_names: list, me: str, flash: str = ""
                    "" if u.name == me else _post("/users/remove", {"name": u.name}, "Remove user",
                                                  "Remove %s? Their upload folder and reading progress stay on the server." % u.name, True)))
         rows.append([USER_ICON + escape(u.name) + (" <span class='pl-muted'>(you)</span>" if u.name == me else ""),
-                     escape(", ".join(u.roots) or "all"), escape(flags), edit])
-    table = _table(["User", "Folders", "Rights", ""], rows, "No users.")
+                     escape(", ".join(u.roots) or "all")] + rights + [edit])
+    table = _table(["User", "Folders"] + [label for label, _ in RIGHTS] + [""], rows, "No users.")
     add = ("<form class='pl-admin-form' method='post' action='/users/add'>"
            "<label class='pl-field'><span>User name</span><input type='text' name='name' autocapitalize='off' required></label>"
            "<label class='pl-field'><span>Password (at least 8 characters)</span><input type='password' name='password' "
