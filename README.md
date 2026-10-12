@@ -22,8 +22,8 @@ medieval library. Pronounced "PLOO-tee-us".
 
 ## What it deliberately does not do
 
-No library database, no search across the whole library, no "recently added", no duplicate detection, no covers
-or metadata scraping, no CBR, no HEIC conversion, no accounts for sign-up. Anything that would need scanning the
+No library database, no search across the whole library, no "recently added", no duplicate detection, no cover
+images, no online metadata lookups (it only reads the title, author and series already inside your EPUBs), no CBR, no HEIC conversion, no accounts for sign-up. Anything that would need scanning the
 tree is left out on purpose: that lightness is the point. It is not a replacement for Nextcloud, Calibre or Jellyfin.
 
 ## Why filesystem-first
@@ -34,7 +34,8 @@ rescans on a multi-terabyte library. pluteus does the opposite:
 - the **folder tree is the catalogue**: every folder is one OPDS feed and one web page, read live
   with `os.scandir()` when you open it, so it works the moment it starts and never needs a rescan;
 - numbering such as `3.23 - Vertigo` sorts naturally (3.9 before 3.10) and is hidden in display names;
-- nothing is cached yet. Later phases add a disposable SQLite cache (search, metadata), never a source of truth.
+- the only cache is a disposable SQLite one for the title, author and series read from the EPUBs on the page you are
+  looking at; it is never a source of truth and can be deleted at any time.
 
 ## Run it
 
