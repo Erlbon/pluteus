@@ -40,6 +40,9 @@ It works in Docker, on Linux and on Windows alike, with nothing to install on th
 - **Reach:** `http://<server>:<admin_port>/`. It is a separate listener, so a reverse proxy that routes only the main port
   (Caddy, nginx) never exposes it. **Never route or forward this port to the internet**; in Docker publish it on the
   LAN address only (`"192.168.1.99:8101:8101"`). The page says so at the bottom of every screen.
+  An administrator who opens the main site directly on the local network (not through a proxy) sees an **Admin** link
+  in the top bar, pointing at the same host name or address on the admin port (publish it under the same number as
+  `admin_port`). Through the public address the link never appears.
 - **Who:** only users with `admin = true` (off for everyone by default; set it with `user add NAME --admin`,
   `user set NAME --admin`, in `config.toml`, or from the desktop app). Signing in is the browser's own login prompt; wrong
   passwords are counted by the same throttle as the main site, and every change needs a same-site request.

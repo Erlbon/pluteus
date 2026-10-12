@@ -332,3 +332,15 @@ def test_sign_out_forgets_the_login_and_asks_the_browser_to_drop_it(admin):
     assert app.state.auth.cached_user(BOSS["Authorization"]) is None
     assert client.post("/logout", headers=BOSS).status_code == 403                  # still needs a same-site request
     assert "Sign out" in client.get("/", headers=BOSS).text
+
+
+def test_main_site_links_to_the_admin_page_only_for_an_admin_on_the_local_network(admin):
+    _, app, _ = admin
+    lan = TestClient(app, client=("192.168.1.5", 50000), follow_redirects=False)
+    site = {"host": "192.168.1.99:8100", **BOSS}
+    assert "href='http://192.168.1.99:8101/'>Admin<" in lan.get("/", headers=site).text
+    assert "Admin<" not in lan.get("/", headers=dict(site, **{"x-forwarded-for": "8.8.8.8"})).text       # through Caddy
+    assert "Admin<" not in lan.get("/", headers=dict(site, **{"x-forwarded-proto": "https"})).text
+    outside = TestClient(app, client=("8.8.8.8", 50000), follow_redirects=False)
+    assert "Admin<" not in outside.get("/", headers=site).text                                              # not a local address
+    assert "Admin<" not in lan.get("/", headers=dict(site, host="evil'><x:8100")).text                      # odd host names

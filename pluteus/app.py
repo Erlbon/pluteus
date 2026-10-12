@@ -6,6 +6,7 @@ API calls get a plain 401 so they can show their own login prompt.
 """
 from __future__ import annotations
 
+import contextvars
 import functools
 import hashlib
 import ipaddress
@@ -42,7 +43,10 @@ from .urls import Urls, with_page
 
 log = logging.getLogger("pluteus")
 STATIC_DIR = Path(__file__).resolve().parent / "static"
-STATIC_ALLOWED = {".css", ".js", ".mjs", ".svg", ".png", ".ico", ".woff2", ".webmanifest", ".pfb", ".ttf", ".wasm"}
+_PROXY_HEADERS = ("x-forwarded-for", "x-forwarded-host", "x-forwarded-proto", "forwarded", "via")
+_PLAIN_HOST = re.compile(r"[A-Za-z0-9.-]+|\[[0-9A-Fa-f:.]+\]")       # a host name or address, nothing that could break out of a link
+current_admin_link: contextvars.ContextVar = contextvars.ContextVar("current_admin_link", default="")   # set per request
+STATIC_ALLOWED ={".css", ".js", ".mjs", ".svg", ".png", ".ico", ".woff2", ".webmanifest", ".pfb", ".ttf", ".wasm"}
 # Browsers refuse an ES module that is not served as JavaScript, and WebAssembly only compiles when it is served as
 # application/wasm; mimetypes knows neither everywhere.
 STATIC_TYPES = {".mjs": "text/javascript", ".pfb": "application/octet-stream", ".wasm": "application/wasm"}
@@ -252,8 +256,25 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
                 return name
         return DEFAULT
 
+    def admin_link_for(request: Request, user) -> str:
+        """Where the admin page is, for an administrator who opened the site directly on the local network (same host name
+        or address, the admin port). Empty for everyone else, and always empty through a proxy: the admin page is not
+        reachable from outside, so the public site does not even hint at it."""
+        if not (cfg.admin_port and user.admin) or any(h in request.headers for h in _PROXY_HEADERS):
+            return ""
+        host = request.headers.get("host", "")
+        host = host.rsplit(":", 1)[0] if not host.endswith("]") else host            # drop the port (a bracketed IPv6 has none after it)
+        if not _PLAIN_HOST.fullmatch(host):
+            return ""
+        try:
+            if not (request.client and ipaddress.ip_address(request.client.host).is_private):
+                return ""
+        except ValueError:
+            return ""
+        return "http://%s:%d/" % (host, cfg.admin_port)
+
     def ctx_for(user) -> web.Ctx:
-        return web.Ctx(urls, user.name, theme_for(user.name), readers=True)
+        return web.Ctx(urls, user.name, theme_for(user.name), readers=True, admin_link=current_admin_link.get())
 
     def unauthorized(request: Request, mode: str, wait: int) -> Response:
         if wait:
@@ -286,6 +307,7 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
                                 request.url.path, request.headers.get("origin"), request.headers.get("host"),
                                 request.headers.get("sec-fetch-site"))
                     return PlainTextResponse("Cross-site request refused", 403)
+                current_admin_link.set(admin_link_for(request, user))
                 try:
                     return await fn(request, user)
                 except PathError:

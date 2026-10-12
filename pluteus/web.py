@@ -16,6 +16,7 @@ class Ctx:
     user: str = ""
     theme: str = DEFAULT
     readers: bool = False        # show "Read" links (the in-browser readers)
+    admin_link: str = ""         # address of the admin page, for an administrator on the local network; else empty
 
 
 def layout(title: str, body: str, ctx: Ctx, *, head: str = "", scripts: tuple = (), bar: bool = True,
@@ -29,7 +30,8 @@ def layout(title: str, body: str, ctx: Ctx, *, head: str = "", scripts: tuple = 
     if bar:
         who = ""
         if ctx.user:
-            who = ("<a href='%s'>Settings</a>"
+            admin = "<a href='%s'>Admin</a>" % escape(ctx.admin_link) if ctx.admin_link else ""
+            who = (admin + "<a href='%s'>Settings</a>"
                    "<form method='post' action='%s'><button class='pl-btn' type='submit'>Sign out (%s)</button></form>"
                    % (escape(u.settings()), escape(u.logout()), escape(ctx.user)))
         chrome = ("<header class='pl-bar'><a class='pl-brand' href='%s'>pluteus</a><span class='pl-spacer'></span>%s%s</header>"
