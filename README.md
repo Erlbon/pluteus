@@ -5,7 +5,7 @@ OPDS app, download files, with per-user logins. Python, no Java, low memory, no 
 Built as a light replacement for Ubooquity, for people who keep their library as plain folders on disk
 (tested on about 10 TB of books and comics).
 
-**Status: 0.3.0, in daily use, young.** Named after the *pluteus*, the sloping shelf or bookcase of a
+**Status: 0.3.1, in daily use, young.** Named after the *pluteus*, the sloping shelf or bookcase of a
 medieval library. Pronounced "PLOO-tee-us".
 
 ## What you get
