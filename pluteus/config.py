@@ -78,6 +78,8 @@ class Config:
     text_view_kb: int = 1024       # the text viewer shows at most this much of a file (the rest is a download)
     admin_port: int = 0            # the admin page listens here (0 = off). NEVER route or forward this port to the internet
     admin_host: str = "127.0.0.1"  # the address it listens on ("0.0.0.0" inside Docker, then publish the port on the LAN only)
+    update_check: bool = False     # the admin page asks GitHub once a day for a newer version and security advisories (opt-in)
+    update_repo: str = "Erlbon/pluteus"   # owner/name of the repository to ask
     site_port: int = 0             # port of the main site as seen from the LAN when it differs from `port` (Docker: 8100); 0 = port
     uploads_dir: str = ""          # one subfolder per user lives here; "" = uploads switched off
     upload_max_mb: int = 4096      # largest single upload
@@ -88,7 +90,7 @@ class Config:
 # [[roots]] by mistake would silently do nothing. Every table's keys are therefore checked.
 _SERVER_KEYS = {"host", "port", "page_size", "base_path", "realm", "auth_cache_seconds", "anonymous_user",
                 "session_days", "cookie_secure", "trust_proxy", "allowed_hosts", "opds_pse", "show_all_files", "text_view_kb",
-                "admin_port", "admin_host", "site_port"}
+                "admin_port", "admin_host", "site_port", "update_check", "update_repo"}
 _GLOBAL_KEYS = {"exclude", "extensions", "display_strip", "adult_marker", "private_marker", "hidden_marker", "metadata", "cache_dir",
                 "data_dir", "themes_dir", "theme", "uploads_dir", "upload_max_mb", "upload_quota_mb"}
 _ROOT_KEYS = {"name", "path"}
@@ -247,6 +249,7 @@ def parse_config(data: dict, check_roots: bool = True) -> Config:
         text_view_kb=max(16, int(server.get("text_view_kb", 1024))),
         admin_port=admin_port, admin_host=str(server.get("admin_host", "127.0.0.1")),
         site_port=_in_range(server, "site_port", 0, 0, 65535),
+        update_check=bool(server.get("update_check", False)), update_repo=_repo_name(server.get("update_repo", "Erlbon/pluteus")),
         host=str(server.get("host", "127.0.0.1")), port=_in_range(server, "port", 8080, 1, 65535),
         page_size=_in_range(server, "page_size", 50, 1, 1000), base_path=base_path,
         display_strip=strip, extensions=extensions, excludes=excludes,
@@ -262,6 +265,13 @@ def parse_config(data: dict, check_roots: bool = True) -> Config:
         upload_max_mb=_in_range(opts, "upload_max_mb", 4096, 1, 10_000_000),
         upload_quota_mb=_in_range(opts, "upload_quota_mb", 0, 0, 100_000_000),
     )
+
+
+def _repo_name(value) -> str:
+    from .updatecheck import REPO_RE
+    if not isinstance(value, str) or not REPO_RE.fullmatch(value):
+        raise ConfigError("update_repo must look like owner/name, got %r" % (value,))
+    return value
 
 
 def users_without_folders(cfg: Config) -> list:

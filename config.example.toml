@@ -38,6 +38,12 @@ data_dir = 'D:\pluteus-data'
 # `port` (Docker: 8080 inside, 8100 outside), say which one:
 # site_port = 8100
 
+# UPDATE AND SECURITY CHECK (opt-in, off by default). With update_check = true the admin page asks GitHub (api.github.com) once a
+# day, in the background, for the newest tag and the published security advisories of update_repo, and shows a green / yellow / red
+# dot beside the version. Nothing about your library or users is sent; GitHub sees this server's address. It never updates anything.
+# update_check = true
+# update_repo = "Erlbon/pluteus"
+
 # PERSONAL UPLOAD FOLDERS. Set uploads_dir and every user gets their own folder uploads_dir/<user name>, shown as the
 # top-level folder "uploads": upload, new folder, rename, delete. Nobody else sees it (not even other users with the
 # same roots) and it is never inside a library: you move files into the library yourself. Keep uploads_dir OUTSIDE

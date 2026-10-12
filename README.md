@@ -63,6 +63,12 @@ It works in Docker, on Linux and on Windows alike, with nothing to install on th
   An administrator who opens the main site directly on the local network (not through a proxy) sees an **Admin** link
   in the top bar, pointing at the same host name or address on the admin port (publish it under the same number as
   `admin_port`). Through the public address the link never appears.
+- **Update and security check (opt-in):** with `update_check = true` the Status page asks GitHub once a day, in the background,
+  for the newest release tag and for published security advisories of `update_repo` (default `Erlbon/pluteus`). A dot beside the version
+  is green (up to date), yellow (a newer version exists; update with `git pull` and a rebuild), grey (could not check) or red, with a red
+  notice on top, when a published advisory names your version as vulnerable. Nothing about your library or users is sent. For the
+  maintainer: a red flag is raised by publishing a GitHub security advisory (repository, Security, Advisories) with the affected
+  range, for example `< 0.3.2`, and the patched version.
 - **Who:** only users with `admin = true` (off for everyone by default; set it with `user add NAME --admin`,
   `user set NAME --admin`, in `config.toml`, or from the desktop app). Signing in is the browser's own login prompt; wrong
   passwords are counted by the same throttle as the main site, and every change needs a same-site request.

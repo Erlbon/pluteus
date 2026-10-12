@@ -33,6 +33,7 @@ from .app import SecurityHeaders
 from .config import ConfigError
 from .fs import longpath
 from .themes import DEFAULT
+from .updatecheck import UpdateChecker
 from .urls import Urls
 from .useredit import EditError
 from .web import Ctx
@@ -50,6 +51,7 @@ def create_admin_app(main_app) -> Starlette:
     st = main_app.state
     cfg, state, auth, limiter, themes = st.cfg, st.state, st.auth, st.limiter, st.themes
     config_path = st.config_path
+    updates = UpdateChecker(cfg.update_repo) if cfg.update_check else None
     ctx = Ctx(Urls(""), "", cfg.theme if themes.exists(cfg.theme) else DEFAULT)
     challenge = {"WWW-Authenticate": 'Basic realm="pluteus admin", charset="UTF-8"'}
 
@@ -161,6 +163,7 @@ def create_admin_app(main_app) -> Starlette:
         devices = state.list_devices()
         locked = [r["name"] for r in limiter.snapshot() if r["locked_for"]]
         return {
+            "update": updates.status() if updates else None,
             "version": __version__, "python": platform.python_version(), "uptime": time.time() - st.started,
             "roots": roots, "uploads": up,
             "state": {"persistent": state.persistent, "path": state.path, "size": size, "backups": len(names), "newest_backup": newest},

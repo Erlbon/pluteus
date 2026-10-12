@@ -101,7 +101,7 @@ def _box(title: str, inner: str) -> str:
 # ---- status ----------------------------------------------------------------------------------------------------------------
 SLOW_SECONDS = 2.0          # a library that takes longer than this to answer a listing is shown yellow
 LOW_DISK = 0.05             # less than this share of a disk free is shown yellow
-_LIGHT_CLASS = {"ok": "pl-dot-ok", "warn": "pl-dot-warn", "bad": "pl-dot-bad"}
+_LIGHT_CLASS = {"ok": "pl-dot-ok", "warn": "pl-dot-warn", "bad": "pl-dot-bad", "off": "pl-dot-off"}
 
 
 def _light(level: str, text: str) -> str:
@@ -125,13 +125,40 @@ def _root_light(r: dict) -> str:
     return _light(*low) if low else _light("ok", "ok")
 
 
+def _update_cell(u) -> str:
+    """The note beside the version: up to date, a newer one exists, a security advisory, or why we do not know."""
+    if not u:
+        return "<span class='pl-muted'>update check is off (update_check in config.toml)</span>"
+    state = u.get("state")
+    if state == "security":
+        return _light("bad", "security issue in this version")
+    if state == "update":
+        return _light("warn", "%s is available (git pull, then docker compose up -d --build)" % u.get("latest", "a newer version"))
+    if state == "ok":
+        return _light("ok", "up to date")
+    return _light("off", "checking..." if state == "checking" else "could not check for updates")
+
+
+def _security_alert(u) -> str:
+    """A red notice above everything for each published advisory that names this version."""
+    out = ""
+    for adv in (u or {}).get("advisories", []):
+        link = adv.get("url", "")
+        details = " <a href='%s'>Details</a>" % escape(link) if link.startswith("https://github.com/") else ""
+        fixed = " Fixed in %s." % escape(adv["fixed"]) if adv.get("fixed") else ""
+        out += ("<p class='pl-error' role='alert'><strong>Security issue in this version:</strong> %s (%s%s).%s%s</p>"
+                % (escape(adv.get("summary") or "see the advisory"), escape(adv.get("id", "")),
+                   ", " + escape(adv["severity"]) if adv.get("severity") else "", fixed, details))
+    return out
+
+
 def status_page(ctx: Ctx, d: dict) -> str:
     n = d.get("names", {})
 
     def counted(counts: dict) -> str:
         return escape(", ".join("%s (%d)" % (name, c) if c > 1 else name for name, c in sorted(counts.items())))
 
-    facts = _table(["", "", ""], [["Version", escape(d["version"]), ""], ["Python", escape(d["python"]), ""],
+    facts = _table(["", "", ""], [["Version", escape(d["version"]), _update_cell(d.get("update"))], ["Python", escape(d["python"]), ""],
                                   ["Running for", escape(duration(d["uptime"])), ""],
                                   ["Users", str(d["counts"]["users"]), escape(", ".join(n.get("users", [])))],
                                   ["Active sessions", str(d["counts"]["sessions"]), counted(n.get("sessions", {}))],
@@ -162,7 +189,7 @@ def status_page(ctx: Ctx, d: dict) -> str:
         light, where = _light("ok", "ok"), "<code>%s</code>" % escape(st["path"])
     boxes.append(_box("State (sessions, progress)", "<p>%s &middot; %s &middot; %s &middot; %d backup(s), %s</p>"
                       % (light, where, _size(st["size"]), st["backups"], escape(backup))))
-    return page(ctx, "Status", "status", "".join(boxes))
+    return page(ctx, "Status", "status", _security_alert(d.get("update")) + "".join(boxes))
 
 
 # ---- security ---------------------------------------------------------------------------------------------------------------
