@@ -256,11 +256,15 @@ def create_admin_app(main_app) -> Starlette:
     def flags_of(form: dict) -> tuple:
         return "adult" in form, "upload" in form, "admin" in form
 
+    def roots_of(form: dict) -> tuple:
+        """The ticked folders; the 'All folders' box means every root (a new user starts with none)."""
+        return ("*",) if "all" in form else tuple(form.get("root", []))
+
     @guarded
     async def add_user(request, user):
         def action(model, form):
             adult, upload, admin = flags_of(form)
-            model.add_user(_first(form, "name"), _first(form, "password"), _first(form, "again"), tuple(form.get("root", [])),
+            model.add_user(_first(form, "name"), _first(form, "password"), _first(form, "again"), roots_of(form),
                            adult, upload, admin)
             return "added"
         return await change(request, user, action)
@@ -279,7 +283,7 @@ def create_admin_app(main_app) -> Starlette:
             adult, upload, admin = flags_of(form)
             if admins_after(model, name, admin) < 1:
                 raise EditError("there must be at least one admin: this change would leave none")
-            model.set_access(name, tuple(form.get("root", [])), adult, upload, admin)
+            model.set_access(name, roots_of(form), adult, upload, admin)
             return "access"
         return await change(request, user, action)
 

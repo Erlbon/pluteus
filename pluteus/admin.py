@@ -77,7 +77,7 @@ class AdminModel:
         useredit.set_user(self.path, name, password_hash=hash_password(password))
 
     def set_access(self, name: str, roots=(), adult: bool = False, upload: bool = True, admin: bool = False) -> None:
-        """roots empty = every root."""
+        """roots: root names, or ("*",) for every root; empty = none."""
         useredit.set_user(self.path, name, roots=tuple(roots), adult=adult, upload=upload, admin=admin)
 
     def remove_user(self, name: str) -> None:

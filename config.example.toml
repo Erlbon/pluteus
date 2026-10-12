@@ -107,10 +107,11 @@ path = 'E:\Library\Comics'
 name = "alice"
 password_hash = "scrypt$16384$8$1$replace-with-output-of-hash-password"
 adult = true
+roots = ["*"]               # every root, also ones added later. WITHOUT a roots list a user may open NO folders.
 
 [[users]]
 name = "guest"
 password_hash = "scrypt$16384$8$1$replace-with-output-of-hash-password"
-roots = ["books"]           # omit to allow every root
+roots = ["books"]           # only these roots; ["*"] = every root; no list = none
 # upload = false            # no personal upload folder for this user (when uploads_dir is set)
 # admin = true              # may sign in to the admin page (needs admin_port). Off by default.

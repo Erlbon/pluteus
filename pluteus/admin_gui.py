@@ -127,7 +127,7 @@ class UserDialog(Dialog):
             self.fields = PasswordFields(body, 1)
             row = 4
         selected = set(self.user.roots) if self.user else set()
-        self.everything = tk.BooleanVar(value=not selected)
+        self.everything = tk.BooleanVar(value="*" in selected)       # a new user starts with no folders
         ttk.Separator(body).grid(row=row, column=0, columnspan=2, sticky="we", pady=8)
         ttk.Label(body, text="Folders this user may open").grid(row=row + 1, column=0, columnspan=2, sticky="w")
         ttk.Radiobutton(body, text="All of them", variable=self.everything, value=True,
@@ -164,9 +164,7 @@ class UserDialog(Dialog):
             self.name_entry.focus_set()
 
     def collect(self):
-        roots = () if self.everything.get() else tuple(n for n, v in self.root_vars.items() if v.get())
-        if not self.everything.get() and not roots:
-            raise EditError("choose at least one folder, or pick 'All of them'")
+        roots = ("*",) if self.everything.get() else tuple(n for n, v in self.root_vars.items() if v.get())
         result = {"roots": roots, "adult": self.adult.get(), "upload": self.upload.get(), "admin": self.admin.get()}
         if self.user is None:
             result.update(name=self.name.get(), password=self.fields.first.get(), again=self.fields.second.get())
@@ -273,7 +271,7 @@ class App(tk.Tk):
             return
         self.tree.delete(*self.tree.get_children())
         for u in users:
-            self.tree.insert("", "end", values=(u.name, ", ".join(u.roots) or "all", "yes" if u.adult else "",
+            self.tree.insert("", "end", values=(u.name, "all" if "*" in u.roots else (", ".join(u.roots) or "none"),"yes" if u.adult else "",
                                                 "yes" if u.upload else "no", "yes" if u.admin else ""))
 
     def add_user(self) -> None:

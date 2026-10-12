@@ -193,9 +193,19 @@ def security_page(ctx: Ctx, locks: list, devices: list, sessions: dict, flash: s
 
 # ---- users ------------------------------------------------------------------------------------------------------------------
 def _roots_boxes(root_names: list, chosen: tuple) -> str:
-    boxes = "".join("<label class='pl-check'><input type='checkbox' name='root' value='%s'%s> %s</label>"
-                    % (escape(n), " checked" if n in chosen else "", escape(n)) for n in root_names)
-    return "<fieldset class='pl-fieldset'><legend>Folders (none ticked = all)</legend>%s</fieldset>" % boxes
+    everything = "*" in chosen
+    boxes = ("<label class='pl-check'><input type='checkbox' name='all'%s> All folders (also ones added later)</label>"
+             % (" checked" if everything else ""))
+    boxes += "".join("<label class='pl-check'><input type='checkbox' name='root' value='%s'%s> %s</label>"
+                     % (escape(n), " checked" if n in chosen else "", escape(n)) for n in root_names)
+    return "<fieldset class='pl-fieldset'><legend>Folders this user may open (none ticked = none)</legend>%s</fieldset>" % boxes
+
+
+def roots_cell(roots: tuple) -> str:
+    """The Folders column: 'all', the names, or a red 'none'."""
+    if "*" in roots:
+        return "all"
+    return escape(", ".join(roots)) if roots else "<span class='pl-error'>none</span>"
 
 
 def _flags(adult: bool, upload: bool, admin: bool) -> str:
@@ -228,7 +238,7 @@ def users_page(ctx: Ctx, users: list, root_names: list, me: str, flash: str = ""
                    "" if u.name == me else _post("/users/remove", {"name": u.name}, "Remove user",
                                                  "Remove %s? Their upload folder and reading progress stay on the server." % u.name, True)))
         rows.append([USER_ICON + escape(u.name) + (" <span class='pl-muted'>(you)</span>" if u.name == me else ""),
-                     escape(", ".join(u.roots) or "all")] + rights + [edit])
+                     roots_cell(u.roots)] + rights + [edit])
     table = _table(["User", "Folders"] + [label for label, _ in RIGHTS] + [""], rows, "No users.")
     add = ("<form class='pl-admin-form' method='post' action='/users/add'>"
            "<label class='pl-field'><span>User name</span><input type='text' name='name' autocapitalize='off' required></label>"

@@ -56,8 +56,8 @@ def cfg(library):
         "roots": [{"name": "comics", "path": str(library / "comics")},
                   {"name": "books", "path": str(library / "books")}],
         "users": [
-            {"name": "alice", "password_hash": hash_password("pw-alice", **FAST)},
-            {"name": "bob", "password_hash": hash_password("pw-bob", **FAST), "adult": True},
+            {"name": "alice", "password_hash": hash_password("pw-alice", **FAST), "roots": ["*"]},
+            {"name": "bob", "password_hash": hash_password("pw-bob", **FAST), "adult": True, "roots": ["*"]},
             {"name": "carol", "password_hash": hash_password("pw-carol", **FAST), "roots": ["comics"]},
         ],
     }

@@ -186,9 +186,9 @@ def test_cli_add_list_set_remove(monkeypatch, conf, capsys):
     capsys.readouterr()
     assert run(monkeypatch, "user", "list", "--config", conf) == 0
     out = capsys.readouterr().out
-    assert "dave" in out and "comics" in out and "alice" in out and "(all)" in out
+    assert "dave" in out and "comics" in out and "alice" in out and "(none)" in out
     assert run(monkeypatch, "user", "set", "dave", "--config", conf, "--adult", "--all-roots") == 0
-    assert users(conf)["dave"].adult and users(conf)["dave"].roots == ()
+    assert users(conf)["dave"].adult and users(conf)["dave"].roots == ("*",)
     assert run(monkeypatch, "user", "set", "dave", "--config", conf, "--password-stdin",
                stdin="another-password\n") == 0
     assert verify_password("another-password", users(conf)["dave"].password_hash)
@@ -242,3 +242,19 @@ password_hash = "%s"
         conf.write_text("this is [not valid toml", encoding="utf-8")
         assert client.get("/opds", headers=alice).status_code == 200         # previous users stay in force
     assert "not valid" in caplog.text
+
+
+def test_a_new_user_may_open_no_folders_until_given_some(monkeypatch, conf, capsys):
+    assert run(monkeypatch, "user", "add", "erin", "--config", conf, "--password-stdin", stdin="a-long-password\n") == 0
+    out = capsys.readouterr().out
+    assert users(conf)["erin"].roots == () and "no folders yet" in out
+    assert not users(conf)["erin"].may_use("comics")
+    assert run(monkeypatch, "user", "set", "erin", "--config", conf, "--all-roots") == 0
+    assert users(conf)["erin"].roots == ("*",) and users(conf)["erin"].may_use("anything")
+    assert run(monkeypatch, "user", "set", "erin", "--config", conf, "--roots", "comics") == 0
+    assert users(conf)["erin"].roots == ("comics",) and not users(conf)["erin"].may_use("books")
+    assert run(monkeypatch, "user", "set", "erin", "--config", conf, "--roots", "") == 0
+    assert users(conf)["erin"].roots == ()
+    assert run(monkeypatch, "user", "add", "frank", "--config", conf, "--all-roots", "--password-stdin",
+               stdin="a-long-password\n") == 0
+    assert users(conf)["frank"].roots == ("*",)

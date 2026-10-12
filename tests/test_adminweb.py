@@ -363,3 +363,17 @@ def test_site_port_overrides_the_port_in_the_back_link(tmp_path):
     assert cfg.site_port == 8100
     client = TestClient(create_admin_app(create_app(cfg, config_path=str(path), reload_interval=0.0)), follow_redirects=False)
     assert "href='http://10.0.0.5:8100/'>Back to Pluteus<" in client.get("/", headers=dict(BOSS, host="10.0.0.5:8101")).text
+
+
+def test_a_user_added_with_no_folder_ticked_gets_none_and_the_all_box_means_every_root(admin):
+    client, _, path = admin
+    base = "password=long-enough-1&again=long-enough-1&upload=on"
+    assert client.post("/users/add", content="name=none1&" + base, headers={**BOSS, **FORM}).status_code == 303
+    assert client.post("/users/add", content="name=everyone&all=on&" + base, headers={**BOSS, **FORM}).status_code == 303
+    users = read_users(path)
+    assert users["none1"].roots == () and users["everyone"].roots == ("*",)
+    html = client.get("/users", headers=BOSS).text
+    assert "<span class='pl-error'>none</span>" in html
+    assert "name='all' checked" in html                                   # the edit form of 'everyone' shows the box ticked
+    assert client.post("/users/access", content="name=none1&root=books", headers={**BOSS, **FORM}).status_code == 303
+    assert read_users(path)["none1"].roots == ("books",)

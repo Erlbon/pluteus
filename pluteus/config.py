@@ -25,6 +25,9 @@ class ConfigError(Exception):
     pass
 
 
+ALL_ROOTS = "*"      # in a user's roots list: every root, including ones added later
+
+
 @dataclass(frozen=True)
 class Root:
     name: str
@@ -35,13 +38,13 @@ class Root:
 class User:
     name: str
     password_hash: str
-    roots: tuple = ()      # empty = every root
+    roots: tuple = ()      # the roots this user may open; ("*",) = every root; empty = none (a new user starts with none)
     adult: bool = False    # may see folders carrying the adult marker file
     upload: bool = True    # may use the personal upload folder (when uploads_dir is set)
     admin: bool = False    # may sign in to the admin page (admin_port); never given by default
 
     def may_use(self, root_name: str) -> bool:
-        return not self.roots or root_name in self.roots
+        return ALL_ROOTS in self.roots or root_name in self.roots
 
 
 @dataclass(frozen=True)
@@ -181,8 +184,10 @@ def parse_config(data: dict, check_roots: bool = True) -> Config:
         if not str(u.get("password_hash", "")).startswith("scrypt$"):
             raise ConfigError("user %r needs a password_hash (run: python -m pluteus hash-password)" % name)
         allowed = tuple(u.get("roots", ()))
+        if ALL_ROOTS in allowed and len(allowed) > 1:
+            raise ConfigError("user %r: \"*\" (every root) cannot be combined with root names" % name)
         for ar in allowed:
-            if ar not in roots:
+            if ar != ALL_ROOTS and ar not in roots:
                 raise ConfigError("user %r refers to unknown root %r" % (name, ar))
         users[name] = User(name, u["password_hash"], allowed, bool(u.get("adult", False)), bool(u.get("upload", True)),
                            bool(u.get("admin", False)))
@@ -257,6 +262,12 @@ def parse_config(data: dict, check_roots: bool = True) -> Config:
         upload_max_mb=_in_range(opts, "upload_max_mb", 4096, 1, 10_000_000),
         upload_quota_mb=_in_range(opts, "upload_quota_mb", 0, 0, 100_000_000),
     )
+
+
+def users_without_folders(cfg: Config) -> list:
+    """Names of users who can sign in but may open no folder (no roots list): usually a config written for the older
+    rule where 'no list' meant every folder. Reported at start-up and by check-config."""
+    return [u.name for u in cfg.users.values() if not u.roots]
 
 
 def load_config(path: str, check_roots: bool = True) -> Config:

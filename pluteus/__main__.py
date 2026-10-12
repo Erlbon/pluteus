@@ -8,7 +8,7 @@ import sys
 
 from . import __version__, useredit
 from .auth import MIN_PASSWORD, hash_password
-from .config import ConfigError, load_config
+from .config import ConfigError, load_config, users_without_folders
 
 
 ATTEMPTS = 3
@@ -50,12 +50,15 @@ def _user_command(a) -> int:
         print("%-20s %-8s %-8s %-8s %s" % ("user", "adult", "upload", "admin", "roots"))
         for u in cfg.users.values():
             print("%-20s %-8s %-8s %-8s %s" % (u.name, "yes" if u.adult else "no", "yes" if u.upload else "no",
-                                               "yes" if u.admin else "no", ", ".join(u.roots) or "(all)"))
+                                               "yes" if u.admin else "no", "(all)" if "*" in u.roots else (", ".join(u.roots) or "(none)")))
         return 0
     if a.user_cmd == "add":
         pw = _read_password(a.password_stdin, a.name)
-        useredit.add_user(a.config, a.name, hash_password(pw), _split_roots(a.roots or ""), a.adult, not a.no_upload, a.admin)
+        roots = ["*"] if a.all_roots else _split_roots(a.roots or "")
+        useredit.add_user(a.config, a.name, hash_password(pw), roots, a.adult, not a.no_upload, a.admin)
         print("Added user %s." % a.name)
+        if not roots:
+            print("Note: %s may open no folders yet. Give some with: user set %s --roots NAME[,NAME] (or --all-roots)." % (a.name, a.name))
     elif a.user_cmd == "set":
         if not (a.password or a.password_stdin or a.roots is not None or a.all_roots
                 or a.adult or a.no_adult or a.upload or a.no_upload or a.admin or a.no_admin):
@@ -64,7 +67,7 @@ def _user_command(a) -> int:
         pw_hash = hash_password(_read_password(a.password_stdin, a.name)) if (a.password or a.password_stdin) else None
         roots = useredit.UNSET
         if a.all_roots:
-            roots = ()
+            roots = ["*"]
         elif a.roots is not None:
             roots = _split_roots(a.roots)
         useredit.set_user(a.config, a.name, password_hash=pw_hash, roots=roots,
@@ -110,12 +113,13 @@ def main(argv=None) -> int:
         p.add_argument("name")
     for p in (u_add, u_set):
         p.add_argument("--password-stdin", action="store_true", help="read the password from stdin (scripts)")
-        p.add_argument("--roots", help="comma-separated roots this user may use (default: all)")
+        p.add_argument("--roots", help="comma-separated roots this user may open (default: none)")
+    u_add.add_argument("--all-roots", action="store_true", help="the user may open every root, also ones added later")
     u_add.add_argument("--adult", action="store_true", help="may see folders carrying the adult marker")
     u_add.add_argument("--no-upload", action="store_true", help="no personal upload folder for this user")
     u_add.add_argument("--admin", action="store_true", help="may sign in to the admin page (admin_port)")
     u_set.add_argument("--password", action="store_true", help="prompt for a new password")
-    u_set.add_argument("--all-roots", action="store_true", help="allow every root again")
+    u_set.add_argument("--all-roots", action="store_true", help="the user may open every root, also ones added later")
     u_set.add_argument("--adult", action="store_true")
     u_set.add_argument("--no-adult", action="store_true")
     u_set.add_argument("--upload", action="store_true", help="give the user a personal upload folder (the default)")
@@ -147,6 +151,9 @@ def main(argv=None) -> int:
     except (ConfigError, useredit.EditError) as e:
         print("Error:", e, file=sys.stderr)
         return 2
+    for name in users_without_folders(cfg):
+        print("Warning: user %r may open no folders (no roots list). Give some with roots = [\"books\"], or every root "
+              "with roots = [\"*\"]." % name, file=sys.stderr)
     if a.cmd == "check-config":
         print("OK: %d root(s), %d user(s)" % (len(cfg.roots), len(cfg.users)))
         return 0

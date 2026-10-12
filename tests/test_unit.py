@@ -192,3 +192,15 @@ def test_a_default_listing_reads_only_the_shown_page_and_a_size_sort_reads_every
     r = client.get("/browse/comics/Plain?sort=size&dir=desc", headers=h)
     assert r.status_code == 200 and CountingEntry.calls >= 30         # sorting by size needs every file's size
     assert client.get("/opds/comics/Plain", headers=basic("alice", "pw-alice")).status_code == 200
+
+
+def test_a_user_without_a_roots_list_may_open_nothing_and_star_means_every_root():
+    from pluteus.config import User, users_without_folders
+    assert not User("a", "h").may_use("books")
+    assert User("b", "h", ("*",)).may_use("books") and User("b", "h", ("*",)).may_use("later-root")
+    assert User("c", "h", ("books",)).may_use("books") and not User("c", "h", ("books",)).may_use("comics")
+    cfg = parse_config(_base(users=[{"name": "a", "password_hash": "scrypt$1$2$3$4$5"},
+                                    {"name": "b", "password_hash": "scrypt$1$2$3$4$5", "roots": ["*"]}]), check_roots=False)
+    assert users_without_folders(cfg) == ["a"]
+    with pytest.raises(ConfigError):
+        parse_config(_base(users=[{"name": "a", "password_hash": "scrypt$1$2$3$4$5", "roots": ["*", "books"]}]), check_roots=False)

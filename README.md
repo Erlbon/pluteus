@@ -96,7 +96,7 @@ the config invalid is refused before anything is written).
 
 ```powershell
 python -m pluteus user list   --config config.toml
-python -m pluteus user add    alice --config config.toml --adult              # asks for a password (min 8 chars)
+python -m pluteus user add    alice --config config.toml --all-roots --adult  # asks for a password (min 8 chars)
 python -m pluteus user add    guest  --config config.toml --roots books
 python -m pluteus user set    guest  --config config.toml --roots books,comics   # or --all-roots
 python -m pluteus user set    alice --config config.toml --password / --adult / --no-adult / --upload / --no-upload
@@ -165,7 +165,10 @@ Measured on 50 real EPUBs over SMB: about 1 s cold, 18 ms warm. Listing order is
 
 ## Access control
 
-- **Per user:** `roots = [...]` limits which roots a user sees (omit for all).
+- **Per user:** `roots = ["books", "comics"]` lists the roots a user may open; `roots = ["*"]` means every root, also
+  ones added later. **No list means no folders**: a new user starts with access to nothing and you grant it
+  (the admin page, the desktop app and `user add --roots ... | --all-roots` all make you choose). A server started with
+  such a user prints a warning.
 - **Adult folders:** put an empty file named `.adult` (configurable) in any folder; it and everything
   below it is hidden from users without `adult = true`, in feeds, pages and direct URLs (404).
   Works at any depth, so an adult imprint can sit inside a mainstream publisher folder.

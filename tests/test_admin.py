@@ -169,7 +169,7 @@ def window(tmp_path):
 def test_window_shows_users_and_the_file(window):
     app, path = window
     rows = [app.tree.item(i, "values") for i in app.tree.get_children()]
-    assert rows == [("alice", "all", "yes", "yes", "")]                                    # the last column: the admin page
+    assert rows == [("alice", "none", "yes", "yes", "")]                                    # the last column: the admin page
     assert "# my comment, must survive" in app.text.get("1.0", "end")
     assert "pluteus admin - " in app.title()
 
