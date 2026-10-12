@@ -34,6 +34,9 @@ data_dir = 'D:\pluteus-data'
 # the port on the LAN address only.
 # admin_port = 8101
 # admin_host = "127.0.0.1"
+# The admin page links back to the normal site on the same host name. If the site is published under another port than
+# `port` (Docker: 8080 inside, 8100 outside), say which one:
+# site_port = 8100
 
 # PERSONAL UPLOAD FOLDERS. Set uploads_dir and every user gets their own folder uploads_dir/<user name>, shown as the
 # top-level folder "uploads": upload, new folder, rename, delete. Nobody else sees it (not even other users with the

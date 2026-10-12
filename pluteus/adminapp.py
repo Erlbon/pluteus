@@ -28,6 +28,7 @@ from starlette.routing import Route
 
 from . import __version__, adminweb, uploads
 from .admin import AdminModel
+from .app import _PLAIN_HOST as PLAIN_HOST
 from .app import SecurityHeaders
 from .config import ConfigError
 from .fs import longpath
@@ -86,6 +87,15 @@ def create_admin_app(main_app) -> Starlette:
             log.warning("admin page: login for %r is locked for %d s (lock number %d)", name[:40], seconds, number)
         return None, 0
 
+    def site_link(request) -> str:
+        """The normal pluteus site on the host name this page was opened with: its own port (site_port, else port) and
+        base_path. Empty when the host name is odd, so the link can never be made to point somewhere else."""
+        host = request.headers.get("host", "")
+        host = host.rsplit(":", 1)[0] if not host.endswith("]") else host
+        if not PLAIN_HOST.fullmatch(host):
+            return ""
+        return "http://%s:%d%s/" % (host, cfg.site_port or cfg.port, cfg.base_path)
+
     def guarded(fn):
         @functools.wraps(fn)
         async def wrapper(request):
@@ -99,6 +109,7 @@ def create_admin_app(main_app) -> Starlette:
                 return PlainTextResponse("This account may not use the admin page.", 403)
             if not csrf_ok(request):
                 return PlainTextResponse("Cross-site request refused", 403)
+            adminweb.current_site_link.set(site_link(request))
             return await fn(request, user)
         return wrapper
 

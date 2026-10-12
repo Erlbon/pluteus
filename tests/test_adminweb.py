@@ -344,3 +344,22 @@ def test_main_site_links_to_the_admin_page_only_for_an_admin_on_the_local_networ
     outside = TestClient(app, client=("8.8.8.8", 50000), follow_redirects=False)
     assert "Admin<" not in outside.get("/", headers=site).text                                              # not a local address
     assert "Admin<" not in lan.get("/", headers=dict(site, host="evil'><x:8100")).text                      # odd host names
+
+
+def test_admin_header_shows_the_version_and_links_back_to_the_site(admin):
+    from pluteus import __version__
+    client, _, _ = admin
+    html = client.get("/", headers=dict(BOSS, host="192.168.1.99:8101")).text
+    head = html[html.index("<header"):html.index("</header>")]
+    assert __version__ in head
+    assert "href='http://192.168.1.99:8080/'>Back to Pluteus<" in head              # site_port unset: the main port
+    assert "Back to Pluteus" not in client.get("/", headers=dict(BOSS, host="x'><y:1")).text   # an odd host name: no link
+
+
+def test_site_port_overrides_the_port_in_the_back_link(tmp_path):
+    path = make_config(tmp_path)
+    path.write_text(path.read_text().replace("admin_port = 8101", "admin_port = 8101\nsite_port = 8100"))
+    cfg = load_config(str(path))
+    assert cfg.site_port == 8100
+    client = TestClient(create_admin_app(create_app(cfg, config_path=str(path), reload_interval=0.0)), follow_redirects=False)
+    assert "href='http://10.0.0.5:8100/'>Back to Pluteus<" in client.get("/", headers=dict(BOSS, host="10.0.0.5:8101")).text

@@ -3,9 +3,11 @@ value that comes from outside (names, paths, addresses) is escaped, and nothing 
 results are fixed sentences chosen by a code."""
 from __future__ import annotations
 
+import contextvars
 import time
 from html import escape
 
+from . import __version__
 from .web import Ctx, _size, layout, scheme_button
 
 NAV = (("status", "/", "Status"), ("security", "/security", "Security"), ("users", "/users", "Users"))
@@ -36,12 +38,20 @@ def duration(seconds: float) -> str:
     return "%d h %d min" % (hours, minutes) if hours else "%d min" % minutes
 
 
+current_site_link: contextvars.ContextVar = contextvars.ContextVar("current_site_link", default="")    # set per request
+
+
 def _header(active: str) -> str:
     links = "".join("<a class='pl-admin-tab%s' href='%s'>%s</a>" % (" pl-admin-on" if key == active else "", path, label)
                     for key, path, label in NAV)
-    return ("<header class='pl-bar'><span class='pl-brand'>Pluteus Admin</span><nav class='pl-admin-nav'>%s</nav>"
+    site = current_site_link.get()
+    if site:
+        links += "<a class='pl-admin-tab' href='%s'>Back to Pluteus</a>" % escape(site)
+    return ("<header class='pl-bar'><span class='pl-brand'>Pluteus Admin</span> <span class='pl-muted'>%s</span>"
+            "<nav class='pl-admin-nav'>%s</nav>"
             "<span class='pl-spacer'></span><form class='pl-inline' method='post' action='/logout'>"
-            "<button class='pl-btn pl-btn-small' type='submit'>Sign out</button></form>%s</header>" % (links, scheme_button()))
+            "<button class='pl-btn pl-btn-small' type='submit'>Sign out</button></form>%s</header>"
+            % (escape(__version__), links, scheme_button()))
 
 
 def signed_out_page(ctx: Ctx) -> str:
