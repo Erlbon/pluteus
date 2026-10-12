@@ -353,3 +353,14 @@ def test_a_refused_cross_site_request_is_logged_with_the_deciding_headers_only(u
     line = " ".join(r.getMessage() for r in caplog.records)
     assert "refused POST /share" in line and "sec-fetch-site='cross-site'" in line
     assert "pluteus_session" not in line and "pw-alice" not in line
+
+
+def test_manifest_has_an_id_an_explicit_share_list_and_the_share_entry_can_be_switched_off(cfg, tmp_path):
+    client, _ = make(cfg, tmp_path, uploads_dir=str(tmp_path / "up"), base_path="/lib")
+    data = client.get("/manifest.webmanifest").json()
+    assert data["id"] == "/lib/" and data["start_url"] == "/lib/" and data["scope"] == "/lib/"
+    accept = data["share_target"]["params"]["files"][0]["accept"]
+    assert "*/*" not in accept and "image/*" in accept and ".cbz" in accept                  # explicit, never 'everything'
+    client, _ = make(cfg, tmp_path, uploads_dir=str(tmp_path / "up"), base_path="/lib", share_target=False)
+    off = client.get("/manifest.webmanifest").json()
+    assert "share_target" not in off and off["id"] == "/lib/"                               # the app itself stays installable

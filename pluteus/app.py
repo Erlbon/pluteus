@@ -46,6 +46,9 @@ STATIC_DIR = Path(__file__).resolve().parent / "static"
 _PROXY_HEADERS = ("x-forwarded-for", "x-forwarded-host", "x-forwarded-proto", "forwarded", "via")
 _PLAIN_HOST = re.compile(r"[A-Za-z0-9.-]+|\[[0-9A-Fa-f:.]+\]")       # a host name or address, nothing that could break out of a link
 current_admin_link: contextvars.ContextVar = contextvars.ContextVar("current_admin_link", default="")   # set per request
+# What the Android share sheet may hand over. Explicit types and extensions, not "*/*": some Chrome versions refuse to build the
+# installed app (WebAPK) from a share target that accepts everything.
+SHARE_ACCEPT = ["image/*", "video/*", "audio/*", "text/*", "application/*", ".epub", ".cbz", ".cbr", ".cb7", ".cbt", ".m4b"]
 SERVICE_WORKER = chr(10).join([
     "// pluteus: does nothing but make the site installable as an app. No caching; every request goes to the network as usual.",
     "self.addEventListener('install', function () { self.skipWaiting(); });",
@@ -559,14 +562,14 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
             return RedirectResponse(flash_url(parts if op == "mkdir" else parts[:-1], bad=e.code), 303)
 
     async def manifest(request: Request):
-        data = {"name": "pluteus", "short_name": "pluteus", "description": "Filesystem-first book and comic server",
+        data = {"id": urls.home(), "name": "pluteus", "short_name": "pluteus", "description": "Filesystem-first book and comic server",
                 "start_url": urls.home(), "scope": urls.home(), "display": "standalone",
                 "background_color": "#14171f", "theme_color": "#14171f",
                 "icons": [{"src": urls.static("icon/icon-192.png"), "sizes": "192x192", "type": "image/png"},
                           {"src": urls.static("icon/icon-512.png"), "sizes": "512x512", "type": "image/png"}]}
-        if cfg.uploads_dir:           # installed on Android, pluteus then appears in the Share menu
+        if cfg.uploads_dir and cfg.share_target:           # installed on Android, pluteus then appears in the Share menu
             data["share_target"] = {"action": urls.share(), "method": "POST", "enctype": "multipart/form-data",
-                                    "params": {"files": [{"name": "files", "accept": ["*/*"]}]}}
+                                    "params": {"files": [{"name": "files", "accept": SHARE_ACCEPT}]}}
         return JSONResponse(data, media_type="application/manifest+json", headers=NO_CACHE)
 
     async def service_worker(request: Request):

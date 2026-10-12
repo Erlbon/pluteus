@@ -44,6 +44,10 @@ data_dir = 'D:\pluteus-data'
 # update_check = true
 # update_repo = "Erlbon/pluteus"
 
+# The installed app (Android, Chrome: Install app) appears in the Share menu when uploads_dir is set. If Chrome cannot install the
+# app, try share_target = false (and restart): it leaves the share entry out of the manifest.
+# share_target = true
+
 # PERSONAL UPLOAD FOLDERS. Set uploads_dir and every user gets their own folder uploads_dir/<user name>, shown as the
 # top-level folder "uploads": upload, new folder, rename, delete. Nobody else sees it (not even other users with the
 # same roots) and it is never inside a library: you move files into the library yourself. Keep uploads_dir OUTSIDE
