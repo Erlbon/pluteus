@@ -7,9 +7,9 @@
 # Mount it read-write if you manage users from inside the container (docker compose exec pluteus ...);
 # read-only is fine if you only edit the file on the host.
 #
-# On Windows, bind-mounting a Windows drive into Docker Desktop goes through the WSL2 file-sharing layer, which is
-# slow for folder walks: benchmark before choosing Docker over running pluteus natively (see README). A named
-# volume for /data (below) is the safe default.
+# On Windows, bind-mounting a Windows drive into Docker Desktop goes through the WSL2 file-sharing layer. Measured, it is
+# fast enough (see README); if a folder opens slowly, compare with running pluteus natively. A named volume for /data
+# (below) is the safe default.
 services:
   pluteus:
     build: .

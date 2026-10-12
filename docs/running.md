@@ -60,8 +60,8 @@ Notes:
 - The example compose file is hardened (`read_only`, `cap_drop: ALL`, `no-new-privileges`, limits). Uploads do not need
   `/tmp`: they stream straight into the user's folder.
 - Keep `/uploads` a separate folder from the libraries (pluteus refuses to start if they overlap).
-- Speed on a library reached through Docker Desktop's Windows drive layer is **not benchmarked yet**; if a folder opens
-  slowly, compare against a native run before blaming anything else.
+- Speed through Docker Desktop's Windows drive layer, measured: about 40 to 50 ms per folder feed, and about 40 ms warm
+  for a folder of 900 comic archives. If a folder opens slowly anyway, compare against a native run first.
 - Upgrade: pull or copy the new source, then `docker compose up -d --build`. State lives in the `/data` volume, so
   logins and reading progress survive.
 
