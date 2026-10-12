@@ -360,3 +360,16 @@ def test_sizes_switch_unit_at_1024_and_go_up_to_terabytes():
     gb = 1024 ** 3
     assert _size(1382.3 * gb) == "1.3 TB" and _size(156.8 * gb) == "156.8 GB" and _size(3726.0 * gb) == "3.6 TB"
     assert _size(6 * 1024 ** 4) == "6.0 TB" and _size(5000 * 1024 ** 4) == "5000.0 TB"       # nothing bigger than TB
+
+
+def test_every_listing_starts_with_an_up_row_with_the_big_button(cfg, tmp_path, library):
+    from test_login_web import HTML, login, make
+    client, _ = make(cfg, tmp_path)
+    login(client)
+    deep = client.get("/browse/comics/3%20-%20Marvel%20(1961-2012)/Spider-Man%20(1963-)", headers=HTML).text
+    first = deep[deep.index("<ul class='pl-list'>"):][:700]
+    assert "pl-up" in first and "Up one folder" in first and "Up: 3 - Marvel (1961-2012)" in first     # to the parent, by name
+    top = client.get("/browse/comics", headers=HTML).text
+    assert "Up: File Library" in top and "href='/'" in top[top.index("pl-up"):][:300]                   # a root goes to the home page
+    one = client.get("/browse/comics/Plain", headers=HTML).text
+    assert "Up: comics" in one

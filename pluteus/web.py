@@ -218,7 +218,16 @@ def listing_page(root: str, parts: tuple, entries: list, page: int, pages: int, 
               "<a href='%s'>%s</a>" % (escape(urls.browse(root)), escape(root))]
     for i, seg in enumerate(parts):
         crumbs.append("<a href='%s'>%s</a>" % (escape(urls.browse(root, parts[:i + 1])), escape(seg)))
-    rows = []
+    # The first row goes one level up, with the same big button as the download buttons below it (a thumb on a phone finds it
+    # in the same place without reaching for the breadcrumbs).
+    if parts:
+        up_url, up_name = urls.browse(root, parts[:-1]), (parts[-2] if len(parts) > 1 else root)
+    else:
+        up_url, up_name = urls.home(), "File Library"
+    rows = ["<li class='pl-row pl-file pl-up'>"
+            "<a class='pl-dl' href='%s' title='Up one folder' aria-label='Up one folder, to %s'><span class='pl-icon pl-i-back'></span></a>"
+            "<a class='pl-title' href='%s'><span class='pl-title-text'>Up: %s</span></a></li>"
+            % (escape(up_url), escape(up_name), escape(up_url), escape(up_name))]
     for e in entries:
         if e.is_dir:
             # The whole row is the link: a big target for a thumb.
