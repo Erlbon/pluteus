@@ -377,3 +377,13 @@ def test_a_user_added_with_no_folder_ticked_gets_none_and_the_all_box_means_ever
     assert "name='all' checked" in html                                   # the edit form of 'everyone' shows the box ticked
     assert client.post("/users/access", content="name=none1&root=books", headers={**BOSS, **FORM}).status_code == 303
     assert read_users(path)["none1"].roots == ("books",)
+
+
+def test_status_says_whether_bsdtar_is_there_for_rar_and_7z_comics(admin, monkeypatch):
+    from pluteus import cbz
+    client, _, _ = admin
+    monkeypatch.setattr(cbz, "bsdtar", lambda: "/usr/bin/bsdtar")
+    assert "bsdtar found" in client.get("/", headers=BOSS).text
+    monkeypatch.setattr(cbz, "bsdtar", lambda: None)
+    html = client.get("/", headers=BOSS).text
+    assert "bsdtar not found" in html and "pl-dot-warn" in html

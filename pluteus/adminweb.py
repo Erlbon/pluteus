@@ -160,6 +160,7 @@ def status_page(ctx: Ctx, d: dict) -> str:
 
     facts = _table(["", "", ""], [["Version", escape(d["version"]), _update_cell(d.get("update"))], ["Python", escape(d["python"]), ""],
                                   ["Running for", escape(duration(d["uptime"])), ""],
+                                  ["RAR and 7z comics", _light("ok", "bsdtar found") if d.get("bsdtar") else _light("warn", "bsdtar not found: CBR and CB7 files cannot be read in the reader (CBZ and CBT still can)"), ""],
                                   ["Users", str(d["counts"]["users"]), escape(", ".join(n.get("users", [])))],
                                   ["Active sessions", str(d["counts"]["sessions"]), counted(n.get("sessions", {}))],
                                   ["Known devices", str(d["counts"]["devices"]), counted(n.get("devices", {}))],

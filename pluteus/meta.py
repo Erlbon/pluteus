@@ -160,26 +160,27 @@ class MetaService:
         self.cache.put(entry.path, entry.size, entry.mtime, data)
         return data
 
-    def pages_for(self, info) -> list:
-        """Page names of a CBZ, through the same disposable cache (keyed on path + size + mtime).
+    def pages_for(self, info, external: bool = True) -> list:
+        """Page names of a comic archive, through the same disposable cache (keyed on path + size + mtime). `external` False
+        (the upload folder) allows ZIP comics only.
         Raises cbz.CbzError for an unreadable archive; failures are not cached."""
         from . import cbz
         key = "cbz:" + info.path
         hit = self.cache.get(key, info.size, info.mtime)
         if hit and hit.get("pages"):
             return hit["pages"]
-        pages = cbz.list_pages(info.path)
+        pages = cbz.list_pages(info.path, external)
         self.cache.put(key, info.size, info.mtime, {"pages": pages})
         return pages
 
-    def lookup_pages(self, entries) -> dict:
-        """{entry.path: page names} for the CBZ entries given; unreadable archives are left out. Parallel, cached."""
-        from .cbz import CbzError
-        comics = [e for e in entries if not e.is_dir and e.name.lower().endswith(".cbz")]
+    def lookup_pages(self, entries, external: bool = True) -> dict:
+        """{entry.path: page names} for the comic entries given; unreadable archives are left out. Parallel, cached."""
+        from .cbz import COMIC_EXTENSIONS, CbzError
+        comics = [e for e in entries if not e.is_dir and e.name.lower().endswith(COMIC_EXTENSIONS)]
 
         def one(entry):
             try:
-                return self.pages_for(entry)
+                return self.pages_for(entry, external)
             except CbzError:
                 return None
         return {e.path: pages for e, pages in zip(comics, self._pool.map(one, comics)) if pages}

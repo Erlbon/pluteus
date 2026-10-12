@@ -26,7 +26,7 @@ from starlette.middleware import Middleware
 from starlette.responses import HTMLResponse, PlainTextResponse, RedirectResponse
 from starlette.routing import Route
 
-from . import __version__, adminweb, uploads
+from . import __version__, adminweb, cbz, uploads
 from .admin import AdminModel
 from .app import _PLAIN_HOST as PLAIN_HOST
 from .app import SecurityHeaders
@@ -164,6 +164,7 @@ def create_admin_app(main_app) -> Starlette:
         locked = [r["name"] for r in limiter.snapshot() if r["locked_for"]]
         return {
             "update": updates.status() if updates else None,
+            "bsdtar": bool(cbz.bsdtar()),
             "version": __version__, "python": platform.python_version(), "uptime": time.time() - st.started,
             "roots": roots, "uploads": up,
             "state": {"persistent": state.persistent, "path": state.path, "size": size, "backups": len(names), "newest_backup": newest},

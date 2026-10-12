@@ -107,7 +107,7 @@ def test_it_can_be_switched_off_and_then_reads_nothing(cfg, library, monkeypatch
     make_cbz(library / "comics" / "Plain" / "Comic One.cbz", [("p1.png", RED)])
     calls = []
     real = cbz.list_pages
-    monkeypatch.setattr(cbz, "list_pages", lambda p: calls.append(p) or real(p))
+    monkeypatch.setattr(cbz, "list_pages", lambda p, *a: calls.append(p) or real(p, *a))
     client = TestClient(create_app(dataclasses.replace(cfg, opds_pse=False)))
     _, found = entries(client)
     assert links(found["Comic One"], STREAM_REL) == [] and len(links(found["Comic One"], ACQ_REL)) == 1
@@ -118,7 +118,7 @@ def test_each_comic_is_read_once_and_then_served_from_the_cache(pse, monkeypatch
     client, _ = pse
     calls = []
     real = cbz.list_pages
-    monkeypatch.setattr(cbz, "list_pages", lambda p: calls.append(p) or real(p))
+    monkeypatch.setattr(cbz, "list_pages", lambda p, *a: calls.append(p) or real(p, *a))
     for _ in range(3):
         entries(client)
     good = [c for c in calls if c.endswith("Comic One.cbz")]

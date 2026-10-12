@@ -569,9 +569,9 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
         parts = _parts(request.path_params["path"])
         info = await run_in_threadpool(lib.file_info, user, root, parts, cfg.show_all_files)   # exists, allowed, not hidden
         key = hashlib.sha1(("%s-%s" % (info.size, info.mtime)).encode()).hexdigest()[:12]
-        if info.name.lower().endswith(".cbz"):
+        if kinds.kind_of(info.name) == "comic":
             try:
-                pages = await run_in_threadpool(meta.pages_for, info)
+                pages = await run_in_threadpool(meta.pages_for, info, root != UPLOADS_ROOT)
             except CbzError as e:
                 return PlainTextResponse("This comic cannot be opened (%s). You can still download it." % e, 422)
             return HTMLResponse(web.comic_reader_page(
@@ -776,10 +776,11 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
         except ValueError:
             raise PathError("page must be a number")
         info = await run_in_threadpool(lib.file_info, user, root, parts, cfg.show_all_files)
-        if not info.name.lower().endswith(".cbz"):
+        if kinds.kind_of(info.name) != "comic":
             raise NotFound("not a comic archive")
+        external = root != UPLOADS_ROOT
         try:
-            pages = await run_in_threadpool(meta.pages_for, info)
+            pages = await run_in_threadpool(meta.pages_for, info, external)
             if not 0 <= number < len(pages):
                 raise NotFound("no such page")
             etag = '"%s"' % hashlib.md5(("%s-%s-%d" % (info.size, info.mtime, number)).encode(),
@@ -787,7 +788,7 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
             headers = {"ETag": etag, "Cache-Control": "private, max-age=86400"}     # a page never changes
             if etag in {t.strip() for t in request.headers.get("if-none-match", "").split(",")}:
                 return Response(status_code=304, headers=headers)
-            data = await run_in_threadpool(cbz.read_page, info.path, pages[number])
+            data = await run_in_threadpool(cbz.read_page, info.path, pages[number], cbz.MAX_PAGE_BYTES, external)
         except CbzError as e:
             return PlainTextResponse("Cannot read this page (%s)" % e, 422)
         return Response(data, media_type=cbz.mime_for(pages[number]), headers=headers)
@@ -828,7 +829,7 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
     def page_streams(user, root: str, shown: list) -> dict:
         """OPDS-PSE data for the comics on this feed page: {path: link details}. Comics whose page list cannot be
         read simply get no stream link (they stay downloadable)."""
-        pages_by_path = meta.lookup_pages(shown)
+        pages_by_path = meta.lookup_pages(shown, root != UPLOADS_ROOT)
         if not pages_by_path:
             return {}
         comics = [e for e in shown if e.path in pages_by_path]

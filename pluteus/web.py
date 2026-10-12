@@ -233,7 +233,7 @@ def listing_page(root: str, parts: tuple, entries: list, page: int, pages: int, 
         # left, where a thumb finds it. Without readers (a plain file server) the title downloads.
         if not ctx.readers:
             open_url = urls.download(root, e.parts)
-        elif e.name.lower().endswith((".epub", ".cbz")):
+        elif kinds.kind_of(e.name) in ("epub", "comic"):
             open_url = urls.read(root, e.parts)
         else:
             open_url = urls.view(root, e.parts)

@@ -11,7 +11,7 @@ medieval library. Pronounced "PLOO-tee-us".
 ## What you get
 
 - **OPDS feeds** for reader apps (with page streaming for comics), and a **web UI** that shows the real folder tree.
-- **Readers in the browser** for EPUB, CBZ and PDF, with reading progress per user; **viewers** for images, audio
+- **Readers in the browser** for EPUB, comics (CBZ, CBR, CB7, CBT) and PDF, with reading progress per user; **viewers** for images, audio
   and m4b audiobooks, video, text, Markdown, CSV and zip files.
 - **Per-user logins**, per-user folder access, `.adult`, `.private` and `.hidden` folder markers, and a personal
   **upload folder** per user (also from the Android share sheet).
@@ -23,7 +23,7 @@ medieval library. Pronounced "PLOO-tee-us".
 ## What it deliberately does not do
 
 No library database, no search across the whole library, no "recently added", no duplicate detection, no cover
-images, no online metadata lookups (it only reads the title, author and series already inside your EPUBs), no CBR, no HEIC conversion, no accounts for sign-up. Anything that would need scanning the
+images, no online metadata lookups (it only reads the title, author and series already inside your EPUBs), no HEIC conversion, no accounts for sign-up. Anything that would need scanning the
 tree is left out on purpose: that lightness is the point. It is not a replacement for Nextcloud, Calibre or Jellyfin.
 
 ## Why filesystem-first
@@ -243,7 +243,7 @@ Nothing is indexed, so a folder costs the same however big the library is.
 1. Reader-app compatibility pass on real devices (KOReader, an iOS app, Android comic apps with page streaming);
    PocketBook is the only one tried so far.
 2. Try "Share to pluteus" on a real phone over HTTPS (built, untested there).
-3. No covers by design (not wanted); no CBR support (not needed).
+3. No covers by design (not wanted).
 
 ## Icon
 
@@ -274,14 +274,22 @@ in `pluteus/static/vendor/`, no CDN) with an interface built from the theme's ow
 The reader is a convenience: the OPDS feed and plain downloads for Android reader apps are the main way to read.
 The progress API is `GET/PUT /api/progress/{root}/{path}` (JSON `{locator, percent}`; same-site writes only).
 
-## Reading comics (CBZ)
+## Reading comics (CBZ, CBR, CB7, CBT)
 
-Every `.cbz` has a **Read** link too: a deliberately simple one-page-at-a-time reader (no libraries, `reader-comic.js`).
+Every comic archive (`.cbz`, `.cbr`, `.cb7`, `.cbt`) has a **Read** link too: a deliberately simple one-page-at-a-time reader (no libraries, `reader-comic.js`).
 Fit to page or fit to width (scrolls down), arrows / space / page keys / Home / End, edge taps and swipes, click the
 progress bar to jump, full screen, dark/light. The page number is saved per user like an EPUB's position, so comics
 reopen where you stopped and appear under "Pick up where you left off" until finished.
 
-The server never extracts anything: it reads the zip's central directory once to list the pages (images only, natural
+**Which archive it is** is decided by what the file contains, not by its name (many `.cbr` files are renamed ZIPs). ZIP and
+TAR are read with Python's own libraries. **RAR and 7z need `bsdtar`** (libarchive): the Docker image installs it
+(`libarchive-tools`, about 2 MB); on Windows 10 and later the system `tar.exe` is bsdtar; on Linux install `libarchive-tools`
+(Debian, Ubuntu) or `libarchive`. pluteus runs it with a 30-second limit and an output limit, writing one page to its output;
+nothing is extracted to disk. Not supported: password-protected and multi-part archives, and the oldest RAR variants. In a
+user's **upload folder only ZIP comics open** (a stranger's RAR or 7z file is never handed to a C library); they can still
+be downloaded. The admin Status page tells you whether bsdtar was found.
+
+The server never extracts anything: for a ZIP it reads the central directory once to list the pages (images only, natural
 order, `__MACOSX`/dot files/`Thumbs.db` skipped; the list is cached in the SQLite cache), then serves one entry per
 request from `GET /cbz/{root}/{path}?page=N` (0-based). Pages are cacheable (ETag) and bounded: at most 5000 pages and
 80 MB per page, enforced while reading, so a zip header that lies cannot blow up memory. Measured on a real 184-page

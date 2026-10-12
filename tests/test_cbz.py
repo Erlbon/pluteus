@@ -155,7 +155,7 @@ def test_the_page_list_is_cached_until_the_file_changes(comic_app, library, monk
     client, _ = comic_app
     calls = []
     real = cbz.list_pages
-    monkeypatch.setattr(cbz, "list_pages", lambda p: calls.append(p) or real(p))
+    monkeypatch.setattr(cbz, "list_pages", lambda p, *a: calls.append(p) or real(p, *a))
     client.get(PAGES + "?page=0"); client.get(PAGES + "?page=1"); client.get(READ, headers=HTML)
     assert len(calls) == 1                                                  # one read of the central directory
     path = library / "comics" / "Plain" / "Comic One.cbz"

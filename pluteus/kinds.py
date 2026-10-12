@@ -15,7 +15,7 @@ AUDIO = {".mp3": "audio/mpeg", ".m4a": "audio/mp4", ".m4b": "audio/mp4", ".aac":
 VIDEO = {".mp4": "video/mp4", ".m4v": "video/mp4", ".webm": "video/webm", ".ogv": "video/ogg",
          ".mov": "video/quicktime", ".mkv": "video/x-matroska"}
 PDF = {".pdf": "application/pdf"}
-BOOKS = {".epub": "epub", ".cbz": "comic"}
+BOOKS = {".epub": "epub", ".cbz": "comic", ".cbr": "comic", ".cb7": "comic", ".cbt": "comic"}
 MARKDOWN = {".md", ".markdown"}
 TABLE = {".csv", ".tsv"}
 ARCHIVE = {".zip"}

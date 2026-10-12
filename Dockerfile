@@ -2,6 +2,10 @@ FROM python:3.12-slim
 
 ENV PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1
 
+# bsdtar (libarchive) reads RAR and 7z comics (CBR, CB7). About 2 MB; without it only CBZ and CBT open in the reader.
+RUN apt-get update && apt-get install -y --no-install-recommends libarchive-tools \
+    && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /app
 COPY pyproject.toml ./
 COPY pluteus ./pluteus

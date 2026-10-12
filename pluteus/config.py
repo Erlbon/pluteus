@@ -8,13 +8,16 @@ from dataclasses import dataclass
 
 DEFAULT_EXCLUDES = ("$recycle.bin", "system volume information", "@eadir", "lost+found",
                     "thumbs.db", "desktop.ini")
-DEFAULT_EXTENSIONS = (".epub", ".cbz", ".pdf")
+DEFAULT_EXTENSIONS = (".epub", ".cbz", ".cbr", ".cb7", ".cbt", ".pdf")
 # Leading lineage/DDC number, either "3.23 - " or "0. ": hidden in the display name only.
 DEFAULT_DISPLAY_STRIP = r"^\d+(?:\.\d+)*(?: - |\.\s+)"
 
 MIME_TYPES = {
     ".epub": "application/epub+zip",
     ".cbz": "application/vnd.comicbook+zip",
+    ".cbr": "application/vnd.comicbook-rar",
+    ".cb7": "application/x-cb7",
+    ".cbt": "application/x-cbt",
     ".pdf": "application/pdf",
 }
 
