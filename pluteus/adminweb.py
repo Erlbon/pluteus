@@ -39,13 +39,13 @@ def duration(seconds: float) -> str:
 def _header(active: str) -> str:
     links = "".join("<a class='pl-admin-tab%s' href='%s'>%s</a>" % (" pl-admin-on" if key == active else "", path, label)
                     for key, path, label in NAV)
-    return ("<header class='pl-bar'><span class='pl-brand'>pluteus admin</span><nav class='pl-admin-nav'>%s</nav>"
+    return ("<header class='pl-bar'><span class='pl-brand'>Pluteus Admin</span><nav class='pl-admin-nav'>%s</nav>"
             "<span class='pl-spacer'></span><form class='pl-inline' method='post' action='/logout'>"
             "<button class='pl-btn pl-btn-small' type='submit'>Sign out</button></form>%s</header>" % (links, scheme_button()))
 
 
 def signed_out_page(ctx: Ctx) -> str:
-    return layout("pluteus admin: signed out", "<main class='pl-card pl-admin-box'><h1>Signed out</h1>"
+    return layout("Pluteus Admin: signed out", "<main class='pl-card pl-admin-box'><h1>Signed out</h1>"
                   "<p>Your browser has forgotten the login for this page.</p><p><a class='pl-btn' href='/'>Sign in again</a></p></main>",
                   ctx, bar=False)
 
@@ -59,7 +59,7 @@ def page(ctx: Ctx, title: str, active: str, body: str, flash: str = "", error: s
     main = ("<main class='pl-main pl-admin'><h1>%s</h1>%s%s"
             "<p class='pl-muted pl-foot'>This page is only for the local network: do not route or forward its port to the "
             "internet.</p></main>" % (escape(title), note, body))
-    return layout("pluteus admin: " + title, _header(active) + main, ctx, bar=False,
+    return layout("Pluteus Admin: " + title, _header(active) + main, ctx, bar=False,
                   scripts=(ctx.urls.static("uploads.js"),))
 
 

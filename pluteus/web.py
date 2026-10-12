@@ -34,7 +34,7 @@ def layout(title: str, body: str, ctx: Ctx, *, head: str = "", scripts: tuple = 
             who = (admin + "<a href='%s'>Settings</a>"
                    "<form method='post' action='%s'><button class='pl-btn' type='submit'>Sign out (%s)</button></form>"
                    % (escape(u.settings()), escape(u.logout()), escape(ctx.user)))
-        chrome = ("<header class='pl-bar'><a class='pl-brand' href='%s'>pluteus</a><span class='pl-spacer'></span>%s%s</header>"
+        chrome = ("<header class='pl-bar'><a class='pl-brand' href='%s'>Pluteus</a><span class='pl-spacer'></span>%s%s</header>"
                   % (escape(u.home()), scheme_button(), who))
     js = "".join("<script src='%s' defer></script>" % escape(s) for s in scripts)
     js += "".join("<script type='module' src='%s'></script>" % escape(s) for s in module_scripts)
