@@ -45,13 +45,14 @@ def _header(active: str) -> str:
     links = "".join("<a class='pl-admin-tab%s' href='%s'>%s</a>" % (" pl-admin-on" if key == active else "", path, label)
                     for key, path, label in NAV)
     site = current_site_link.get()
-    if site:
-        links += "<a class='pl-admin-tab' href='%s'>Back to Pluteus</a>" % escape(site)
+    # The right-hand side is laid out like the main site's bar: contrast button, the link to the other site ("Admin" there,
+    # "Pluteus" here), then Sign out.
+    other = "<a href='%s'>Pluteus</a>" % escape(site) if site else ""
     return ("<header class='pl-bar'><span class='pl-brand'>Pluteus Admin</span> <span class='pl-muted'>%s</span>"
-            "<nav class='pl-admin-nav'>%s</nav>"
-            "<span class='pl-spacer'></span><form class='pl-inline' method='post' action='/logout'>"
-            "<button class='pl-btn pl-btn-small' type='submit'>Sign out</button></form>%s</header>"
-            % (escape(__version__), links, scheme_button()))
+            "<nav class='pl-admin-nav'>%s</nav><span class='pl-spacer'></span>%s%s"
+            "<form class='pl-inline' method='post' action='/logout'>"
+            "<button class='pl-btn' type='submit'>Sign out</button></form></header>"
+            % (escape(__version__), links, scheme_button(), other))
 
 
 def signed_out_page(ctx: Ctx) -> str:

@@ -352,8 +352,8 @@ def test_admin_header_shows_the_version_and_links_back_to_the_site(admin):
     html = client.get("/", headers=dict(BOSS, host="192.168.1.99:8101")).text
     head = html[html.index("<header"):html.index("</header>")]
     assert __version__ in head
-    assert "href='http://192.168.1.99:8080/'>Back to Pluteus<" in head              # site_port unset: the main port
-    assert "Back to Pluteus" not in client.get("/", headers=dict(BOSS, host="x'><y:1")).text   # an odd host name: no link
+    assert "href='http://192.168.1.99:8080/'>Pluteus<" in head              # site_port unset: the main port
+    assert "8080/'>Pluteus<" not in client.get("/", headers=dict(BOSS, host="x'><y:1")).text   # an odd host name: no link
 
 
 def test_site_port_overrides_the_port_in_the_back_link(tmp_path):
@@ -362,7 +362,7 @@ def test_site_port_overrides_the_port_in_the_back_link(tmp_path):
     cfg = load_config(str(path))
     assert cfg.site_port == 8100
     client = TestClient(create_admin_app(create_app(cfg, config_path=str(path), reload_interval=0.0)), follow_redirects=False)
-    assert "href='http://10.0.0.5:8100/'>Back to Pluteus<" in client.get("/", headers=dict(BOSS, host="10.0.0.5:8101")).text
+    assert "href='http://10.0.0.5:8100/'>Pluteus<" in client.get("/", headers=dict(BOSS, host="10.0.0.5:8101")).text
 
 
 def test_a_user_added_with_no_folder_ticked_gets_none_and_the_all_box_means_every_root(admin):
