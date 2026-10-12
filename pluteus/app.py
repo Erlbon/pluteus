@@ -46,6 +46,12 @@ STATIC_DIR = Path(__file__).resolve().parent / "static"
 _PROXY_HEADERS = ("x-forwarded-for", "x-forwarded-host", "x-forwarded-proto", "forwarded", "via")
 _PLAIN_HOST = re.compile(r"[A-Za-z0-9.-]+|\[[0-9A-Fa-f:.]+\]")       # a host name or address, nothing that could break out of a link
 current_admin_link: contextvars.ContextVar = contextvars.ContextVar("current_admin_link", default="")   # set per request
+SERVICE_WORKER = chr(10).join([
+    "// pluteus: does nothing but make the site installable as an app. No caching; every request goes to the network as usual.",
+    "self.addEventListener('install', function () { self.skipWaiting(); });",
+    "self.addEventListener('activate', function (e) { e.waitUntil(self.clients.claim()); });",
+    "self.addEventListener('fetch', function () { /* no respondWith: the browser handles the request itself */ });",
+    ""])
 STATIC_ALLOWED ={".css", ".js", ".mjs", ".svg", ".png", ".ico", ".woff2", ".webmanifest", ".pfb", ".ttf", ".wasm"}
 # Browsers refuse an ES module that is not served as JavaScript, and WebAssembly only compiles when it is served as
 # application/wasm; mimetypes knows neither everywhere.
@@ -563,6 +569,11 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
                                     "params": {"files": [{"name": "files", "accept": ["*/*"]}]}}
         return JSONResponse(data, media_type="application/manifest+json", headers=NO_CACHE)
 
+    async def service_worker(request: Request):
+        """A service worker that does nothing: it caches nothing and answers no request itself. It exists only so that Chrome
+        on Android offers 'Install app' (and then the Share target). Served from the site's own prefix so its scope is the site."""
+        return Response(SERVICE_WORKER, media_type="text/javascript", headers=NO_CACHE)
+
     @guarded("web")
     async def read(request: Request, user):
         root = request.path_params["root"]
@@ -906,6 +917,7 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
         Route("/zip/{root}/{path:path}", zip_entry),
         Route("/cbz/{root}/{path:path}", cbz_page),
         Route("/manifest.webmanifest", manifest),
+        Route("/sw.js", service_worker),
         Route("/share", share, methods=["POST"]),
         Route("/upload/{root}", upload, methods=["POST"]),
         Route("/upload/{root}/{path:path}", upload, methods=["POST"]),

@@ -412,3 +412,13 @@ def test_a_new_lock_is_logged_without_the_guesses(web, caplog):
             guess(client, pw="secret-guess-%d" % i)
     text = " ".join(r.getMessage() for r in caplog.records)
     assert "login for 'alice' is locked for" in text and "lock number 1" in text and "secret-guess" not in text
+
+
+def test_a_do_nothing_service_worker_makes_the_site_installable(cfg, tmp_path):
+    client, _ = make(cfg, tmp_path)
+    r = client.get("/sw.js")                                                        # public, like the manifest: no login needed
+    assert r.status_code == 200 and r.headers["content-type"].startswith("text/javascript")
+    assert "no-cache" in r.headers["cache-control"] or "no-store" in r.headers["cache-control"]
+    assert "addEventListener('fetch'" in r.text and "respondWith" in r.text.split("//")[-1] and "caches." not in r.text   # caches nothing
+    script = client.get("/static/scheme.js").text
+    assert "serviceWorker.register" in script and "sw.js" in script

@@ -7,6 +7,14 @@
     if (saved === "dark" || saved === "light") root.setAttribute("data-scheme", saved);
   } catch (e) { /* storage blocked: the system setting still works */ }
 
+  /* A do-nothing service worker, only so that Chrome offers "Install app" (it lives at <site prefix>/sw.js) */
+  if ("serviceWorker" in navigator) {
+    window.addEventListener("load", function () {
+      var link = document.querySelector("link[rel=manifest]");
+      if (link) navigator.serviceWorker.register(link.href.replace(/manifest\.webmanifest.*$/, "sw.js")).catch(function () { /* ignore */ });
+    });
+  }
+
   document.addEventListener("DOMContentLoaded", function () {
     var button = document.querySelector(".pl-scheme");
     if (!button) return;
