@@ -5,7 +5,7 @@ import time
 from dataclasses import dataclass
 from html import escape
 
-from . import __version__, kinds
+from . import __version__, kinds, mediainfo
 from .icons import COLOR_SPRITE, OUTLINE_SPRITE, ico
 from .themes import DEFAULT
 from .urls import Urls
@@ -135,7 +135,8 @@ def _book_label(entry, meta: dict) -> str:
         series = (" <span class='pl-muted'>(%s%s)</span>" % (
             escape(meta["series"]), " #" + escape(meta["series_index"]) if meta.get("series_index") else "")
             if meta.get("series") else "")
-        return escape(meta["title"]) + by + series
+        number = "<span class='pl-muted'>%02d</span> " % meta["track"] if meta.get("track") else ""
+        return number + escape(meta["title"]) + by + series
     return escape(entry.name)
 
 
@@ -416,34 +417,73 @@ def text_viewer_page(ctx: Ctx, title: str, *, text: str, encoding: str, size: in
                    scripts=(ctx.urls.static("viewer-text.js"),))
 
 
+def _lyrics_html(synced: list, plain: str) -> str:
+    """The lyrics panel: timed lines (each knows its second, the script highlights the current one) or the plain text."""
+    if synced:
+        lines = "".join("<p data-t='%s'>%s</p>" % (t, escape(words) or "&nbsp;") for t, words in synced)
+        return "<div class='pl-lyrics pl-lyrics-synced' id='lyrics' hidden>%s</div>" % lines
+    if plain:
+        return "<div class='pl-lyrics pl-lyrics-plain' id='lyrics' hidden>%s</div>" % escape(plain)
+    return ""
+
+
 def media_viewer_page(ctx: Ctx, title: str, *, kind: str, raw_url: str, mime: str, download_url: str, back_url: str,
-                      progress_url: str, prev_url, next_url, position: int, total: int, album: str = "") -> str:
-    """The audio/video viewer: the browser's own player plus big buttons made for listening on a phone (30 second skips,
-    speed, sleep timer). viewer-media.js adds resume, auto-advance to the next file and the lock-screen controls."""
+                      progress_url: str, prev_url, next_url, position: int, total: int, album: str = "",
+                      tags: dict | None = None, cover_url: str = "", synced: list | None = None) -> str:
+    """The audio/video viewer. Audio gets a cover, the tags (title, artist, album, year, genre, track), a scrubber, big transport
+    buttons and lyrics; video keeps the browser's own controls under the same information. Tags are untrusted text: escaped.
+    viewer-media.js adds resume, auto-advance to the next file, the lyrics highlight and the lock-screen controls."""
+    tags, synced = tags or {}, synced or []
     tag = "video" if kind == "video" else "audio"
-    controls = ("<div class='pl-media-controls'>"
-                "<button class='pl-btn' id='back30' type='button' aria-label='Back 30 seconds'>"
-                "<span class='pl-icon pl-i-back30'></span><span class='pl-btn-text'>30 s</span></button>"
-                "<button class='pl-btn' id='speed' type='button' aria-label='Playback speed'>"
-                "<span class='pl-icon pl-i-speed'></span><span class='pl-btn-text'>1&times;</span></button>"
-                "<button class='pl-btn' id='sleep' type='button' aria-label='Sleep timer'>"
-                "<span class='pl-icon pl-i-moon'></span><span class='pl-btn-text'>Sleep</span></button>"
-                "<button class='pl-btn' id='fwd30' type='button' aria-label='Forward 30 seconds'>"
-                "<span class='pl-btn-text'>30 s</span><span class='pl-icon pl-i-fwd30'></span></button></div>")
-    stage = ("<div class='pl-media-box'><div class='pl-media-title'>%s</div>"
-             "<%s id='media' controls preload='metadata' %s src='%s'><p>Your browser cannot play this file; "
-             "<a href='%s'>download it</a>.</p></%s>%s<div class='pl-toast' id='status' hidden></div></div>"
-             % (escape(title), tag, "playsinline" if kind == "video" else "", escape(raw_url), escape(download_url), tag,
-                controls))
+    name = title.rsplit(".", 1)[0] if "." in title else title
+    heading = tags.get("title") or name
+    artist = tags.get("artist") or tags.get("albumartist") or ""
+    album_name = tags.get("album") or album
+    by = " &middot; ".join(escape(x) for x in (artist, album_name) if x)
+    chips = "".join("<span class='pl-chip'>%s</span>" % escape(f) for f in mediainfo.facts(tags))
+    lyrics = _lyrics_html(synced, tags.get("lyrics", ""))
+
+    def button(ident: str, label: str, icon: str, text: str = "", after: bool = False, extra: str = "") -> str:
+        glyph = "<span class='pl-icon pl-i-%s'></span>" % icon
+        words = "<span class='pl-btn-text'>%s</span>" % text if text else ""
+        return ("<button class='pl-btn %s' id='%s' type='button' aria-label='%s'>%s</button>"
+                % (extra, ident, escape(label), words + glyph if after else glyph + words))
+    skip_back = button("back30", "Back 30 seconds", "back30", "30 s")
+    skip_fwd = button("fwd30", "Forward 30 seconds", "fwd30", "30 s", after=True)
+    speed = button("speed", "Playback speed", "speed", "1&times;")
+    sleep = button("sleep", "Sleep timer", "moon", "Sleep")
+    words_button = ("<button class='pl-btn' id='lyrics-btn' type='button' aria-label='Show the lyrics' aria-expanded='false'>"
+                    "<span class='pl-btn-text'>Lyrics</span></button>" if lyrics else "")
+    info = ("<div class='pl-track'><h1 class='pl-track-title'>%s</h1>%s%s</div>"
+            % (escape(heading), "<div class='pl-track-by'>%s</div>" % by if by else "",
+               "<div class='pl-chips'>%s</div>" % chips if chips else ""))
+    if kind == "video":
+        stage = ("<div class='pl-media-box'>%s<video id='media' controls preload='metadata' playsinline src='%s'>"
+                 "<p>Your browser cannot play this file; <a href='%s'>download it</a>.</p></video>"
+                 "<div class='pl-media-controls'>%s%s%s%s</div>%s<div class='pl-toast' id='status' hidden></div></div>"
+                 % (info, escape(raw_url), escape(download_url), skip_back, speed, sleep, skip_fwd, lyrics))
+    else:
+        picture = ("<img class='pl-cover-img' src='%s' alt='Cover'>" % escape(cover_url) if cover_url
+                   else "<div class='pl-cover-blank'>%s</div>" % ico("audio"))
+        backdrop = "<img class='pl-bg' src='%s' alt=''>" % escape(cover_url) if cover_url else ""
+        stage = ("<div class='pl-media-box pl-player'>%s<div class='pl-cover'>%s</div>%s"
+                 "<audio id='media' controls preload='metadata' src='%s'><p>Your browser cannot play this file; "
+                 "<a href='%s'>download it</a>.</p></audio>"
+                 "<div class='pl-scrub'><span id='cur'>0:00</span><input type='range' id='scrub' min='0' max='1000' value='0' "
+                 "aria-label='Position'><span id='dur'>&ndash;:&ndash;&ndash;</span></div>"
+                 "<div class='pl-transport'>%s%s%s</div><div class='pl-media-controls'>%s%s%s</div>%s"
+                 "<div class='pl-toast' id='status' hidden></div></div>"
+                 % (backdrop, picture, info, escape(raw_url), escape(download_url), skip_back,
+                    button("play", "Play", "play", extra="pl-play"), skip_fwd, speed, sleep, words_button, lyrics))
     foot = ("%s<span style='flex:1'></span><span>%d / %d</span>%s"
             % (_nav_link("prev", "prev", "Previous file", prev_url), position, total,
                _nav_link("next", "next", "Next file", next_url)))
     tools = _download_link(download_url) + _reader_scheme()
-    name = title.rsplit(".", 1)[0] if "." in title else title
-    return _viewer(ctx, title, back_url, tools=tools, stage=stage, foot=foot, classes="pl-mediaview",
+    return _viewer(ctx, title, back_url, tools=tools, stage=stage, foot=foot, classes="pl-mediaview pl-" + tag,
                    stage_class="pl-media-stage",
                    data=(("progress", progress_url), ("kind", kind), ("prev", prev_url or ""), ("next", next_url or ""),
-                         ("title", name), ("album", album), ("artwork", ctx.urls.static("icon/icon-512.png"))),
+                         ("title", heading), ("artist", artist), ("album", album_name),
+                         ("artwork", cover_url or ctx.urls.static("icon/icon-512.png"))),
                    scripts=(ctx.urls.static("viewer-media.js"),))
 
 

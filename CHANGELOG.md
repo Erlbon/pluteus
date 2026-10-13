@@ -2,6 +2,13 @@
 
 Release notes are taken from the section of the tagged version (`## 0.5.0 ...`).
 
+## 0.7.0 - 2026-10-13
+- **A modern music player:** cover art with a blurred backdrop, title, artist, album, year, genre, track and format read from the file's
+  tags (`tinytag`, MIT), a real scrubber and a big play button. A `cover.jpg` / `folder.jpg` in the folder is used when the file has no picture.
+- **Lyrics:** plain lyrics from the tag, or timed lyrics from a `.lrc` file next to the song, highlighted and scrolled as it plays.
+- Folder listings of music show "Title - Artist" and the track number; the lock screen shows artist and cover.
+- New dependency: `tinytag`.
+
 ## 0.6.0 - 2026-10-13
 - **Libraries tab** on the admin page: add and remove libraries without editing `config.toml`, with a **folder picker** (for a browser on
   the same computer: the Windows and Linux programs; in Docker, type the path inside the container, or set `library_bases`). New libraries

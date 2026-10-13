@@ -52,6 +52,75 @@
   document.addEventListener("visibilitychange", function () { if (document.visibilityState === "hidden" && !media.paused) send(false, true); });
   window.addEventListener("pagehide", function () { if (!media.paused) send(false, true); });
 
+  /* ---- own controls (audio): play button, scrubber, times, lyrics. Without this script the native controls stay. ---- */
+  var playButton = document.getElementById("play"), scrub = document.getElementById("scrub");
+  var curEl = document.getElementById("cur"), durEl = document.getElementById("dur");
+  function clock(s) {
+    if (!isFinite(s) || s < 0) return "–:––";
+    s = Math.floor(s);
+    var h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), r = s % 60;
+    return (h ? h + ":" + (m < 10 ? "0" : "") : "") + m + ":" + (r < 10 ? "0" : "") + r;
+  }
+  if (playButton && scrub) {
+    document.documentElement.classList.add("pl-js");
+    media.controls = false;
+    var dragging = false;
+    var paint = function () {
+      var playing = !media.paused && !media.ended;
+      var icon = playButton.querySelector(".pl-icon");
+      if (icon) icon.className = "pl-icon " + (playing ? "pl-i-pause" : "pl-i-play");
+      playButton.setAttribute("aria-label", playing ? "Pause" : "Play");
+    };
+    var tick = function () {
+      if (curEl) curEl.textContent = clock(media.currentTime);
+      if (durEl) durEl.textContent = clock(media.duration);
+      if (!dragging && isFinite(media.duration) && media.duration > 0) scrub.value = Math.round(1000 * media.currentTime / media.duration);
+    };
+    playButton.addEventListener("click", function () {
+      if (media.paused) { var p = media.play(); if (p && p.catch) p.catch(function () { say("Tap play to start", 4000); }); }
+      else media.pause();
+    });
+    scrub.addEventListener("input", function () {
+      dragging = true;
+      if (isFinite(media.duration)) { var t = media.duration * scrub.value / 1000; if (curEl) curEl.textContent = clock(t); }
+    });
+    scrub.addEventListener("change", function () {
+      dragging = false;
+      if (isFinite(media.duration)) { try { media.currentTime = media.duration * scrub.value / 1000; } catch (e) { /* not seekable yet */ } }
+    });
+    ["play", "pause", "ended"].forEach(function (n) { media.addEventListener(n, paint); });
+    ["timeupdate", "loadedmetadata", "durationchange"].forEach(function (n) { media.addEventListener(n, tick); });
+    paint(); tick();
+    document.addEventListener("keydown", function (e) {
+      if (e.target && /^(INPUT|TEXTAREA|SELECT|BUTTON)$/.test(e.target.tagName) && e.key === " ") return;
+      if (e.key === " ") { e.preventDefault(); playButton.click(); }
+      else if (e.key === "ArrowLeft") jump(-10);
+      else if (e.key === "ArrowRight") jump(10);
+    });
+  }
+
+  /* ---- lyrics: a button opens the panel; timed lines light up and scroll along ---- */
+  var lyricsBox = document.getElementById("lyrics"), lyricsButton = document.getElementById("lyrics-btn");
+  if (lyricsBox && lyricsButton) lyricsButton.addEventListener("click", function () {
+    lyricsBox.hidden = !lyricsBox.hidden;
+    lyricsButton.setAttribute("aria-expanded", lyricsBox.hidden ? "false" : "true");
+  });
+  var lines = lyricsBox ? Array.prototype.slice.call(lyricsBox.querySelectorAll("p[data-t]")) : [];
+  if (lines.length) {
+    var times = lines.map(function (p) { return parseFloat(p.dataset.t); }), current = -1;
+    media.addEventListener("timeupdate", function () {
+      var t = media.currentTime + 0.25, lo = 0, hi = times.length - 1, found = -1;
+      while (lo <= hi) { var mid = (lo + hi) >> 1; if (times[mid] <= t) { found = mid; lo = mid + 1; } else hi = mid - 1; }
+      if (found === current) return;
+      if (current >= 0) lines[current].classList.remove("pl-now");
+      current = found;
+      if (current >= 0) {
+        lines[current].classList.add("pl-now");
+        if (!lyricsBox.hidden) lyricsBox.scrollTop = lines[current].offsetTop - lyricsBox.clientHeight / 2 + lines[current].clientHeight / 2;
+      }
+    });
+  }
+
   /* ---- skip ---- */
   function jump(seconds) {
     var t = (media.currentTime || 0) + seconds;
@@ -135,8 +204,8 @@
     var handle = function (action, fn) { try { session.setActionHandler(action, fn); } catch (e) { /* not supported here */ } };
     try {
       session.metadata = new MediaMetadata({
-        title: data.title || document.title, album: data.album || "", artist: "",
-        artwork: data.artwork ? [{ src: data.artwork, sizes: "512x512", type: "image/png" }] : []
+        title: data.title || document.title, album: data.album || "", artist: data.artist || "",
+        artwork: data.artwork ? [{ src: data.artwork, sizes: "512x512" }] : []
       });
     } catch (e) { /* ignore */ }
     handle("play", function () { media.play(); });

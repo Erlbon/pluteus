@@ -36,6 +36,9 @@ class Urls:
     def raw(self, root: str, parts) -> str:
         return self._build("raw", root, parts)
 
+    def cover(self, root: str, parts) -> str:
+        return self._build("cover", root, parts)
+
     def api(self, kind: str, root: str, parts) -> str:
         return self.base + "/api/" + kind + "/" + "/".join(quote(s, safe="") for s in (root, *parts))
 

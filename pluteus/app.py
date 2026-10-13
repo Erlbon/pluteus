@@ -29,7 +29,7 @@ from starlette.responses import (FileResponse, HTMLResponse, JSONResponse, Plain
                                  RedirectResponse, Response, StreamingResponse)
 from starlette.routing import Route
 
-from . import cbz, kinds, markdown, opds, tabular, textview, uploads, web, ziputil
+from . import cbz, kinds, markdown, mediainfo, opds, tabular, textview, uploads, web, ziputil
 from .auth import Authenticator
 from .cbz import CbzError
 from .config import MIME_TYPES, UPLOADS_ROOT, Config
@@ -710,11 +710,17 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
                     ctx, info.name, raw_url=urls.raw(root, parts), download_url=download, back_url=back,
                     prev_url=prev_url, next_url=next_url, next_raw=urls.raw(root, nxt.parts) if nxt else None,
                     position=position, total=total)
+            tags = mediainfo.read_info(info.path, with_cover=True)
+            lyrics = mediainfo.find_lrc(info.path)
+            if not lyrics and len(mediainfo.parse_lrc(tags.get("lyrics", ""))) >= 3:      # timed lyrics stored inside the tag
+                lyrics = mediainfo.parse_lrc(tags["lyrics"])
+            has_cover = bool(tags.get("has_cover")) or (kind == "audio" and bool(mediainfo.folder_cover(os.path.dirname(info.path))))
             return web.media_viewer_page(
                 ctx, info.name, kind=kind, raw_url=urls.raw(root, parts), mime=kinds.INLINE_MIME[kinds.extension(info.name)],
                 download_url=download, back_url=back, progress_url=urls.api("progress", root, parts),
                 prev_url=prev_url, next_url=next_url, position=position, total=total,
-                album=lib.display_name(parts[-2]) if len(parts) > 1 else root)
+                album=lib.display_name(parts[-2]) if len(parts) > 1 else root,
+                tags=tags, cover_url=urls.cover(root, parts) if has_cover else "", synced=lyrics)
         if not as_text and kind == "pdf":
             return web.pdf_viewer_page(ctx, info.name, raw_url=urls.raw(root, parts), download_url=download, back_url=back,
                                        progress_url=urls.api("progress", root, parts))
@@ -755,6 +761,24 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
         if ext in kinds.SANDBOXED:
             headers["Content-Security-Policy"] = "sandbox; default-src 'none'; style-src 'unsafe-inline'"
         return FileResponse(info.path, media_type=mime, headers=headers)       # no filename: displayed, not downloaded
+
+    @guarded("media")
+    async def cover(request: Request, user):
+        """The picture of an audio or video file: the one inside it, else cover.jpg / folder.jpg of its folder."""
+        root = request.path_params["root"]
+        parts = _parts(request.path_params["path"])
+        info = await run_in_threadpool(lib.file_info, user, root, parts, cfg.show_all_files)
+        if kinds.kind_of(info.name) not in ("audio", "video"):
+            raise NotFound("no cover")
+        found = await run_in_threadpool(mediainfo.read_cover, info.path)
+        if found is None:
+            raise NotFound("no cover")
+        data, mime = found
+        etag = '"%s"' % hashlib.sha1(data).hexdigest()[:20]
+        headers = {"X-Content-Type-Options": "nosniff", "Cache-Control": "private, max-age=86400", "ETag": etag}
+        if request.headers.get("if-none-match") == etag:
+            return Response(status_code=304, headers=headers)
+        return Response(data, media_type=mime, headers=headers)
 
     def attachment(name: str) -> str:
         """Content-Disposition for a download of something named by an archive: a safe local name, never the entry's own."""
@@ -943,6 +967,7 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
         Route("/read/{root}/{path:path}", read),
         Route("/view/{root}/{path:path}", view),
         Route("/raw/{root}/{path:path}", raw),
+        Route("/cover/{root}/{path:path}", cover),
         Route("/zip/{root}/{path:path}", zip_entry),
         Route("/cbz/{root}/{path:path}", cbz_page),
         Route("/manifest.webmanifest", manifest),
