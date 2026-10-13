@@ -36,6 +36,9 @@ class Urls:
     def raw(self, root: str, parts) -> str:
         return self._build("raw", root, parts)
 
+    def opds_shelf(self, shelf: str) -> str:
+        return self.base + "/opds-shelves/" + shelf
+
     def shelf(self, shelf: str, root: str, parts) -> str:
         return self.base + "/api/shelf/" + shelf + "/" + "/".join(quote(s, safe="") for s in (root, *parts))
 

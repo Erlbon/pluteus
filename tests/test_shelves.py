@@ -122,3 +122,45 @@ def test_an_app_key_login_cannot_change_the_shelves(client):
     client.app.state.state.set_appkey("alice", "the-key")
     r = client.post("/api/shelf/favourite/lib/Series%20One/a.pdf", headers={**basic("alice", "the-key"), "Origin": "http://testserver"})
     assert r.status_code == 403
+
+
+# ---- the shelves in the OPDS feeds -----------------------------------------------------------------------------------------------------------
+OPDS2 = {"Accept": "application/opds+json"}
+
+
+def test_the_opds_root_lists_a_shelf_only_when_it_has_something(client):
+    root = client.get("/opds", headers=AUTH).text
+    assert "opds-shelves" not in root
+    add(client, "favourite", "Series%20One/a.pdf")
+    root = client.get("/opds", headers=AUTH).text
+    assert "/opds-shelves/favourite" in root and "Favourites" in root and "/opds-shelves/next" not in root
+    feed = client.get("/opds", headers={**AUTH, **OPDS2}).json()
+    assert feed["navigation"][0] == {"title": "Favourites", "href": "/opds-shelves/favourite", "type": "application/opds+json", "rel": "subsection"}
+
+
+def test_a_shelf_feed_has_books_to_download_and_folders_to_open(client):
+    add(client, "next", "Series%20One/a.pdf")
+    add(client, "next", "Series%20One")
+    atom = client.get("/opds-shelves/next", headers=AUTH)
+    assert atom.status_code == 200 and atom.headers["content-type"].startswith("application/atom+xml")
+    assert "/dl/lib/Series%20One/a.pdf" in atom.text and "/opds/lib/Series%20One" in atom.text and "Read next" in atom.text
+    feed = client.get("/opds-shelves/next", headers={**AUTH, **OPDS2}).json()
+    assert [p["links"][0]["href"] for p in feed["publications"]] == ["/dl/lib/Series%20One/a.pdf"]
+    assert [n["href"] for n in feed["navigation"]] == ["/opds/lib/Series%20One"]
+
+
+def test_a_shelf_feed_keeps_the_order_and_hides_what_is_gone(client, tmp_path):
+    for name in ("a", "b", "c"):
+        add(client, "next", "Series%20One/" + name + ".pdf")
+    client.post("/api/shelf/next/lib/Series%20One/c.pdf?move=up", headers=ORIGIN)
+    (tmp_path / "lib" / "Series One" / "a.pdf").unlink()
+    hrefs = [p["links"][0]["href"] for p in client.get("/opds-shelves/next", headers={**AUTH, **OPDS2}).json()["publications"]]
+    assert hrefs == ["/dl/lib/Series%20One/c.pdf", "/dl/lib/Series%20One/b.pdf"]
+
+
+def test_the_shelf_feeds_need_a_login_and_are_per_user(client):
+    add(client, "favourite", "Series%20One/a.pdf")
+    assert client.get("/opds-shelves/favourite").status_code == 401
+    assert client.get("/opds-shelves/bogus", headers=AUTH).status_code == 404
+    bob = client.get("/opds-shelves/favourite", headers=basic("bob", "pw"))
+    assert bob.status_code == 200 and "/dl/lib" not in bob.text

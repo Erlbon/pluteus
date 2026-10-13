@@ -2,6 +2,9 @@
 
 Release notes are taken from the section of the tagged version (`## 0.5.0 ...`).
 
+## 0.8.7 - 2026-10-13
+- **Favourites and Read next in the OPDS feeds** (Atom and JSON): reader apps list them at the top of the library, in the order chosen, with covers and page streaming like any folder.
+
 ## 0.8.6 - 2026-10-13
 - **Favourites and Read next:** a star and a + on every file and folder (in the list and the cover view). The home page gets a
   "Read next" box (ordered, with up/down arrows) and a "Favourites" box. A finished book leaves "Read next" by itself. Per user, in the

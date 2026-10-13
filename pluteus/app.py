@@ -16,6 +16,7 @@ import logging
 import os
 import re
 import time
+from types import SimpleNamespace
 from pathlib import Path
 from urllib.parse import parse_qs, quote, urlencode, urlsplit
 
@@ -467,8 +468,9 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
                             "dismiss": urls.dismiss(r["root"], parts)})
         return out[:6]
 
-    def shelf_items(user, shelf: str) -> list:
-        """The entries of a shelf that this user can still open (moved, deleted or hidden ones are skipped, not removed)."""
+    def shelf_entries(user, shelf: str) -> list:
+        """[(row, parts, FileInfo or None)] of a shelf that this user can still open (moved, deleted or hidden ones are skipped,
+        not removed). None for a folder."""
         out = []
         for row in state.shelf_list(user.name, shelf):
             parts = tuple(row["path"].split("/"))
@@ -477,10 +479,17 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
             try:
                 if row["is_dir"]:
                     lib.folder_path(user, row["root"], parts)
+                    out.append((row, parts, None))
                 else:
-                    lib.file_info(user, row["root"], parts, cfg.show_all_files)
+                    out.append((row, parts, lib.file_info(user, row["root"], parts, cfg.show_all_files)))
             except (NotFound, PathError, OSError):
                 continue
+        return out
+
+    def shelf_items(user, shelf: str) -> list:
+        """The shelf as the home page shows it."""
+        out = []
+        for row, parts, _ in shelf_entries(user, shelf):
             kind = "folder" if row["is_dir"] else kinds.kind_of(parts[-1])
             if row["is_dir"]:
                 href = urls.browse(row["root"], parts)
@@ -1056,15 +1065,20 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
         return JSONResponse(state.get_progress(user.name, root, path) or {})
 
     # ---- OPDS and downloads (reader apps) ---------------------------------------------
+    SHELF_TITLES = {"favourite": "Favourites", "next": "Read next"}
+
     @guarded("basic")
     async def opds_root(request: Request, user):
         now = time.time()
+        shelves_with_items = [s for s in ("next", "favourite") if await run_in_threadpool(state.shelf_list, user.name, s)]
         if opds2.wants(request):
-            body = opds2.feed(title="Library", self_href=urls.opds(), start_href=urls.opds(),
-                              navigation=[opds2.nav_link(r.name, urls.opds(r.name)) for r in lib.roots_for(user)], publications=[])
+            nav = [opds2.nav_link(SHELF_TITLES[s], urls.opds_shelf(s)) for s in shelves_with_items]
+            nav += [opds2.nav_link(r.name, urls.opds(r.name)) for r in lib.roots_for(user)]
+            body = opds2.feed(title="Library", self_href=urls.opds(), start_href=urls.opds(), navigation=nav, publications=[])
             return Response(body, media_type=opds2.TYPE, headers={"Vary": "Accept"})
-        entries = [opds.nav_entry(r.name, "urn:pluteus:" + r.name, urls.opds(r.name), now)
-                   for r in lib.roots_for(user)]
+        entries = [opds.nav_entry(SHELF_TITLES[s], "urn:pluteus:shelf:" + s, urls.opds_shelf(s), now) for s in shelves_with_items]
+        entries += [opds.nav_entry(r.name, "urn:pluteus:" + r.name, urls.opds(r.name), now)
+                    for r in lib.roots_for(user)]
         body = opds.build_feed(title="Library", feed_id="urn:pluteus:root", self_href=urls.opds(),
                                start_href=urls.opds(), updated=now, entries=entries)
         return Response(body, media_type=opds.NAV_TYPE)
@@ -1089,6 +1103,50 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
                 info["last_read_date"] = row["updated"]
             out[e.path] = info
         return out
+
+    def shelf_feed(user, name: str, as_json: bool) -> Response:
+        """One shelf as an OPDS feed: books to download (or page-stream), folders to open."""
+        found = shelf_entries(user, name)
+        files = [SimpleNamespace(name=i.name, path=i.path, size=i.size, mtime=i.mtime, parts=parts, is_dir=False, root=row["root"])
+                 for row, parts, i in found if i is not None]
+        metas = meta.lookup_many(files)
+        streams: dict = {}
+        if cfg.opds_pse:
+            for root in {f.root for f in files}:
+                streams.update(page_streams(user, root, [f for f in files if f.root == root]))
+        by_path = {f.path: f for f in files}
+        title, here = SHELF_TITLES[name], urls.opds_shelf(name)
+        nav, books, atom = [], [], []
+        for row, parts, i in found[:60]:
+            root = row["root"]
+            eid = "urn:pluteus:" + root + ":" + "/".join(parts)
+            if i is None:
+                label = lib.display_name(parts[-1])
+                nav.append(opds2.nav_link(label, urls.opds(root, parts)))
+                atom.append(opds.nav_entry(label, eid, urls.opds(root, parts), time.time()))
+                continue
+            f = by_path[i.path]
+            mime = MIME_TYPES.get(os.path.splitext(f.name)[1].lower(), "application/octet-stream")
+            label, cover = f.name.rsplit(".", 1)[0], covers_for(root, f)
+            books.append(opds2.publication(label, eid, urls.download(root, parts), mime, clamp_time(f.mtime), metas.get(f.path),
+                                           streams.get(f.path), cover))
+            atom.append(opds.book_entry(label, eid, urls.download(root, parts), mime, f.mtime, f.size, metas.get(f.path),
+                                        streams.get(f.path), cover))
+        if as_json:
+            body = opds2.feed(title=title, self_href=here, start_href=urls.opds(), up_href=urls.opds(), navigation=nav,
+                              publications=books)
+            return Response(body, media_type=opds2.TYPE, headers={"Vary": "Accept"})
+        body = opds.build_feed(title=title, feed_id="urn:pluteus:shelf:" + name, self_href=here, start_href=urls.opds(),
+                               updated=time.time(), entries=atom, up_href=urls.opds())
+        kind = opds.ACQ_TYPE if books else opds.NAV_TYPE
+        return Response(body, media_type=kind, headers={"Vary": "Accept"})
+
+    @guarded("basic")
+    async def opds_shelf(request: Request, user):
+        name = request.path_params["shelf"]
+        if name not in SHELF_TITLES:
+            raise NotFound("no such shelf")
+        return await run_in_threadpool(shelf_feed, user, name, opds2.wants(request))
 
     @guarded("basic")
     async def opds_folder(request: Request, user):
@@ -1178,6 +1236,7 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
         Route("/api/progress/{root}/{path:path}", progress, methods=["GET", "PUT"]),
         Route("/api/shelf/{shelf}/{root}/{path:path}", shelf, methods=["POST", "DELETE"]),
         Route("/api/bookmarks/{root}/{path:path}", bookmarks, methods=["GET", "POST", "DELETE"]),
+        Route("/opds-shelves/{shelf}", opds_shelf),
         Route("/opds", opds_root),
         Route("/opds/", opds_root),
         Route("/opds/{root}", opds_folder),

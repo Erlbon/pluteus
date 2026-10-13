@@ -287,7 +287,7 @@ Measured on 50 real EPUBs over SMB: about 1 s cold, 18 ms warm. Listing order is
 A **star** and a **+** on every file and folder (in the list and in the cover view) put it on the user's *Favourites* or *Read next* list.
 Both are boxes on the home page below "Pick up where you left off"; *Read next* is in the order you chose (arrows to move) and a book
 that reaches the end leaves it by itself. Stored per user in `state.sqlite3`. Entries that were moved, deleted or hidden are skipped, never
-shown. (Not in the OPDS feeds yet.)
+shown. They are also OPDS feeds (`/opds-shelves/favourite` and `/opds-shelves/next`, listed at the top of the library when they hold something).
 
 ## Cover view
 
