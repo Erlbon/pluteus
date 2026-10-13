@@ -2,6 +2,9 @@
 
 Release notes are taken from the section of the tagged version (`## 0.5.0 ...`).
 
+## 0.8.5 - 2026-10-13
+- Folder listings show plain file names again for music; the tags (title, artist, album ...) are read only when a file is opened in the player.
+
 ## 0.8.4 - 2026-10-13
 - **Chapters for mp3 audiobooks** (ID3 CHAP frames), next to the m4b chapter list.
 

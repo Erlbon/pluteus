@@ -136,8 +136,7 @@ def _book_label(entry, meta: dict) -> str:
         series = (" <span class='pl-muted'>(%s%s)</span>" % (
             escape(meta["series"]), " #" + escape(meta["series_index"]) if meta.get("series_index") else "")
             if meta.get("series") else "")
-        number = "<span class='pl-muted'>%02d</span> " % meta["track"] if meta.get("track") else ""
-        return number + escape(meta["title"]) + by + series
+        return escape(meta["title"]) + by + series
     return escape(entry.name)
 
 

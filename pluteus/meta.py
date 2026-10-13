@@ -195,10 +195,7 @@ class MetaService:
         if not self.enabled:
             return {}
         epubs = [e for e in entries if not e.is_dir and e.name.lower().endswith(".epub")]
-        songs = [e for e in entries if not e.is_dir and os.path.splitext(e.name)[1].lower() in mediainfo.MEDIA_EXT][:300]
-        out = dict(zip((e.path for e in epubs), self._pool.map(self._one, epubs)))
-        out.update((e.path, tags) for e, tags in zip(songs, self._pool.map(self._tags, songs)) if tags)
-        return out
+        return dict(zip((e.path for e in epubs), self._pool.map(self._one, epubs)))
 
     def song_tags(self, entry) -> dict:
         """The tags a music app needs for one audio file, through the same cache (key "si:")."""
@@ -213,12 +210,3 @@ class MetaService:
     def song_tags_many(self, entries) -> list:
         return list(self._pool.map(self.song_tags, entries))
 
-    def _tags(self, entry) -> dict:
-        """Title, artist and track of an audio or video file, through the same cache."""
-        key = "mi:" + entry.path
-        hit = self.cache.get(key, entry.size, entry.mtime)
-        if hit is not None:
-            return hit
-        data = mediainfo.brief(entry.path)
-        self.cache.put(key, entry.size, entry.mtime, data)
-        return data

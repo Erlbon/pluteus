@@ -80,14 +80,6 @@ def read_info(path: str, with_cover: bool = False) -> dict:
     return info
 
 
-def brief(path: str) -> dict:
-    """What a folder listing needs: title, artist and track, in the shape the book listing already understands."""
-    info = read_info(path)
-    if not info.get("title"):
-        return {}
-    return {"title": info["title"], "authors": [info["artist"]] if info.get("artist") else [], "track": info.get("track")}
-
-
 def song_info(path: str) -> dict:
     """The compact tag set a music app needs (cached by the caller): no lyrics, no comment."""
     info = read_info(path)

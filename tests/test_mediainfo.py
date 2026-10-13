@@ -44,7 +44,7 @@ def test_tags_are_read_and_cleaned():
 def test_a_file_without_tags_or_not_audio_gives_nothing(tmp_path):
     junk = tmp_path / "x.mp3"
     junk.write_bytes(b"not audio at all")
-    assert mediainfo.brief(str(junk)) == {}
+    assert mediainfo.read_info(str(junk)).get("title", "") == ""
     assert mediainfo.read_info(str(tmp_path / "missing.mp3")) == {}
 
 
@@ -116,10 +116,11 @@ def test_tag_text_is_escaped(music, monkeypatch):
     assert "&lt;script&gt;" in page
 
 
-def test_the_listing_shows_title_artist_and_track(music):
+def test_the_folder_listing_shows_file_names_not_tags(music):
     client, auth = make_client(music)
     page = client.get("/browse/music/Album", headers={**auth, **HTML}).text
-    assert "Spark På Leggen" in page and "Kaizers Orchestra" in page and "plain.mp3" in page
+    assert "spark.mp3" in page and "plain.mp3" in page                       # the file view stays plain: tags only in the player
+    assert "Spark På Leggen" not in page and "Kaizers Orchestra" not in page
 
 
 # ---- chapters and bookmarks ---------------------------------------------------------------------------------------------------------------
