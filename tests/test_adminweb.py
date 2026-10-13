@@ -387,3 +387,26 @@ def test_status_says_whether_bsdtar_is_there_for_rar_and_7z_comics(admin, monkey
     monkeypatch.setattr(cbz, "bsdtar", lambda: None)
     html = client.get("/", headers=BOSS).text
     assert "bsdtar not found" in html and "pl-dot-warn" in html
+
+
+def test_admin_url_shows_the_admin_link_to_administrators_even_behind_a_proxy(tmp_path):
+    path = make_config(tmp_path)
+    path.write_text(path.read_text().replace("admin_port = 8101", 'admin_port = 8101\nadmin_url = "http://pluteus.lan:8101/"'))
+    cfg = load_config(str(path))
+    assert cfg.admin_url == "http://pluteus.lan:8101/"
+    app = create_app(cfg, config_path=str(path), reload_interval=0.0)
+    proxied = TestClient(app, client=("203.0.113.9", 50000), follow_redirects=False)      # arrives through a reverse proxy
+    behind = {"host": "pluteus.lan:8443", "x-forwarded-for": "10.0.0.5", "x-forwarded-proto": "https", **BOSS}
+    assert "href='http://pluteus.lan:8101/'>Admin<" in proxied.get("/", headers=behind).text
+    # without admin_url the same request gets no link (the default: nothing about the admin page behind a proxy)
+    path.write_text(path.read_text().replace('admin_url = "http://pluteus.lan:8101/"\n', ""))
+    plain = TestClient(create_app(load_config(str(path)), config_path=str(path), reload_interval=0.0), client=("203.0.113.9", 50000))
+    assert "Admin<" not in plain.get("/", headers=behind).text
+
+
+@pytest.mark.parametrize("bad", ['javascript:alert(1)', 'http://a b/', 'http://x"onmouseover="1', 'ftp://x/', "http://x/'><script>"])
+def test_admin_url_must_be_a_plain_http_address(tmp_path, bad):
+    path = make_config(tmp_path)
+    path.write_text(path.read_text().replace("admin_port = 8101", "admin_port = 8101\nadmin_url = '%s'" % bad))
+    with pytest.raises(ConfigError):
+        load_config(str(path))

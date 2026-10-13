@@ -37,6 +37,10 @@ data_dir = 'D:\pluteus-data'
 # The admin page links back to the normal site on the same host name. If the site is published under another port than
 # `port` (Docker: 8080 inside, 8100 outside), say which one:
 # site_port = 8100
+# The Admin link in the top bar appears for an administrator who opens the site directly on the local network, never through a
+# proxy. If your LAN-only site sits behind a proxy (e.g. https://pluteus.lan), say where the admin page is and the link always shows
+# for administrators:
+# admin_url = "http://pluteus.lan:8101/"
 
 # UPDATE AND SECURITY CHECK (opt-in, off by default). With update_check = true the admin page asks GitHub (api.github.com) once a
 # day, in the background, for the newest tag and the published security advisories of update_repo, and shows a green / yellow / red

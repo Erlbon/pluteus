@@ -270,6 +270,8 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
         """Where the admin page is, for an administrator who opened the site directly on the local network (same host name
         or address, the admin port). Empty for everyone else, and always empty through a proxy: the admin page is not
         reachable from outside, so the public site does not even hint at it."""
+        if user.admin and cfg.admin_url:                    # the owner said where it is: shown to administrators wherever they come from
+            return cfg.admin_url
         if not (cfg.admin_port and user.admin) or any(h in request.headers for h in _PROXY_HEADERS):
             return ""
         host = request.headers.get("host", "")
