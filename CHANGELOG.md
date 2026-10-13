@@ -2,6 +2,9 @@
 
 Release notes are taken from the section of the tagged version (`## 0.5.0 ...`).
 
+## Unreleased (for 0.9.3)
+- **EPUB reader, scrolling layout:** the mouse wheel over the book now scrolls it (the browser did not pass a wheel turn over the book's own page on to the box that scrolls it, so pluteus forwards it). The page-by-page layout is unchanged.
+
 ## 0.9.2 - 2026-10-13
 - **Light or dark:** the choice is kept in a cookie as well as in the browser's storage, so the site and the admin page (two ports on one address) show the same one. A choice made earlier carries over the first time a page is loaded.
 - **Movie player:** a movie now has the same gold controls as the music player under the picture (position bar, time, volume on wide screens, -, rewind, play with the speed on top, fast-forward, +), plus a full-screen button that takes the whole player full screen. The position bar, volume and full-screen button run the full width of the picture. A click on the picture plays or pauses, a double click goes full screen. Without the script the browser's own controls remain.

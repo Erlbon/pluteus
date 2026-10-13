@@ -164,7 +164,18 @@
      In the scrolling view the wheel scrolls as usual, and Ctrl + wheel stays the browser's zoom. */
   var wheelSum = 0, wheelLast = 0, wheelLock = 0;
   function onWheel(e) {
-    if (settings.flow !== "paginated" || e.ctrlKey || !rendition.manager) return;                // not the scrolling view, not zoom, not before the book is shown
+    if (e.ctrlKey || !rendition.manager) return;                                               // Ctrl + wheel is the browser's zoom; nothing before the book is shown
+    if (settings.flow !== "paginated") {
+      /* The scrolling layout: a wheel over the book's own page is not passed on to the box that scrolls it (the browser keeps it
+         with the inner page, which has nothing to scroll), so it is forwarded here. Over the rest of the page the browser scrolls. */
+      var box = e.view && e.view !== window ? document.querySelector(".epub-container") : null;
+      if (box) {
+        var unit = e.deltaMode === 1 ? 33 : (e.deltaMode === 2 ? box.clientHeight : 1);
+        e.preventDefault();
+        box.scrollBy(e.deltaX * unit, e.deltaY * unit);
+      }
+      return;
+    }
     if (e.target && e.target.closest && e.target.closest("#toc, #settings")) return;        // the two menus scroll themselves
     e.preventDefault();
     var now = Date.now(), delta = (e.deltaY || e.deltaX || 0) * (e.deltaMode === 1 ? 33 : 1);
