@@ -19,6 +19,7 @@ class Ctx:
     readers: bool = False        # show "Read" links (the in-browser readers)
     icons: str = "gold"          # the file-type icon style: gold (outlines), aurora (outlines, a colour each) or color (filled tiles)
     admin_link: str = ""         # address of the admin page, for an administrator on the local network; else empty
+    extras: bool = True          # the speed and sleep controls in the audio/video player
     view: str = "list"           # how a folder is shown: "list" (rows) or "grid" (covers)
 
 
@@ -102,7 +103,32 @@ def kind_icon(kind: str) -> str:
     return ico(KIND_ICON_NAMES.get(kind, "file"))
 
 
-def roots_page(roots: list, ctx: Ctx, recent: list | None = None) -> str:
+def _shelf_buttons(urls, root: str, parts: tuple, on: list) -> str:
+    """The star (favourite) and + (read next) buttons of one entry; shelf.js toggles them."""
+    def one(shelf: str, cls: str, label: str) -> str:
+        return ("<button type='button' class='pl-shelf-btn %s' data-url='%s' aria-pressed='%s' title='%s' aria-label='%s'></button>"
+                % (cls, escape(urls.shelf(shelf, root, parts)), "true" if shelf in on else "false", label, label))
+    return "<span class='pl-shelf'>%s%s</span>" % (one("favourite", "pl-star", "Favourite"), one("next", "pl-next-btn", "Read next"))
+
+
+def _shelf_box(title: str, items: list, movable: bool) -> str:
+    if not items:
+        return ""
+    rows = "".join(
+        "<li class='pl-row pl-recent-row'><a class='pl-recent-link' href='%s'><span class='pl-kind'>%s</span>"
+        "<span class='pl-recent-text'><span class='pl-title'>%s</span><span class='pl-where pl-muted'>%s</span></span></a>%s"
+        "<button type='button' class='pl-shelf-remove' data-url='%s' title='Remove from this list' aria-label='Remove %s from this list'>&times;</button></li>"
+        % (escape(i["href"]), ROOT_ICON if i["kind"] == "folder" else kind_icon(i["kind"]), escape(i["label"]), escape(i["where"]),
+           ("<button type='button' class='pl-shelf-move' data-url='%s?move=up' title='Move up' aria-label='Move up'>&uarr;</button>"
+            "<button type='button' class='pl-shelf-move' data-url='%s?move=down' title='Move down' aria-label='Move down'>&darr;</button>"
+            % (escape(i["api"]), escape(i["api"]))) if movable else "", escape(i["api"]), escape(i["label"]))
+        for i in items)
+    return ("<section class='pl-card pl-home-box' aria-label='%s'><h2>%s</h2><ul class='pl-list pl-recent pl-shelf-list'>%s</ul></section>"
+            % (escape(title), escape(title), rows))
+
+
+def roots_page(roots: list, ctx: Ctx, recent: list | None = None, read_next: list | None = None,
+               favourites: list | None = None) -> str:
     items = "".join("<li class='pl-row'><a class='pl-root-link' href='%s'><span class='pl-kind'>%s</span>%s</a></li>"
                     % (escape(ctx.urls.browse(r.name)), UPLOADS_ICON if r.name == "uploads" else ROOT_ICON, escape(r.name))
                     for r in roots)
@@ -122,12 +148,13 @@ def roots_page(roots: list, ctx: Ctx, recent: list | None = None) -> str:
         # not "Continue reading": the list also holds audiobooks, PDFs and videos
         cont = ("<section class='pl-card pl-home-box' aria-label='%s'><h2>%s</h2>"
                 "<ul class='pl-list pl-recent'>%s</ul></section>" % (RECENT_TITLE, RECENT_TITLE, rows))
+    cont += _shelf_box("Read next", read_next or [], True) + _shelf_box("Favourites", favourites or [], False)
     body = ("<main class='pl-main'><h1>File Library</h1>%s"
             "<section class='pl-card pl-home-box' aria-label='Browse'><h2>Browse</h2>"
             "<ul class='pl-list pl-roots'>%s</ul></section>"
             "<p class='pl-muted pl-foot'><a href='%s'>OPDS feed</a> for reader apps &middot; pluteus %s</p></main>"
             % (cont, items, escape(ctx.urls.opds()), escape(__version__)))
-    return layout("File Library", body, ctx)
+    return layout("File Library", body, ctx, scripts=(ctx.urls.static("shelf.js"),) if (read_next or favourites) else ())
 
 
 def _book_label(entry, meta: dict) -> str:
@@ -217,9 +244,10 @@ def _sort_bar(here: str, sort: str, desc: bool, view: str = "") -> str:
 def listing_page(root: str, parts: tuple, entries: list, page: int, pages: int, total: int, ctx: Ctx,
                  metas: dict | None = None, progress: dict | None = None,
                  sort: str = "name", desc: bool = False, writable: bool = False, flash: str = "", cover_url: str = "",
-                 view_asked: str = "") -> str:
+                 view_asked: str = "", shelves: dict | None = None) -> str:
     metas = metas or {}
     progress = progress or {}
+    shelves = shelves or {}
     urls = ctx.urls
     crumbs = ["<a href='%s'>File Library</a>" % escape(urls.home()),
               "<a href='%s'>%s</a>" % (escape(urls.browse(root)), escape(root))]
@@ -238,8 +266,9 @@ def listing_page(root: str, parts: tuple, entries: list, page: int, pages: int, 
     for e in entries:
         if e.is_dir:
             # The whole row is the link: a big target for a thumb.
-            rows.append("<li class='pl-row pl-folder'><a class='pl-title' href='%s'><span class='pl-kind'>%s</span>%s</a>%s</li>"
+            rows.append("<li class='pl-row pl-folder'><a class='pl-title' href='%s'><span class='pl-kind'>%s</span>%s</a>%s%s</li>"
                         % (escape(urls.browse(root, e.parts)), ROOT_ICON, escape(e.display),
+                           _shelf_buttons(urls, root, e.parts, shelves.get("/".join(e.parts), [])),
                            _row_actions(urls, root, e.parts, e.name) if writable else ""))
             continue
         label = _book_label(e, metas.get(e.path, {}))
@@ -257,13 +286,14 @@ def listing_page(root: str, parts: tuple, entries: list, page: int, pages: int, 
                     "<a class='pl-dl' href='%s' title='Download' aria-label='Download %s'>"
                     "<span class='pl-icon pl-i-download'></span></a>"
                     "<a class='pl-title' href='%s'><span class='pl-kind'>%s</span><span class='pl-title-text'>%s</span></a>"
-                    "<span class='pl-meta pl-muted'>%s%s &middot; %s</span>%s</li>"
+                    "<span class='pl-meta pl-muted'>%s%s &middot; %s</span>%s%s</li>"
                     % (escape(urls.download(root, e.parts)), escape(e.name), escape(open_url),
                        kind_icon(kinds.kind_of(e.name)), label, badge,
                        _size(e.size), time.strftime("%Y-%m-%d", time.localtime(e.mtime)),
+                       _shelf_buttons(urls, root, e.parts, shelves.get("/".join(e.parts), [])),
                        _row_actions(urls, root, e.parts, e.name) if writable else ""))
     here = urls.browse(root, parts)
-    tiles = _tiles(ctx, root, entries, metas, progress) if ctx.view == "grid" else []
+    tiles = _tiles(ctx, root, entries, metas, progress, shelves) if ctx.view == "grid" else []
     pager = ""
     if pages > 1:
         prev = ("<a href='%s'>&larr; Previous</a>" % escape(here + _query(sort, desc, page - 1, view_asked))) if page > 1 else ""
@@ -285,20 +315,22 @@ def listing_page(root: str, parts: tuple, entries: list, page: int, pages: int, 
             "<a href='%s'>OPDS</a></div>%s%s<ul class='%s'>%s</ul>%s</main>"
             % (" / ".join(crumbs), picture, escape(title), total, escape(urls.opds(root, parts)),
                note + forms, bar + pager, "pl-list pl-grid" if grid else "pl-list", "".join(tiles if grid else rows), pager))
-    scripts = ((urls.static("uploads.js"),) if writable else ()) + ((urls.static("grid.js"),) if grid else ())
+    scripts = ((urls.static("uploads.js"),) if writable else ()) + ((urls.static("grid.js"),) if grid else ()) + (urls.static("shelf.js"),)
     return layout(title, body, ctx, scripts=scripts)
 
 
 COVER_KINDS = ("epub", "comic", "audio")
 
 
-def _tiles(ctx: Ctx, root: str, entries: list, metas: dict, progress: dict) -> list:
+def _tiles(ctx: Ctx, root: str, entries: list, metas: dict, progress: dict, shelves: dict | None = None) -> list:
     """The cover view: one tile per entry, a picture (a cover when the file has one, else its type icon) over the title."""
     urls, out = ctx.urls, []
     for e in entries:
         if e.is_dir:
             out.append("<li class='pl-tile pl-tile-folder'><a href='%s'><span class='pl-tile-art'>%s</span>"
-                       "<span class='pl-tile-name'>%s</span></a></li>" % (escape(urls.browse(root, e.parts)), ROOT_ICON, escape(e.display)))
+                       "<span class='pl-tile-name'>%s</span></a>%s</li>"
+                       % (escape(urls.browse(root, e.parts)), ROOT_ICON, escape(e.display),
+                          _shelf_buttons(urls, root, e.parts, (shelves or {}).get("/".join(e.parts), []))))
             continue
         kind = kinds.kind_of(e.name)
         if not ctx.readers:
@@ -315,7 +347,9 @@ def _tiles(ctx: Ctx, root: str, entries: list, metas: dict, progress: dict) -> l
         badge = "<span class='pl-badge pl-tile-badge'>%d%%</span>" % round(pct * 100) if pct else ""
         label = _book_label(e, metas.get(e.path, {}))
         out.append("<li class='pl-tile'><a href='%s' title='%s'><span class='pl-tile-art'>%s%s</span>"
-                   "<span class='pl-tile-name'>%s</span></a></li>" % (escape(open_url), escape(e.name), art, badge, label))
+                   "<span class='pl-tile-name'>%s</span></a>%s</li>"
+                   % (escape(open_url), escape(e.name), art, badge, label,
+                      _shelf_buttons(urls, root, e.parts, (shelves or {}).get("/".join(e.parts), []))))
     return out
 
 
@@ -492,7 +526,7 @@ def _clock(seconds: float) -> str:
 def media_viewer_page(ctx: Ctx, title: str, *, kind: str, raw_url: str, mime: str, download_url: str, back_url: str,
                       progress_url: str, prev_url, next_url, position: int, total: int, album: str = "",
                       tags: dict | None = None, cover_url: str = "", synced: list | None = None, chapters: list | None = None,
-                      bookmarks_url: str = "") -> str:
+                      bookmarks_url: str = "", extras: bool = True) -> str:
     """The audio/video viewer. Audio gets a cover, the tags (title, artist, album, year, genre, track), a scrubber, big transport
     buttons and lyrics; video keeps the browser's own controls under the same information. Tags are untrusted text: escaped.
     viewer-media.js adds resume, auto-advance to the next file, the lyrics highlight and the lock-screen controls."""
@@ -511,10 +545,16 @@ def media_viewer_page(ctx: Ctx, title: str, *, kind: str, raw_url: str, mime: st
         words = "<span class='pl-btn-text'>%s</span>" % text if text else ""
         return ("<button class='pl-btn %s' id='%s' type='button' aria-label='%s'>%s</button>"
                 % (extra, ident, escape(label), words + glyph if after else glyph + words))
-    skip_back = button("back30", "Back 30 seconds", "back30", "30 s")
-    skip_fwd = button("fwd30", "Forward 30 seconds", "fwd30", "30 s", after=True)
-    speed = button("speed", "Playback speed", "speed", "1&times;")
-    sleep = button("sleep", "Sleep timer", "moon", "Sleep")
+    skip_back = button("back30", "Back 30 seconds", "prev", "30 s")
+    skip_fwd = button("fwd30", "Forward 30 seconds", "next", "30 s", after=True)
+    if extras:
+        speed = ("<span class='pl-speed-group'><button class='pl-btn pl-speed-step' id='speed-down' type='button' aria-label='Slower'>&minus;</button>"
+                 "<span class='pl-speed-val' id='speed' title='Playback speed'><span class='pl-icon pl-i-speed'></span>"
+                 "<span class='pl-btn-text'>1&times;</span></span>"
+                 "<button class='pl-btn pl-speed-step' id='speed-up' type='button' aria-label='Faster'>+</button></span>")
+        sleep = button("sleep", "Sleep timer: pause after a while", "moon", "Sleep")
+    else:
+        speed = sleep = ""
     def panel_button(panel: str, label: str) -> str:
         return ("<button class='pl-btn pl-panel-btn' id='%s-btn' data-panel='%s' type='button' aria-label='Show: %s' "
                 "aria-expanded='false'><span class='pl-btn-text'>%s</span></button>" % (panel, panel, label, label))
@@ -664,6 +704,7 @@ def zip_page(ctx: Ctx, title: str, *, root: str, parts: tuple, entries: list, to
 
 
 VIEW_STYLES = (("list", "A list"), ("grid", "Covers (a picture for each book)"))
+EXTRAS_STYLES = (("show", "Show"), ("hide", "Hide"))
 
 
 def settings_page(ctx: Ctx, themes: list, saved: bool = False) -> str:
@@ -673,12 +714,15 @@ def settings_page(ctx: Ctx, themes: list, saved: bool = False) -> str:
                         for k, label in ICON_STYLES)
     view_opts = "".join("<option value='%s'%s>%s</option>" % (k, " selected" if k == ctx.view else "", escape(label))
                         for k, label in VIEW_STYLES)
+    extras_opts = "".join("<option value='%s'%s>%s</option>" % (k, " selected" if (k == "show") == ctx.extras else "", label)
+                           for k, label in EXTRAS_STYLES)
     note = "<p class='pl-muted'>Saved.</p>" if saved else ""
     body = ("<main class='pl-main'><h1>Settings</h1>%s<form class='pl-card' method='post' action='%s'>"
             "<label class='pl-field'><span>Theme</span><select name='theme'>%s</select></label>"
             "<label class='pl-field'><span>File icons</span><select name='icons'>%s</select></label>"
             "<label class='pl-field'><span>Folders are shown as</span><select name='view'>%s</select></label>"
+            "<label class='pl-field'><span>Speed and sleep controls in the music player</span><select name='extras'>%s</select></label>"
             "<button class='pl-btn pl-btn-primary' type='submit'>Save</button></form>"
             "<p><a href='%s'>&larr; Back to the library</a></p></main>"
-            % (note, escape(ctx.urls.settings()), opts, icon_opts, view_opts, escape(ctx.urls.home())))
+            % (note, escape(ctx.urls.settings()), opts, icon_opts, view_opts, extras_opts, escape(ctx.urls.home())))
     return layout("Settings", body, ctx)

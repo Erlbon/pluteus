@@ -36,6 +36,9 @@ class Urls:
     def raw(self, root: str, parts) -> str:
         return self._build("raw", root, parts)
 
+    def shelf(self, shelf: str, root: str, parts) -> str:
+        return self.base + "/api/shelf/" + shelf + "/" + "/".join(quote(s, safe="") for s in (root, *parts))
+
     def thumb(self, root: str, parts) -> str:
         return self._build("thumb", root, parts)
 

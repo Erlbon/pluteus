@@ -208,3 +208,21 @@ def test_an_mp3_audiobook_page_lists_its_chapters(music):
     client, auth = make_client(music)
     page = client.get("/view/music/Album/book.mp3", headers={**auth, **HTML}).text
     assert "id='chapters-btn'" in page and "Del to æøå" in page and "data-t='4.5'" in page
+
+
+# ---- the player's speed and sleep controls ------------------------------------------------------------------------------------------------
+def test_speed_has_minus_and_plus_and_skips_have_arrows(music):
+    client, auth = make_client(music)
+    page = client.get("/view/music/Album/spark.mp3", headers={**auth, **HTML}).text
+    assert "id='speed-down'" in page and "id='speed-up'" in page and "id='sleep'" in page
+    assert "pl-i-prev" in page and "pl-i-next" in page and "pl-i-back30" not in page
+
+
+def test_the_speed_and_sleep_row_can_be_switched_off_in_settings(music):
+    client, auth = make_client(music)
+    r = client.post("/settings", data={"theme": "default", "icons": "gold", "view": "list", "extras": "hide"},
+                    headers={**auth, "Origin": "http://testserver"}, follow_redirects=False)
+    assert r.status_code == 303
+    page = client.get("/view/music/Album/spark.mp3", headers={**auth, **HTML}).text
+    assert "id='speed'" not in page and "id='sleep'" not in page and "id='play'" in page and "id='lyrics-btn'" in page
+    assert "<option value='hide' selected>" in client.get("/settings", headers={**auth, **HTML}).text

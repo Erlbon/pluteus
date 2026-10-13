@@ -188,10 +188,12 @@
   if (forward) forward.addEventListener("click", function () { jump(SKIP); });
 
   /* ---- speed (remembered in this browser) ---- */
-  var RATES = [0.75, 1, 1.25, 1.5, 1.75, 2, 2.5];
-  var speedButton = document.getElementById("speed");
+  var RATES = [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2, 2.5, 3];
+  var speedButton = document.getElementById("speed");               // the readout between the - and + buttons
+  var slower = document.getElementById("speed-down"), faster = document.getElementById("speed-up");
   var rate = 1;
-  try { rate = parseFloat(localStorage.getItem("pluteus-media-rate")) || 1; } catch (e) { /* storage blocked */ }
+  /* With the speed controls switched off in Settings the file always plays at normal speed */
+  if (speedButton) { try { rate = parseFloat(localStorage.getItem("pluteus-media-rate")) || 1; } catch (e) { /* storage blocked */ } }
   if (RATES.indexOf(rate) < 0) rate = 1;
   /* The buttons hold an icon and a text: only the text changes */
   function setLabel(button, text) { var t = button.querySelector(".pl-btn-text"); (t || button).textContent = text; }
@@ -203,12 +205,15 @@
   }
   applyRate();
   media.addEventListener("loadedmetadata", applyRate);              // some browsers reset it when a file loads
-  if (speedButton) speedButton.addEventListener("click", function () {
-    rate = RATES[(RATES.indexOf(rate) + 1) % RATES.length];
+  function stepRate(direction) {
+    var i = Math.max(0, Math.min(RATES.length - 1, RATES.indexOf(rate) + direction));
+    rate = RATES[i];
     try { localStorage.setItem("pluteus-media-rate", String(rate)); } catch (e) { /* storage blocked */ }
     applyRate();
     say("Speed " + getLabel(speedButton), 1200);
-  });
+  }
+  if (slower) slower.addEventListener("click", function () { stepRate(-1); });
+  if (faster) faster.addEventListener("click", function () { stepRate(1); });
 
   /* ---- sleep timer: off -> 15 -> 30 -> 60 minutes -> end of this file -> off ---- */
   var STEPS = [0, 15, 30, 60, -1];

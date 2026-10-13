@@ -34,6 +34,9 @@ CREATE TABLE IF NOT EXISTS devices (
     token_hash TEXT PRIMARY KEY, username TEXT NOT NULL, pwfp TEXT NOT NULL,
     first_seen REAL NOT NULL, last_seen REAL NOT NULL, last_ip TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS appkeys (username TEXT PRIMARY KEY, secret TEXT NOT NULL, created REAL NOT NULL);
+CREATE TABLE IF NOT EXISTS shelves (
+    username TEXT NOT NULL, shelf TEXT NOT NULL, root TEXT NOT NULL, path TEXT NOT NULL, is_dir INTEGER NOT NULL,
+    rank REAL NOT NULL, added REAL NOT NULL, PRIMARY KEY (username, shelf, root, path));
 CREATE TABLE IF NOT EXISTS bookmarks (
     id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT NOT NULL, root TEXT NOT NULL, path TEXT NOT NULL,
     position REAL NOT NULL, note TEXT NOT NULL, created REAL NOT NULL);
@@ -194,6 +197,59 @@ class StateDB:
     def appkey_users(self) -> dict:
         """{user name: when the key was made}."""
         return {r[0]: r[1] for r in self._all("SELECT username, created FROM appkeys")}
+
+    # ---- shelves: each user's "favourite" and "next" (read next) lists of files and folders ------------------------------------
+    SHELVES = ("favourite", "next")
+    MAX_SHELF = 500
+
+    def shelf_add(self, username: str, shelf: str, root: str, path: str, is_dir: bool, now=None) -> bool:
+        """Put an entry on a shelf (at the end). False when the shelf is full; adding twice changes nothing."""
+        with self._lock, self._db:
+            have = self._db.execute("SELECT COUNT(*), COALESCE(MAX(rank), 0) FROM shelves WHERE username=? AND shelf=?",
+                                    (username, shelf)).fetchone()
+            if have[0] >= self.MAX_SHELF:
+                return False
+            self._db.execute("INSERT OR IGNORE INTO shelves VALUES (?,?,?,?,?,?,?)",
+                             (username, shelf, root, path, 1 if is_dir else 0, have[1] + 1, time.time() if now is None else now))
+        return True
+
+    def shelf_remove(self, username: str, shelf: str, root: str, path: str) -> int:
+        return self._write("DELETE FROM shelves WHERE username=? AND shelf=? AND root=? AND path=?", (username, shelf, root, path))
+
+    def shelf_list(self, username: str, shelf: str) -> list:
+        """The entries of one shelf: "next" in the order the user chose, "favourite" newest first."""
+        order = "rank ASC" if shelf == "next" else "added DESC"
+        rows = self._all("SELECT root, path, is_dir FROM shelves WHERE username=? AND shelf=? ORDER BY " + order, (username, shelf))
+        return [{"root": r[0], "path": r[1], "is_dir": bool(r[2])} for r in rows]
+
+    def shelf_move(self, username: str, shelf: str, root: str, path: str, up: bool) -> bool:
+        """Swap an entry of the "next" list with its neighbour above (up) or below."""
+        with self._lock, self._db:
+            me = self._db.execute("SELECT rank FROM shelves WHERE username=? AND shelf=? AND root=? AND path=?",
+                                  (username, shelf, root, path)).fetchone()
+            if me is None:
+                return False
+            cmp, order = ("<", "DESC") if up else (">", "ASC")
+            other = self._db.execute("SELECT root, path, rank FROM shelves WHERE username=? AND shelf=? AND rank %s ? "
+                                     "ORDER BY rank %s LIMIT 1" % (cmp, order), (username, shelf, me[0])).fetchone()
+            if other is None:
+                return False
+            self._db.execute("UPDATE shelves SET rank=? WHERE username=? AND shelf=? AND root=? AND path=?",
+                             (other[2], username, shelf, root, path))
+            self._db.execute("UPDATE shelves SET rank=? WHERE username=? AND shelf=? AND root=? AND path=?",
+                             (me[0], username, shelf, other[0], other[1]))
+        return True
+
+    def shelf_flags(self, username: str, root: str, paths: list) -> dict:
+        """{path: [shelves it is on]} for the given paths of one library (the stars in a folder listing)."""
+        out: dict = {}
+        for i in range(0, len(paths), 400):
+            chunk = paths[i:i + 400]
+            rows = self._all("SELECT path, shelf FROM shelves WHERE username=? AND root=? AND path IN (%s)" % ",".join("?" * len(chunk)),
+                             (username, root, *chunk))
+            for p, shelf in rows:
+                out.setdefault(p, []).append(shelf)
+        return out
 
     # ---- bookmarks in audio and video files -------------------------------------------------------------------------------------
     MAX_BOOKMARKS = 200

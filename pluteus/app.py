@@ -295,7 +295,8 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
 
     def ctx_for(user, view: str = "") -> web.Ctx:
         return web.Ctx(urls, user.name, theme_for(user.name), readers=True, admin_link=current_admin_link.get(),
-                       icons=icons_for(user.name), view=view or view_for(user.name))
+                       icons=icons_for(user.name), view=view or view_for(user.name),
+                       extras=state.get_prefs(user.name).get("player_extras", True) is not False)
 
     def unauthorized(request: Request, mode: str, wait: int) -> Response:
         if wait:
@@ -466,10 +467,69 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
                             "dismiss": urls.dismiss(r["root"], parts)})
         return out[:6]
 
+    def shelf_items(user, shelf: str) -> list:
+        """The entries of a shelf that this user can still open (moved, deleted or hidden ones are skipped, not removed)."""
+        out = []
+        for row in state.shelf_list(user.name, shelf):
+            parts = tuple(row["path"].split("/"))
+            if not lib.has_root(user, row["root"]):
+                continue
+            try:
+                if row["is_dir"]:
+                    lib.folder_path(user, row["root"], parts)
+                else:
+                    lib.file_info(user, row["root"], parts, cfg.show_all_files)
+            except (NotFound, PathError, OSError):
+                continue
+            kind = "folder" if row["is_dir"] else kinds.kind_of(parts[-1])
+            if row["is_dir"]:
+                href = urls.browse(row["root"], parts)
+            else:
+                href = urls.read(row["root"], parts) if kind in ("epub", "comic") else urls.view(row["root"], parts)
+            parent = lib.display_name(parts[-2]) if len(parts) > 1 else ""
+            out.append({"href": href, "label": lib.display_name(parts[-1]) if row["is_dir"] else os.path.splitext(parts[-1])[0],
+                        "kind": kind, "where": row["root"] + (" / " + parent if parent else ""),
+                        "api": urls.shelf(shelf, row["root"], parts)})
+        return out[:60]
+
     @guarded("web")
     async def home(request: Request, user):
         recent = await run_in_threadpool(continue_reading, user)
-        return HTMLResponse(web.roots_page(lib.roots_for(user), ctx_for(user), recent))
+        read_next = await run_in_threadpool(shelf_items, user, "next")
+        favourites = await run_in_threadpool(shelf_items, user, "favourite")
+        return HTMLResponse(web.roots_page(lib.roots_for(user), ctx_for(user), recent, read_next, favourites))
+
+    @guarded("api")
+    async def shelf(request: Request, user):
+        """Put a file or folder on a shelf (POST; ?move=up|down reorders the "next" list) or take it off (DELETE)."""
+        if user.read_only:
+            return JSONResponse({"error": "this login can only read"}, 403)
+        name = request.path_params["shelf"]
+        root = request.path_params["root"]
+        parts = _parts(request.path_params["path"])
+        if name not in state.SHELVES or not parts:
+            raise NotFound("no such shelf")
+        path = "/".join(parts)
+        if request.method == "DELETE":
+            await run_in_threadpool(state.shelf_remove, user.name, name, root, path)
+            return JSONResponse({"ok": True})
+        move = request.query_params.get("move", "")
+        if move:
+            if move not in ("up", "down") or name != "next":
+                return JSONResponse({"error": "cannot move"}, 400)
+            return JSONResponse({"ok": await run_in_threadpool(state.shelf_move, user.name, name, root, path, move == "up")})
+
+        def check():
+            try:
+                lib.file_info(user, root, parts, cfg.show_all_files)
+                return False
+            except NotFound:
+                lib.folder_path(user, root, parts)                  # not a file: it must be a folder this user may open
+                return True
+        is_dir = await run_in_threadpool(check)
+        if not await run_in_threadpool(state.shelf_add, user.name, name, root, path, is_dir):
+            return JSONResponse({"error": "this shelf is full"}, 400)
+        return JSONResponse({"ok": True}, 201)
 
     @guarded("web")
     async def dismiss(request: Request, user):
@@ -499,6 +559,7 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
         metas = await run_in_threadpool(meta.lookup_many, shown)
         book_paths = ["/".join(e.parts) for e in shown if not e.is_dir]
         progress = await run_in_threadpool(state.progress_for, user.name, root, book_paths)
+        flags = await run_in_threadpool(state.shelf_flags, user.name, root, ["/".join(e.parts) for e in shown])
         def folder_picture():
             try:
                 return mediainfo.folder_cover(lib.folder_path(user, root, parts))
@@ -510,7 +571,7 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
         return HTMLResponse(web.listing_page(
             root, parts, shown, page, pages, len(entries), ctx_for(user, asked), metas, progress, sort=sort, desc=desc,
             writable=root == UPLOADS_ROOT, flash=web.flash_text(request.query_params),
-            cover_url=urls.cover(root, parts) if (has_cover and parts) else "", view_asked=asked))
+            cover_url=urls.cover(root, parts) if (has_cover and parts) else "", view_asked=asked, shelves=flags))
 
     @guarded("web")
     async def settings(request: Request, user):
@@ -524,6 +585,8 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
                 prefs["icons"] = icons
             if form.get("view") in ("list", "grid"):
                 prefs["view"] = form["view"]
+            if form.get("extras") in ("show", "hide"):
+                prefs["player_extras"] = form["extras"] == "show"
             state.set_prefs(user.name, prefs)
             return RedirectResponse(urls.settings() + "?saved=1", 303)
         return HTMLResponse(web.settings_page(ctx_for(user), themes.names(), "saved" in request.query_params))
@@ -739,7 +802,7 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
                 prev_url=prev_url, next_url=next_url, position=position, total=total,
                 album=lib.display_name(parts[-2]) if len(parts) > 1 else root,
                 tags=tags, cover_url=urls.cover(root, parts) if has_cover else "", synced=lyrics, chapters=chapters,
-                bookmarks_url=urls.api("bookmarks", root, parts))
+                bookmarks_url=urls.api("bookmarks", root, parts), extras=ctx.extras)
         if not as_text and kind == "pdf":
             return web.pdf_viewer_page(ctx, info.name, raw_url=urls.raw(root, parts), download_url=download, back_url=back,
                                        progress_url=urls.api("progress", root, parts))
@@ -987,6 +1050,8 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
             if not isinstance(locator, str) or not locator or len(locator) > 2048 or percent != percent:
                 return JSONResponse({"error": "invalid locator or percent"}, 400)
             state.put_progress(user.name, root, path, locator, percent)
+            if percent >= 0.98:                                   # finished: it leaves the "Read next" list by itself
+                state.shelf_remove(user.name, "next", root, path)
             return JSONResponse({"ok": True})
         return JSONResponse(state.get_progress(user.name, root, path) or {})
 
@@ -1111,6 +1176,7 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
         Route("/files/{op}/{root}", file_op, methods=["POST"]),
         Route("/files/{op}/{root}/{path:path}", file_op, methods=["POST"]),
         Route("/api/progress/{root}/{path:path}", progress, methods=["GET", "PUT"]),
+        Route("/api/shelf/{shelf}/{root}/{path:path}", shelf, methods=["POST", "DELETE"]),
         Route("/api/bookmarks/{root}/{path:path}", bookmarks, methods=["GET", "POST", "DELETE"]),
         Route("/opds", opds_root),
         Route("/opds/", opds_root),

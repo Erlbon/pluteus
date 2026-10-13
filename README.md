@@ -282,6 +282,13 @@ Measured on 50 real EPUBs over SMB: about 1 s cold, 18 ms warm. Listing order is
   the real path (symlinks, junctions) must stay inside the root; only configured file
   extensions are served; hidden and excluded items are indistinguishable from missing ones.
 
+## Favourites and Read next
+
+A **star** and a **+** on every file and folder (in the list and in the cover view) put it on the user's *Favourites* or *Read next* list.
+Both are boxes on the home page below "Pick up where you left off"; *Read next* is in the order you chose (arrows to move) and a book
+that reaches the end leaves it by itself. Stored per user in `state.sqlite3`. Entries that were moved, deleted or hidden are skipped, never
+shown. (Not in the OPDS feeds yet.)
+
 ## Cover view
 
 In Settings, *Folders are shown as* **Covers** (or the *List / Covers* switch above any folder for a single visit) shows a tile with a

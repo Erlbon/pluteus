@@ -2,6 +2,12 @@
 
 Release notes are taken from the section of the tagged version (`## 0.5.0 ...`).
 
+## 0.8.6 - 2026-10-13
+- **Favourites and Read next:** a star and a + on every file and folder (in the list and the cover view). The home page gets a
+  "Read next" box (ordered, with up/down arrows) and a "Favourites" box. A finished book leaves "Read next" by itself. Per user, in the
+  state database; entries that were moved, deleted or hidden are skipped.
+- **Player:** the 30 s skips use < and > arrows; speed has - and + buttons (0.5x to 3x); the speed and sleep controls can be hidden in Settings.
+
 ## 0.8.5 - 2026-10-13
 - Folder listings show plain file names again for music; the tags (title, artist, album ...) are read only when a file is opened in the player.
 

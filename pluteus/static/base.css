@@ -278,6 +278,22 @@ a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible
 .pl-tile a:hover .pl-tile-art { box-shadow: 0 0 0 2px var(--pl-accent); }
 .pl-tile-badge { z-index: 2; position: absolute; right: 6px; bottom: 6px; background: var(--pl-bg); padding: 1px 6px; border-radius: 999px; }
 
+/* favourites (star) and "read next" (+) buttons, and the matching boxes on the home page */
+.pl-shelf { display: inline-flex; gap: 2px; margin-left: 8px; flex: none; }
+.pl-shelf-btn, .pl-shelf-remove, .pl-shelf-move { font: inherit; background: none; border: 0; cursor: pointer; color: var(--pl-dim);
+  padding: 4px 8px; border-radius: 8px; line-height: 1; }
+.pl-shelf-btn:hover, .pl-shelf-remove:hover, .pl-shelf-move:hover { color: var(--pl-accent); background: var(--pl-card); }
+.pl-star::before { content: "\2606"; font-size: 1.25em; }
+.pl-star[aria-pressed="true"]::before { content: "\2605"; color: var(--pl-accent); }
+.pl-next-btn::before { content: "+"; font-size: 1.2em; font-weight: 700; }
+.pl-next-btn[aria-pressed="true"]::before { content: "\2713"; color: var(--pl-accent); }
+.pl-tile { position: relative; }
+.pl-tile .pl-shelf { position: absolute; top: 4px; right: 4px; margin: 0; flex-direction: column;
+  background: color-mix(in srgb, var(--pl-bg) 75%, transparent); border-radius: 10px; opacity: 0; transition: opacity .15s; }
+.pl-tile:hover .pl-shelf, .pl-tile:focus-within .pl-shelf, .pl-tile .pl-shelf:has([aria-pressed="true"]) { opacity: 1; }
+@media (hover: none) { .pl-tile .pl-shelf { opacity: 1; } }
+.pl-shelf-list .pl-shelf-remove, .pl-shelf-list .pl-shelf-move { margin-left: 2px; }
+
 /* upload folder */
 .pl-upload, .pl-newfolder { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; margin: 12px 0; }
 .pl-upload input[type=file] { max-width: 100%; }
@@ -372,6 +388,10 @@ html[data-icons="aurora"] .pl-ico-upload  { color: light-dark(#1f7ae0, #7cc8ff);
   display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
 .pl-media-controls .pl-icon { width: 1.5em; height: 1.5em; vertical-align: 0; color: var(--pl-accent); }
 .pl-media-box { position: relative; }
+.pl-speed-group { display: inline-flex; align-items: center; gap: 4px; }
+.pl-media-controls .pl-speed-step { min-width: 46px; padding: 8px 12px; font-size: 22px; line-height: 1; }
+.pl-speed-val { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-width: 76px; font-size: 17px; font-variant-numeric: tabular-nums; }
+.pl-speed-val .pl-icon { width: 1.3em; height: 1.3em; color: var(--pl-accent); }
 
 /* ---- the player: cover, tags, scrubber, transport, lyrics ---- */
 .pl-mediaview .pl-media-stage { align-items: flex-start; padding-top: 8px; }
