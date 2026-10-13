@@ -168,6 +168,20 @@ folders and rights as the web site (`roots`, `.private`, `.hidden`, `.adult`).
   cover art (sent at its original size), stream and download (Range works; no transcoding). Playlists, starring, scrobbling and the like are
   answered with empty results.
 
+## WebDAV (mount the library as a drive)
+
+`webdav = true` in `[server]` serves the library read-only at `/dav/`: Windows Explorer (Map network drive, or "Add a network location"),
+macOS Finder (Connect to Server), Android file managers, Kodi and VLC can browse and open the files. Login is the normal user name
+and password (Basic; use HTTPS when it is reachable from outside, Windows refuses plain HTTP over the internet). It shows what the web
+listing shows, with the same folders, rights and markers (`roots`, `.private`, `.hidden`, `.adult`). Only OPTIONS, HEAD, GET and
+PROPFIND are answered: PUT, DELETE, MKCOL, COPY, MOVE and LOCK are refused, so nothing can be written. Files are always sent as downloads.
+
+## OPDS 2.0
+
+The OPDS feeds under `/opds` answer in **OPDS 2.0 (JSON)** when the app asks for `application/opds+json` (or `?format=opds2` in a
+browser); otherwise they stay the familiar Atom feeds, so existing apps are not affected. Same folders, rights, paging, tags, series and
+comic page streaming. (The page-streaming link follows the OPDS-PSE extension; it is not yet tried against an app that reads it.)
+
 ## Endpoints
 
 | URL | What |

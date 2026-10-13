@@ -29,7 +29,7 @@ from starlette.responses import (FileResponse, HTMLResponse, JSONResponse, Plain
                                  RedirectResponse, Response, StreamingResponse)
 from starlette.routing import Route
 
-from . import cbz, kinds, markdown, mediainfo, opds, tabular, textview, uploads, web, ziputil
+from . import cbz, kinds, markdown, mediainfo, opds, opds2, tabular, textview, uploads, web, ziputil
 from .auth import Authenticator
 from .cbz import CbzError
 from .config import MIME_TYPES, UPLOADS_ROOT, Config
@@ -60,7 +60,7 @@ STATIC_ALLOWED ={".css", ".js", ".mjs", ".svg", ".png", ".ico", ".woff2", ".webm
 # Browsers refuse an ES module that is not served as JavaScript, and WebAssembly only compiles when it is served as
 # application/wasm; mimetypes knows neither everywhere.
 STATIC_TYPES = {".mjs": "text/javascript", ".pfb": "application/octet-stream", ".wasm": "application/wasm"}
-SAFE_METHODS = {"GET", "HEAD", "OPTIONS"}
+SAFE_METHODS = {"GET", "HEAD", "OPTIONS", "PROPFIND"}       # PROPFIND (WebDAV) only reads
 CSP = ("default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline' blob:; img-src 'self' data: blob:; "
        "font-src 'self' data: blob:; connect-src 'self'; frame-src 'self' blob:; object-src 'none'; "
        "base-uri 'self'; form-action 'self'; frame-ancestors 'self'")
@@ -894,6 +894,10 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
     @guarded("basic")
     async def opds_root(request: Request, user):
         now = time.time()
+        if opds2.wants(request):
+            body = opds2.feed(title="Library", self_href=urls.opds(), start_href=urls.opds(),
+                              navigation=[opds2.nav_link(r.name, urls.opds(r.name)) for r in lib.roots_for(user)], publications=[])
+            return Response(body, media_type=opds2.TYPE, headers={"Vary": "Accept"})
         entries = [opds.nav_entry(r.name, "urn:pluteus:" + r.name, urls.opds(r.name), now)
                    for r in lib.roots_for(user)]
         body = opds.build_feed(title="Library", feed_id="urn:pluteus:root", self_href=urls.opds(),
@@ -931,6 +935,23 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
         here = urls.opds(root, parts)
         metas = await run_in_threadpool(meta.lookup_many, shown)
         streams = await run_in_threadpool(page_streams, user, root, shown) if cfg.opds_pse else {}
+        if opds2.wants(request):
+            nav, books = [], []
+            for e in shown:
+                if e.is_dir:
+                    nav.append(opds2.nav_link(e.display, urls.opds(root, e.parts)))
+                else:
+                    mime = MIME_TYPES.get(os.path.splitext(e.name)[1].lower(), "application/octet-stream")
+                    books.append(opds2.publication(e.name.rsplit(".", 1)[0], "urn:pluteus:" + root + ":" + "/".join(e.parts),
+                                                   urls.download(root, e.parts), mime, clamp_time(e.mtime), metas.get(e.path),
+                                                   streams.get(e.path)))
+            body = opds2.feed(title=lib.display_name(parts[-1]) if parts else root, self_href=with_page(here, page),
+                              start_href=urls.opds(), navigation=nav, publications=books,
+                              up_href=urls.opds(root, parts[:-1]) if parts else urls.opds(),
+                              next_href=with_page(here, page + 1) if page < pages else None,
+                              prev_href=with_page(here, page - 1) if page > 1 else None,
+                              page=page, per_page=cfg.page_size, total=len(listing))
+            return Response(body, media_type=opds2.TYPE, headers={"Vary": "Accept"})
         entries = []
         for e in shown:
             eid = "urn:pluteus:" + root + ":" + "/".join(e.parts)
@@ -995,6 +1016,16 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
         Route("/opds/{root}/{path:path}", opds_folder),
         Route("/dl/{root}/{path:path}", download),
     ]
+    if cfg.webdav:
+        from .webdav import Dav
+        dav = Dav(cfg, lib, urls)
+
+        @guarded("basic")
+        async def dav_handler(request: Request, user):
+            return await run_in_threadpool(dav.handle, request, user)
+        every = ["OPTIONS", "HEAD", "GET", "PROPFIND", "PROPPATCH", "PUT", "POST", "DELETE", "MKCOL", "COPY", "MOVE", "LOCK", "UNLOCK"]
+        routes += [Route("/dav", dav_handler, methods=every), Route("/dav/", dav_handler, methods=every),
+                   Route("/dav/{path:path}", dav_handler, methods=every)]
     if cfg.subsonic:
         from .subsonic import Subsonic
 

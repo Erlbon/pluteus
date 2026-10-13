@@ -2,6 +2,10 @@
 
 Release notes are taken from the section of the tagged version (`## 0.5.0 ...`).
 
+## 0.8.1 - 2026-10-13
+- **Read-only WebDAV** (`webdav = true`): mount the library in Explorer, Finder, Android file managers, Kodi.
+- **OPDS 2.0 (JSON)** feeds next to the Atom ones, chosen by the app's Accept header.
+
 ## 0.8.0 - 2026-10-13
 - **Subsonic / OpenSubsonic API** (`subsonic = true`): music apps such as Symfonium, Tempo and Substreamer can browse and stream the
   library, and Android Auto works through them. Login by a per-user **music app key** made on the admin page (token login, API key or
