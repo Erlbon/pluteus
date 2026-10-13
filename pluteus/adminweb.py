@@ -10,10 +10,11 @@ from html import escape
 from . import __version__
 from .web import Ctx, _size, layout, scheme_button
 
-NAV = (("status", "/", "Status"), ("security", "/security", "Security"), ("users", "/users", "Users"))
+NAV = (("status", "/", "Status"), ("libraries", "/libraries", "Libraries"), ("security", "/security", "Security"), ("users", "/users", "Users"))
 FLASH = {
     "unlocked": "The lock is cleared.", "nothing": "There was nothing to clear.", "forgot": "That device is forgotten.",
     "signedout": "Signed out everywhere (sessions and known devices removed).",
+    "libadded": "Library added. It is available now.", "libremoved": "Library removed. Nothing on disk was touched.",
     "added": "User added.", "password": "Password changed.", "access": "Access saved.", "removed": "User removed.",
 }
 
@@ -61,7 +62,7 @@ def signed_out_page(ctx: Ctx) -> str:
                   ctx, bar=False)
 
 
-def page(ctx: Ctx, title: str, active: str, body: str, flash: str = "", error: str = "") -> str:
+def page(ctx: Ctx, title: str, active: str, body: str, flash: str = "", error: str = "", scripts: tuple = ()) -> str:
     note = ""
     if error:
         note = "<p class='pl-error' role='alert'>%s</p>" % escape(error[:1].upper() + error[1:])
@@ -71,7 +72,7 @@ def page(ctx: Ctx, title: str, active: str, body: str, flash: str = "", error: s
             "<p class='pl-muted pl-foot'>This page is only for the local network: do not route or forward its port to the "
             "internet.</p></main>" % (escape(title), note, body))
     return layout("Pluteus Admin: " + title, _header(active) + main, ctx, bar=False,
-                  scripts=(ctx.urls.static("uploads.js"),))
+                  scripts=(ctx.urls.static("uploads.js"),) + tuple(scripts))
 
 
 def _table(headers: list, rows: list, empty: str) -> str:
@@ -191,6 +192,37 @@ def status_page(ctx: Ctx, d: dict) -> str:
     boxes.append(_box("State (sessions, progress)", "<p>%s &middot; %s &middot; %s &middot; %d backup(s), %s</p>"
                       % (light, where, _size(st["size"]), st["backups"], escape(backup))))
     return page(ctx, "Status", "status", _security_alert(d.get("update")) + "".join(boxes))
+
+
+# ---- libraries --------------------------------------------------------------------------------------------------------------
+def libraries_page(ctx: Ctx, roots: list, can_browse: bool, can_edit: bool, flash: str = "", error: str = "") -> str:
+    if not can_edit:
+        return page(ctx, "Libraries", "libraries", "<p>This server was started without a configuration file, so libraries cannot be "
+                    "changed here.</p>", flash, error)
+    rows = []
+    for r in roots:
+        space = "%s free of %s" % (_size(r["free"]), _size(r["total"])) if r["free"] is not None else ""
+        rows.append([escape(r["name"]), "<code>%s</code>" % escape(r["path"]),
+                     _light("ok", "ok") if r["ok"] else _light("bad", "NOT available"), escape(space),
+                     _post("/libraries/remove", {"name": r["name"]}, "Remove",
+                           "Remove the library %s? Nothing on disk is touched and reading progress stays on the server, but "
+                           "people limited to this library lose access." % r["name"], True)])
+    table = _table(["Name", "Folder", "State", "Disk", ""], rows, "No libraries.")
+    browse = ("<button class='pl-btn' type='button' id='lib-browse'>Browse folders&hellip;</button>"
+              "<div class='pl-picker' id='lib-picker' data-browse='/libraries/browse' hidden></div>") if can_browse else (
+        "<p class='pl-muted'>The folder picker is off here: type the path. (In Docker it is the path inside the container, for "
+        "example <code>/library/music</code>, and the folder must be mounted in <code>docker-compose.yml</code>. Set "
+        "<code>library_bases</code> in <code>config.toml</code> to enable the picker below your mounted folders.)</p>")
+    add = ("<form class='pl-admin-form' method='post' action='/libraries/add'>"
+           "<label class='pl-field'><span>Folder</span><input type='text' name='path' id='lib-path' autocapitalize='off' required "
+           "placeholder='D:/Music or /home/me/music'></label>%s"
+           "<label class='pl-field'><span>Name (letters, digits, - and _)</span>"
+           "<input type='text' name='name' id='lib-name' autocapitalize='off' required placeholder='music'></label>"
+           "<button class='pl-btn pl-btn-primary' type='submit'>Add library</button></form>" % browse)
+    note = ("<p class='pl-muted'>A new library is available as soon as you add it. Users whose folders are set to <strong>All "
+            "folders</strong> see it at once; for the others tick it on the Users tab. Pluteus only reads these folders.</p>")
+    scripts = (ctx.urls.static("admin-libraries.js"),) if can_browse else ()
+    return page(ctx, "Libraries", "libraries", _box("Libraries", table + note) + _box("Add a library", add), flash, error, scripts)
 
 
 # ---- security ---------------------------------------------------------------------------------------------------------------

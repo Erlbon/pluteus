@@ -23,10 +23,10 @@ from urllib.parse import parse_qs, urlsplit
 from starlette.applications import Starlette
 from starlette.concurrency import run_in_threadpool
 from starlette.middleware import Middleware
-from starlette.responses import HTMLResponse, PlainTextResponse, RedirectResponse
+from starlette.responses import HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse
 from starlette.routing import Route
 
-from . import __version__, adminweb, cbz, uploads
+from . import __version__, adminweb, cbz, folderpick, uploads
 from .admin import AdminModel
 from .app import _PLAIN_HOST as PLAIN_HOST
 from .app import SecurityHeaders
@@ -134,7 +134,7 @@ def create_admin_app(main_app) -> Starlette:
 
     def collect_status() -> dict:
         roots = []
-        for r in cfg.roots.values():
+        for r in st.library.cfg.roots.values():
             free, total = disk(r.path)
             began = time.monotonic()
             ok = os.path.isdir(longpath(r.path))
@@ -215,6 +215,55 @@ def create_admin_app(main_app) -> Starlette:
         auth.forget_user(name)
         log.info("admin %s signed %r out everywhere", user.name, name[:40])
         return done("/security", "signedout")
+
+    # ---- libraries --------------------------------------------------------------------------------------------------------
+    def may_browse(request) -> bool:
+        return folderpick.allowed(request.client.host if request.client else "", cfg.library_bases)
+
+    def libraries_html(can_browse: bool, flash: str = "", error: str = "", status_code: int = 200):
+        roots = []
+        for r in st.library.cfg.roots.values():
+            free, total = disk(r.path)
+            roots.append({"name": r.name, "path": r.path, "ok": os.path.isdir(longpath(r.path)), "free": free, "total": total})
+        return HTMLResponse(adminweb.libraries_page(ctx, roots, can_browse, bool(config_path), flash, error), status_code)
+
+    @guarded
+    async def libraries(request, user):
+        return await run_in_threadpool(libraries_html, may_browse(request), request.query_params.get("ok", ""))
+
+    async def library_change(request, user, action, code):
+        if not config_path:
+            return PlainTextResponse("No configuration file: libraries cannot be changed here.", 400)
+        form = await form_of(request)
+        can = may_browse(request)
+        try:
+            new_cfg = await run_in_threadpool(action, AdminModel(config_path), form)
+        except (EditError, ConfigError) as e:
+            return await run_in_threadpool(libraries_html, can, "", str(e), 400)
+        except OSError as e:
+            return await run_in_threadpool(libraries_html, can, "", "The configuration file cannot be written: %s" % e, 500)
+        st.library.set_roots(new_cfg.roots)              # in use at once; a hand edit of the file is picked up by the reloader
+        log.info("admin %s: libraries %s", user.name, code)
+        return done("/libraries", code)
+
+    @guarded
+    async def library_add(request, user):
+        return await library_change(request, user, lambda m, f: m.add_library(_first(f, "name"), _first(f, "path")), "libadded")
+
+    @guarded
+    async def library_remove(request, user):
+        return await library_change(request, user, lambda m, f: m.remove_library(_first(f, "name")), "libremoved")
+
+    @guarded
+    async def library_browse(request, user):
+        if not may_browse(request):
+            return JSONResponse({"error": "The folder picker is only for a browser on this computer. Type the path instead."}, 403)
+        try:
+            return JSONResponse(await run_in_threadpool(folderpick.browse, request.query_params.get("path", ""), cfg.library_bases))
+        except PermissionError as e:
+            return JSONResponse({"error": "That folder cannot be shown: %s" % e}, 403)
+        except FileNotFoundError:
+            return JSONResponse({"error": "That folder does not exist."}, 404)
 
     # ---- users ------------------------------------------------------------------------------------------------------------
     def users_html(me: str, flash: str = "", error: str = "", status_code: int = 200):
@@ -305,6 +354,8 @@ def create_admin_app(main_app) -> Starlette:
 
     routes = [
         Route("/", status), Route("/logout", logout, methods=["POST"]), Route("/security", security),
+        Route("/libraries", libraries), Route("/libraries/add", library_add, methods=["POST"]),
+        Route("/libraries/remove", library_remove, methods=["POST"]), Route("/libraries/browse", library_browse),
         Route("/security/unlock", unlock, methods=["POST"]), Route("/security/forget", forget, methods=["POST"]),
         Route("/security/signout", signout, methods=["POST"]),
         Route("/users", users), Route("/users/add", add_user, methods=["POST"]),

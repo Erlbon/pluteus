@@ -380,6 +380,12 @@ body.pl-reader-page, .pl-reader-stage { overscroll-behavior: contain; }
 .pl-admin-table code { font-size: .9em; overflow-wrap: anywhere; }
 .pl-inline { display: inline-block; margin: 0; }
 .pl-ok { color: var(--pl-accent); }
+.pl-picker { border: 1px solid var(--pl-line); border-radius: 10px; margin: 8px 0 14px; max-height: 320px; overflow: auto; }
+.pl-picker-head { padding: 8px 12px; color: var(--pl-dim); font-size: 13px; overflow-wrap: anywhere; border-bottom: 1px solid var(--pl-line); }
+.pl-picker button.pl-pick { display: block; width: 100%; text-align: left; background: transparent; color: var(--pl-fg); border: 0;
+  border-bottom: 1px solid var(--pl-line); padding: 9px 12px; font: inherit; cursor: pointer; }
+.pl-picker button.pl-pick:hover { background: color-mix(in srgb, var(--pl-accent) 14%, transparent); }
+.pl-picker .pl-pick-use { color: var(--pl-accent); font-weight: 600; }
 .pl-user-icon { margin-right: .5em; vertical-align: -2px; opacity: .8; }
 .pl-dot { display: inline-block; width: .6em; height: .6em; border-radius: 50%; margin-right: .5em; vertical-align: baseline; }
 .pl-dot-ok { background: #3fa34d; }

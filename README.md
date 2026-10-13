@@ -61,6 +61,15 @@ runs on most current distributions). Both are the same program as `python -m plu
 then "Run anyway"). RAR and 7z comics (CBR, CB7) need `bsdtar` (built into Windows 10 and later; `libarchive-tools` on Debian and
 Ubuntu). Docker stays the recommended way to run a permanent server. The Linux download includes a systemd unit.
 
+## Adding a library
+
+On the admin page (`http://localhost:8101/`, once `admin_port` is set), the **Libraries** tab lists your libraries and adds or removes
+them: type the folder, or press **Browse folders** to pick it (the picker works for a browser on the same computer, which is the case
+for the Windows and Linux programs; it only ever lists folders). A new library is in use at once and users whose folders are set to
+"All folders" see it straight away. Pluteus never writes to a library folder. **In Docker** the folder must also be mounted into the
+container (a `volumes:` line in `docker-compose.yml`); type the path *inside* the container, e.g. `/library/music`, or set
+`library_bases = ["/library"]` in `config.toml` to get the picker below your mounted folders.
+
 ## Quick share (no config file)
 
 ```powershell

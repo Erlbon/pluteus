@@ -42,6 +42,11 @@ data_dir = 'D:\pluteus-data'
 # for administrators:
 # admin_url = "http://pluteus.lan:8101/"
 
+# LIBRARIES CAN BE ADDED ON THE ADMIN PAGE (Libraries tab), no file editing: type the folder or pick it with the folder picker. The
+# picker lists folders for a browser on the SAME computer (the Windows and Linux programs). In Docker, mount the folders in
+# docker-compose.yml and list a parent of them here to turn the picker on below it:
+# library_bases = ["/library"]
+
 # UPDATE AND SECURITY CHECK (opt-in, off by default). With update_check = true the admin page asks GitHub (api.github.com) once a
 # day, in the background, for the newest tag and the published security advisories of update_repo, and shows a green / yellow / red
 # dot beside the version. Nothing about your library or users is sent; GitHub sees this server's address. It never updates anything.

@@ -16,9 +16,10 @@ log = logging.getLogger("pluteus.config")
 
 
 class UsersReloader:
-    def __init__(self, path: str, auth: Authenticator, interval: float = 2.0):
+    def __init__(self, path: str, auth: Authenticator, interval: float = 2.0, on_config=None):
         self.path = path
         self.auth = auth
+        self.on_config = on_config            # called with the new Config after every valid reload (libraries follow the file)
         self.interval = interval
         self._stamp = self._current()
         self._next = 0.0
@@ -46,5 +47,7 @@ class UsersReloader:
             log.warning("config.toml changed but is not valid, keeping the previous users: %s", e)
             return False
         self.auth.set_users(cfg.users)
+        if self.on_config:
+            self.on_config(cfg)
         log.info("config.toml changed: %d user(s) loaded", len(cfg.users))
         return True

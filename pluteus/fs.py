@@ -128,6 +128,12 @@ class Library:
         self._real = {n: os.path.realpath(longpath(r.path)) for n, r in cfg.roots.items()}
         self._markers: dict = {}
 
+    def set_roots(self, roots: dict) -> None:
+        """Take a new set of libraries (the config file changed, or the admin page added one) without a restart."""
+        real = {n: os.path.realpath(longpath(r.path)) for n, r in roots.items()}
+        self._real = real
+        self.cfg = dataclasses.replace(self.cfg, roots=dict(roots))
+
     # ---- names -----------------------------------------------------------
     def display_name(self, name: str) -> str:
         if self._strip:

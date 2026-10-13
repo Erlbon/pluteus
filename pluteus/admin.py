@@ -9,7 +9,7 @@ from __future__ import annotations
 import json
 import os
 
-from . import useredit
+from . import libedit, useredit
 from .auth import MIN_PASSWORD, hash_password
 from .config import Config
 from .useredit import EditError
@@ -55,6 +55,18 @@ class AdminModel:
 
     def root_names(self) -> list:
         return list(self.config().roots)
+
+    # ---- libraries ----------------------------------------------------------------------------------------------
+    def libraries(self) -> list:
+        return list(self.config().roots.values())
+
+    def add_library(self, name: str, folder: str) -> Config:
+        return libedit.add_root(self.path, name, folder)
+
+    def remove_library(self, name: str) -> Config:
+        if len(self.config().roots) <= 1:
+            raise EditError("the last library cannot be removed (there must be at least one)")
+        return libedit.remove_root(self.path, name)
 
     # ---- users --------------------------------------------------------------------------------------------------
     @staticmethod
