@@ -123,7 +123,7 @@ def test_an_unreachable_root_answers_503_not_404(cfg, tmp_path, library):
 def _sorted_names(client, url, headers):
     import re
     text = client.get(url, headers=headers).text
-    return re.findall(r"<li class='pl-row pl-file'>.*?<a class='pl-title' href='[^']*'><span class='pl-kind'>[^<]*</span><span class='pl-title-text'>([^<]+)</span></a>", text)
+    return re.findall(r"<li class='pl-row pl-file'>.*?<a class='pl-title' href='[^']*'><span class='pl-kind'>(?:<svg.*?</svg>)?</span><span class='pl-title-text'>([^<]+)</span></a>", text)
 
 
 def test_listing_can_be_sorted_by_name_type_size_and_date(cfg, tmp_path, library):
@@ -203,7 +203,7 @@ def test_a_folder_with_many_subfolders_hides_the_marked_ones_for_everyone_but_ad
         (big / ("sub%02d" % i) / ".adult").write_bytes(b"")
     client, _ = make(cfg, tmp_path, page_size=100)
     import re
-    count = lambda who: len(re.findall(r"&#128193; sub\d\d", client.get(
+    count = lambda who: len(re.findall(r"</svg></span>sub\d\d", client.get(
         "/browse/comics/Big", headers=dict(basic(*who), **HTML)).text))
     assert count(("alice", "pw-alice")) == 37 and count(("bob", "pw-bob")) == 40
 
@@ -271,9 +271,9 @@ def test_home_page_icons_where_a_started_book_lives_and_the_opds_link_in_the_foo
     assert me.put("/api/progress/comics/3%20-%20Marvel%20%281961-2012%29/Spider-Man%20%281963-%29/Amazing%20001.cbz",
                   json={"locator": "page:2", "percent": 0.1}, headers=h).status_code == 200
     html = me.get("/", headers=HTML).text
-    assert "&#128214;" in html and "&#128172;" in html                           # a book icon and a comic icon in the list
+    assert "pl-ico-epub" in html and "pl-ico-comic" in html                      # a book icon and a comic icon in the list
     assert "books / Good Author" in html and "comics / Spider-Man (1963-)" in html   # which library, which folder
-    assert html.count("class='pl-kind'>&#128193;") == 2 and "class='pl-kind'>&#128228;" in html   # folder icons; uploads has its own
+    assert html.count("class='pl-ico pl-ico-folder'") == 2 and "pl-ico-upload" in html          # folder icons; uploads has its own
     assert "OPDS catalogue" not in html
     assert re.search(r"<p class='pl-muted pl-foot'><a href='/opds'>OPDS feed</a> for reader apps &middot; pluteus \d", html)
 
@@ -298,12 +298,12 @@ def test_every_file_row_in_a_listing_has_its_type_icon(cfg, tmp_path, library):
     client, _ = make(cfg, tmp_path)
     h = dict(basic("alice", "pw-alice"), **HTML)
     books = client.get("/browse/books/Good%20Author", headers=h).text
-    assert "<span class='pl-kind'>&#128214;</span><span class='pl-title-text'>" in books            # an EPUB: the open book
+    assert "pl-ico-epub" in books and "pl-ico-folder" not in books                                    # an EPUB: the open book
     comics = client.get("/browse/comics/3%20-%20Marvel%20%281961-2012%29/Spider-Man%20%281963-%29", headers=h).text
-    assert "<span class='pl-kind'>&#128172;</span>" in comics                                        # a CBZ: the speech balloon
+    assert "pl-ico-comic" in comics                                                                   # a CBZ: the speech balloon
     plain = client.get("/browse/comics/Plain", headers=h).text
-    assert "<span class='pl-kind'>&#128196;</span>" in plain                                         # a text file: a plain page
-    assert "&#128193;" in client.get("/browse/comics", headers=h).text                                # folders keep their folder icon
+    assert "pl-ico-text" in plain                                                                      # a text file: lines on a page
+    assert "pl-ico-folder" in client.get("/browse/comics", headers=h).text                            # folders keep their folder icon
 
 
 def test_a_file_can_be_taken_off_the_home_list_and_comes_back_when_opened_again(cfg, tmp_path, library):

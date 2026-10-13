@@ -20,6 +20,7 @@
   --pl-accent-fg: #ffffff;
   --pl-danger: #b3382c;
   --pl-radius: 8px;
+  --pl-ico-glow: none;                                /* a soft glow round the file icons: the dark scheme turns it on */
   --pl-gap: 12px;
 
   /* richer hooks, all optional: each falls back to the plain values above */
@@ -72,6 +73,7 @@
     --pl-book-bg: #191c24;
     --pl-book-fg: #d8dce6;
     --pl-book-link: #e0b866;
+    --pl-ico-glow: drop-shadow(0 0 4px color-mix(in srgb, currentColor 38%, transparent));
   }
 }
 :root:where([data-scheme="dark"]) {
@@ -86,6 +88,7 @@
   --pl-book-bg: #191c24;
   --pl-book-fg: #d8dce6;
   --pl-book-link: #e0b866;
+  --pl-ico-glow: drop-shadow(0 0 4px color-mix(in srgb, currentColor 38%, transparent));
 }
 :root[data-scheme="light"] { color-scheme: light; }
 :root[data-scheme="dark"] { color-scheme: dark; }
@@ -321,7 +324,21 @@ a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible
 }
 
 /* ---- home page: icons in front, a second line saying where a started book lives ---- */
-.pl-kind { display: inline-block; min-width: 1.7em; margin-right: 6px; text-align: center; }
+.pl-kind { display: inline-block; min-width: 1.75em; margin-right: 10px; text-align: center; }
+/* File-type icons (icons.py). Gold: thin outlines in the accent colour. Aurora: a luminous colour per type. Colour: filled tiles. */
+.pl-ico { width: 1.75em; height: 1.75em; flex: none; vertical-align: -.5em; color: var(--pl-accent); filter: var(--pl-ico-glow); }
+html[data-icons="color"] .pl-ico { filter: drop-shadow(0 1px 2px rgba(0, 0, 0, .3)); }
+html[data-icons="aurora"] .pl-ico-epub    { color: light-dark(#2f5fe0, #7fb2ff); }
+html[data-icons="aurora"] .pl-ico-comic   { color: light-dark(#7a35d6, #c79bff); }
+html[data-icons="aurora"] .pl-ico-pdf     { color: light-dark(#d63a3a, #ff9a8a); }
+html[data-icons="aurora"] .pl-ico-audio   { color: light-dark(#0f8f86, #5fe3cf); }
+html[data-icons="aurora"] .pl-ico-video   { color: light-dark(#4a45d6, #9aa0ff); }
+html[data-icons="aurora"] .pl-ico-image   { color: light-dark(#1a9a4f, #7be39a); }
+html[data-icons="aurora"] .pl-ico-text    { color: light-dark(#64748d, #b6c2d6); }
+html[data-icons="aurora"] .pl-ico-table   { color: light-dark(#0d8f6b, #6fe0b8); }
+html[data-icons="aurora"] .pl-ico-archive { color: light-dark(#d9780f, #ffc56b); }
+html[data-icons="aurora"] .pl-ico-file    { color: light-dark(#8392a8, #c3cddb); }
+html[data-icons="aurora"] .pl-ico-upload  { color: light-dark(#1f7ae0, #7cc8ff); }
 .pl-root-link { display: block; padding: 12px 0; flex: 1; }
 .pl-recent-row { align-items: center; }
 .pl-recent-link { display: flex; align-items: center; flex: 1; min-width: 0; padding: 8px 0; }
@@ -332,7 +349,9 @@ a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible
 
 /* ---- audio/video viewer: buttons made for a thumb ---- */
 .pl-media-controls { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; margin: 22px 0 6px; }
-.pl-media-controls .pl-btn { min-width: 92px; min-height: 54px; padding: 8px 16px; font-size: 17px; border-radius: 14px; }
+.pl-media-controls .pl-btn { min-width: 92px; min-height: 54px; padding: 8px 16px; font-size: 17px; border-radius: 14px;
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
+.pl-media-controls .pl-icon { width: 1.5em; height: 1.5em; vertical-align: 0; color: var(--pl-accent); }
 .pl-media-box { position: relative; }
 
 /* ---- EPUB reader: one centered page by default (a comfortable line length), two pages as an option ---- */

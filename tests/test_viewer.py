@@ -6,6 +6,7 @@ import subprocess
 from pathlib import Path
 
 import pytest
+from pluteus.icons import OUTLINE_SPRITE
 from cbz_factory import make_cbz, png
 from starlette.testclient import TestClient
 from test_login_web import HTML, login, make
@@ -207,7 +208,7 @@ def test_first_and_last_image_have_a_disabled_end(signed_in):
 def test_svg_is_viewed_through_an_img_tag_never_inlined(signed_in):
     client, _ = signed_in
     html = client.get("/view/books/" + d("pic.svg"), headers=HTML).text
-    assert "src='/raw/books/Docs/pic.svg'" in html and "<svg" not in html and "alert(1)" not in html
+    assert "src='/raw/books/Docs/pic.svg'" in html and "<svg" not in html.replace(OUTLINE_SPRITE, "") and "alert(1)" not in html
 
 
 # ---- the text viewer ---------------------------------------------------------------------------------------------------------

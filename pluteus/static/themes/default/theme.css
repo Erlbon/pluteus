@@ -21,6 +21,10 @@
 .pl-i-fit        { -webkit-mask-image: url(../_/icons/fit.svg);        mask-image: url(../_/icons/fit.svg); }
 .pl-i-contrast   { -webkit-mask-image: url(../_/icons/contrast.svg);   mask-image: url(../_/icons/contrast.svg); }
 .pl-i-download   { -webkit-mask-image: url(../_/icons/download.svg);   mask-image: url(../_/icons/download.svg); }
+.pl-i-back30     { -webkit-mask-image: url(../_/icons/back30.svg);     mask-image: url(../_/icons/back30.svg); }
+.pl-i-fwd30      { -webkit-mask-image: url(../_/icons/fwd30.svg);      mask-image: url(../_/icons/fwd30.svg); }
+.pl-i-speed      { -webkit-mask-image: url(../_/icons/speed.svg);      mask-image: url(../_/icons/speed.svg); }
+.pl-i-moon       { -webkit-mask-image: url(../_/icons/moon.svg);       mask-image: url(../_/icons/moon.svg); }
 
 /* The book icon above the sign-in form. A theme can hide it (.pl-logo { display: none; }) or swap the image
    (background-image: url(logo.png), relative to that theme's folder). ../../static is the site's /static/. */

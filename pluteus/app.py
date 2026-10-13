@@ -285,8 +285,13 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
             return ""
         return "http://%s:%d/" % (host, cfg.admin_port)
 
+    def icons_for(username: str) -> str:
+        choice = state.get_prefs(username).get("icons") if username else None
+        return choice if choice in ("gold", "aurora", "color") else "gold"
+
     def ctx_for(user) -> web.Ctx:
-        return web.Ctx(urls, user.name, theme_for(user.name), readers=True, admin_link=current_admin_link.get())
+        return web.Ctx(urls, user.name, theme_for(user.name), readers=True, admin_link=current_admin_link.get(),
+                       icons=icons_for(user.name))
 
     def unauthorized(request: Request, mode: str, wait: int) -> Response:
         if wait:
@@ -495,9 +500,14 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
     @guarded("web")
     async def settings(request: Request, user):
         if request.method == "POST":
-            choice = _form(await request.body()).get("theme", "")
+            form = _form(await request.body())
+            choice, icons = form.get("theme", ""), form.get("icons", "")
+            prefs = dict(state.get_prefs(user.name))
             if themes.exists(choice):
-                state.set_prefs(user.name, {**state.get_prefs(user.name), "theme": choice})
+                prefs["theme"] = choice
+            if icons in ("gold", "aurora", "color"):
+                prefs["icons"] = icons
+            state.set_prefs(user.name, prefs)
             return RedirectResponse(urls.settings() + "?saved=1", 303)
         return HTMLResponse(web.settings_page(ctx_for(user), themes.names(), "saved" in request.query_params))
 

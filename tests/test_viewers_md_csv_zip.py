@@ -181,7 +181,7 @@ def test_zip_listing_shows_entries_with_the_right_actions(zipped):
     assert r.status_code == 200 and "class='pl-zip'" in r.text
     for name in ("readme.txt", "docs/pic.png", "bin/tool.exe", "ålesund.txt"):
         assert name in r.text
-    assert "&#128193; docs/" in r.text                                              # folder entry
+    assert "pl-ico-folder" in r.text and "</svg></span>docs/" in r.text             # folder entry
     assert "as=raw" in r.text and "as=text" in r.text and "as=dl" in r.text
     assert "8 entr" in r.text
 

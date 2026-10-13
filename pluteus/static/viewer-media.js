@@ -68,10 +68,13 @@
   var rate = 1;
   try { rate = parseFloat(localStorage.getItem("pluteus-media-rate")) || 1; } catch (e) { /* storage blocked */ }
   if (RATES.indexOf(rate) < 0) rate = 1;
+  /* The buttons hold an icon and a text: only the text changes */
+  function setLabel(button, text) { var t = button.querySelector(".pl-btn-text"); (t || button).textContent = text; }
+  function getLabel(button) { var t = button.querySelector(".pl-btn-text"); return (t || button).textContent; }
   function applyRate() {
     media.defaultPlaybackRate = rate;
     media.playbackRate = rate;
-    if (speedButton) speedButton.textContent = (rate % 1 === 0 ? rate.toFixed(0) : String(rate)) + "×";
+    if (speedButton) setLabel(speedButton, (rate % 1 === 0 ? rate.toFixed(0) : String(rate)) + "×");
   }
   applyRate();
   media.addEventListener("loadedmetadata", applyRate);              // some browsers reset it when a file loads
@@ -79,7 +82,7 @@
     rate = RATES[(RATES.indexOf(rate) + 1) % RATES.length];
     try { localStorage.setItem("pluteus-media-rate", String(rate)); } catch (e) { /* storage blocked */ }
     applyRate();
-    say("Speed " + speedButton.textContent, 1200);
+    say("Speed " + getLabel(speedButton), 1200);
   });
 
   /* ---- sleep timer: off -> 15 -> 30 -> 60 minutes -> end of this file -> off ---- */
@@ -88,9 +91,9 @@
   var step = 0, deadline = 0, sleepTick = null;
   function sleepLabel() {
     if (!sleepButton) return;
-    if (STEPS[step] === 0) sleepButton.textContent = "Sleep";
-    else if (STEPS[step] === -1) sleepButton.textContent = "Sleep: file end";
-    else sleepButton.textContent = "Sleep " + Math.max(1, Math.ceil((deadline - Date.now()) / 60000)) + " min";
+    if (STEPS[step] === 0) setLabel(sleepButton, "Sleep");
+    else if (STEPS[step] === -1) setLabel(sleepButton, "Sleep: file end");
+    else setLabel(sleepButton, "Sleep " + Math.max(1, Math.ceil((deadline - Date.now()) / 60000)) + " min");
   }
   function stopSleepTick() { clearInterval(sleepTick); sleepTick = null; }
   if (sleepButton) sleepButton.addEventListener("click", function () {

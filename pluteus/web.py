@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from html import escape
 
 from . import __version__, kinds
+from .icons import COLOR_SPRITE, OUTLINE_SPRITE, ico
 from .themes import DEFAULT
 from .urls import Urls
 
@@ -16,6 +17,7 @@ class Ctx:
     user: str = ""
     theme: str = DEFAULT
     readers: bool = False        # show "Read" links (the in-browser readers)
+    icons: str = "gold"          # the file-type icon style: gold (outlines), aurora (outlines, a colour each) or color (filled tiles)
     admin_link: str = ""         # address of the admin page, for an administrator on the local network; else empty
 
 
@@ -42,12 +44,12 @@ def layout(title: str, body: str, ctx: Ctx, *, head: str = "", scripts: tuple = 
     js = "".join("<script src='%s' defer></script>" % escape(s) for s in scripts)
     js += "".join("<script type='module' src='%s'></script>" % escape(s) for s in module_scripts)
     # scheme.js is NOT deferred: it must run before the first paint so a saved dark/light choice never flashes.
-    return ("<!doctype html><html lang='en'><head><meta charset='utf-8'>"
+    return ("<!doctype html><html lang='en' data-icons='%s'><head><meta charset='utf-8'>"
             "<meta name='viewport' content='width=device-width, initial-scale=1'>"
             "<title>%s</title>%s%s<script src='%s'></script>%s%s</head>"
-            "<body class='%s'>%s%s</body></html>"
-            % (escape(title), icon_links(u), "".join(css), escape(u.static("scheme.js")), head, js,
-               escape(body_class), chrome, body))
+            "<body class='%s'>%s%s%s</body></html>"
+            % (escape(ctx.icons), escape(title), icon_links(u), "".join(css), escape(u.static("scheme.js")), head, js,
+               escape(body_class), COLOR_SPRITE if ctx.icons == "color" else OUTLINE_SPRITE, chrome, body))
 
 
 def icon_links(u: Urls) -> str:
@@ -87,15 +89,16 @@ def login_page(ctx: Ctx, next_url: str = "", error: str = "", username: str = ""
     return layout("Sign in", body, ctx, bar=False, body_class="pl-login-page")
 
 
-KIND_ICONS = {"epub": "&#128214;", "comic": "&#128172;", "pdf": "&#128213;", "image": "&#128444;", "audio": "&#127925;",
-              "video": "&#127902;", "markdown": "&#128221;", "table": "&#128202;", "archive": "&#128230;"}
-ROOT_ICON, UPLOADS_ICON, FILE_ICON = "&#128193;", "&#128228;", "&#128196;"
+KIND_ICON_NAMES = {"epub": "epub", "comic": "comic", "pdf": "pdf", "image": "image", "audio": "audio", "video": "video",
+                   "markdown": "text", "text": "text", "table": "table", "archive": "archive"}
+ROOT_ICON, UPLOADS_ICON = ico("folder"), ico("upload")
+ICON_STYLES = (("gold", "Gold outlines"), ("aurora", "Outlines, a colour for each type"), ("color", "Colour tiles"))
 RECENT_TITLE = "Pick up where you left off"       # books, comics, PDFs, audiobooks and videos all appear in this box
 
 
 def kind_icon(kind: str) -> str:
     """A small picture for a kind of file (book, comic, PDF, ...); a plain page for anything else."""
-    return KIND_ICONS.get(kind, FILE_ICON)
+    return ico(KIND_ICON_NAMES.get(kind, "file"))
 
 
 def roots_page(roots: list, ctx: Ctx, recent: list | None = None) -> str:
@@ -231,8 +234,8 @@ def listing_page(root: str, parts: tuple, entries: list, page: int, pages: int, 
     for e in entries:
         if e.is_dir:
             # The whole row is the link: a big target for a thumb.
-            rows.append("<li class='pl-row pl-folder'><a class='pl-title' href='%s'>&#128193; %s</a>%s</li>"
-                        % (escape(urls.browse(root, e.parts)), escape(e.display),
+            rows.append("<li class='pl-row pl-folder'><a class='pl-title' href='%s'><span class='pl-kind'>%s</span>%s</a>%s</li>"
+                        % (escape(urls.browse(root, e.parts)), ROOT_ICON, escape(e.display),
                            _row_actions(urls, root, e.parts, e.name) if writable else ""))
             continue
         label = _book_label(e, metas.get(e.path, {}))
@@ -419,10 +422,14 @@ def media_viewer_page(ctx: Ctx, title: str, *, kind: str, raw_url: str, mime: st
     speed, sleep timer). viewer-media.js adds resume, auto-advance to the next file and the lock-screen controls."""
     tag = "video" if kind == "video" else "audio"
     controls = ("<div class='pl-media-controls'>"
-                "<button class='pl-btn' id='back30' type='button' aria-label='Back 30 seconds'>&minus;30 s</button>"
-                "<button class='pl-btn' id='speed' type='button' aria-label='Playback speed'>1&times;</button>"
-                "<button class='pl-btn' id='sleep' type='button' aria-label='Sleep timer'>Sleep</button>"
-                "<button class='pl-btn' id='fwd30' type='button' aria-label='Forward 30 seconds'>+30 s</button></div>")
+                "<button class='pl-btn' id='back30' type='button' aria-label='Back 30 seconds'>"
+                "<span class='pl-icon pl-i-back30'></span><span class='pl-btn-text'>30 s</span></button>"
+                "<button class='pl-btn' id='speed' type='button' aria-label='Playback speed'>"
+                "<span class='pl-icon pl-i-speed'></span><span class='pl-btn-text'>1&times;</span></button>"
+                "<button class='pl-btn' id='sleep' type='button' aria-label='Sleep timer'>"
+                "<span class='pl-icon pl-i-moon'></span><span class='pl-btn-text'>Sleep</span></button>"
+                "<button class='pl-btn' id='fwd30' type='button' aria-label='Forward 30 seconds'>"
+                "<span class='pl-btn-text'>30 s</span><span class='pl-icon pl-i-fwd30'></span></button></div>")
     stage = ("<div class='pl-media-box'><div class='pl-media-title'>%s</div>"
              "<%s id='media' controls preload='metadata' %s src='%s'><p>Your browser cannot play this file; "
              "<a href='%s'>download it</a>.</p></%s>%s<div class='pl-toast' id='status' hidden></div></div>"
@@ -523,7 +530,7 @@ def zip_page(ctx: Ctx, title: str, *, root: str, parts: tuple, entries: list, to
     for e in entries:
         name = escape(e["name"])
         if e["is_dir"]:
-            rows.append("<tr class='pl-zip-dir'><td colspan='3'>&#128193; %s</td><td></td></tr>" % name)
+            rows.append("<tr class='pl-zip-dir'><td colspan='3'><span class='pl-kind'>%s</span>%s</td><td></td></tr>" % (ROOT_ICON, name))
             continue
         if e["encrypted"]:
             action = "<span class='pl-muted'>password protected</span>"
@@ -551,10 +558,13 @@ def zip_page(ctx: Ctx, title: str, *, root: str, parts: tuple, entries: list, to
 def settings_page(ctx: Ctx, themes: list, saved: bool = False) -> str:
     opts = "".join("<option value='%s'%s>%s</option>"
                    % (escape(t), " selected" if t == ctx.theme else "", escape(t)) for t in themes)
+    icon_opts = "".join("<option value='%s'%s>%s</option>" % (k, " selected" if k == ctx.icons else "", escape(label))
+                        for k, label in ICON_STYLES)
     note = "<p class='pl-muted'>Saved.</p>" if saved else ""
     body = ("<main class='pl-main'><h1>Settings</h1>%s<form class='pl-card' method='post' action='%s'>"
             "<label class='pl-field'><span>Theme</span><select name='theme'>%s</select></label>"
+            "<label class='pl-field'><span>File icons</span><select name='icons'>%s</select></label>"
             "<button class='pl-btn pl-btn-primary' type='submit'>Save</button></form>"
             "<p><a href='%s'>&larr; Back to the library</a></p></main>"
-            % (note, escape(ctx.urls.settings()), opts, escape(ctx.urls.home())))
+            % (note, escape(ctx.urls.settings()), opts, icon_opts, escape(ctx.urls.home())))
     return layout("Settings", body, ctx)
