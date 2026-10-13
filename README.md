@@ -53,6 +53,20 @@ an OPDS reader (KOReader, Panels, Moon+ Reader, Librera...). Reader apps log in 
 get a login page and a session cookie.
 Put it behind HTTPS (a reverse proxy such as Caddy) before exposing it beyond your LAN.
 
+## Quick share (no config file)
+
+```powershell
+python -m pluteus share D:\Photos                 # read-only, open to anyone on this network
+python -m pluteus share D:\Photos --private       # only people who scan the QR code get in
+python -m pluteus share D:\Photos --upload        # guests may upload into ~/Pluteus uploads (implies --private)
+```
+
+It serves the folder(s) at once, prints the address and a **QR code** (scan it with a phone on the same Wi-Fi), and stops when you press
+Ctrl+C. Nothing is written to the shared folders; uploads go to a separate folder (`--upload DIR` to choose it) and the session data
+lives in a temporary folder that is deleted on exit. The default is open and read-only; `--private` makes the QR code carry a one-time
+access link, which stops working when the share stops. Options: `--port N` (first port to try), `--address IP` (if the computer has
+several network addresses and the first is the wrong one), `--no-qr`. For a permanent library with accounts, use the config file.
+
 ## Admin page (web, local network only)
 
 Set `admin_port` (and, in Docker, `admin_host = "0.0.0.0"`) and pluteus also serves an **admin page** on that **second port**.

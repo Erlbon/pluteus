@@ -9,6 +9,7 @@ from __future__ import annotations
 import contextvars
 import functools
 import hashlib
+import hmac
 import ipaddress
 import json
 import logging
@@ -574,6 +575,17 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
                                     "params": {"files": [{"name": "files", "accept": SHARE_ACCEPT}]}}
         return JSONResponse(data, media_type="application/manifest+json", headers=NO_CACHE)
 
+    async def join(request: Request):
+        """`pluteus share --private`: the QR code carries /join/<token>. The right token signs the visitor in as the share's guest
+        user and moves on to the home page (so the token does not stay in the address bar). Anything else looks like a missing page."""
+        user = auth.users.get(cfg.join_user) if cfg.join_token else None
+        if user is None or not hmac.compare_digest(request.path_params["token"].encode(), cfg.join_token.encode()):
+            return PlainTextResponse("Not found", 404)
+        response = RedirectResponse(urls.home(), 303)
+        response.set_cookie(COOKIE, sessions.start(user), max_age=cfg.session_days * 86400, path=cookie_path,
+                            httponly=True, samesite="lax", secure=cookie_secure(request))
+        return response
+
     async def service_worker(request: Request):
         """A service worker that does nothing: it caches nothing and answers no request itself. It exists only so that Chrome
         on Android offers 'Install app' (and then the Share target). Served from the site's own prefix so its scope is the site."""
@@ -923,6 +935,7 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
         Route("/cbz/{root}/{path:path}", cbz_page),
         Route("/manifest.webmanifest", manifest),
         Route("/sw.js", service_worker),
+        Route("/join/{token}", join),
         Route("/share", share, methods=["POST"]),
         Route("/upload/{root}", upload, methods=["POST"]),
         Route("/upload/{root}/{path:path}", upload, methods=["POST"]),

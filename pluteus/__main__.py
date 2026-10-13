@@ -91,6 +91,15 @@ def main(argv=None) -> int:
     sub = ap.add_subparsers(dest="cmd", required=True)
     serve = sub.add_parser("serve", help="run the server")
     serve.add_argument("--config", required=True, help="path to config.toml")
+    share = sub.add_parser("share", help="quick share: serve folders on this network at once, no config file, with a QR code")
+    share.add_argument("folders", nargs="*", help="the folders to share (default: the current folder)")
+    share.add_argument("--private", action="store_true", help="only people who scan the QR code or get the link can open it")
+    share.add_argument("--upload", nargs="?", const="", default=None, metavar="DIR",
+                       help="let guests upload into DIR (default: ~/Pluteus uploads); implies --private")
+    share.add_argument("--port", type=int, default=8080, help="first port to try (default 8080)")
+    share.add_argument("--host", default="0.0.0.0", help="address to listen on (default: every network interface)")
+    share.add_argument("--address", default="", help="the address to show in the link and QR code (default: this computer's address on the network)")
+    share.add_argument("--no-qr", action="store_true", help="do not draw the QR code")
     check = sub.add_parser("check-config", help="validate a config file and exit")
     check.add_argument("--config", required=True)
     sub.add_parser("hash-password", help="print a password hash (for editing config.toml by hand)")
@@ -142,6 +151,9 @@ def main(argv=None) -> int:
             print("Error:", e, file=sys.stderr)
             return 1
         return 0
+    if a.cmd == "share":
+        from .share import run as run_share
+        return run_share(a.folders, private=a.private, upload=a.upload, port=a.port, host=a.host, show_qr=not a.no_qr, address=a.address)
     try:
         if a.cmd == "user":
             return _user_command(a)
