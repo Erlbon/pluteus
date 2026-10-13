@@ -435,3 +435,26 @@ def test_the_key_controls_are_always_there(admin):
     client, _, _ = admin
     assert "Make a key" in client.get("/users", headers=BOSS).text
     assert client.post("/users/appkey", content="name=alice", headers={**BOSS, **FORM}).status_code == 200
+
+
+# ---- the Services box on the Status page ----------------------------------------------------------------------------------------------------
+def test_status_lists_the_services_and_names_the_line_that_switches_each_one(admin):
+    client, app, _ = admin
+    html = client.get("/", headers=BOSS).text
+    assert "<h2>Services</h2>" in html and "Subsonic (music apps, Android Auto)" in html
+    for line in ("subsonic = true", "webdav = true", "kosync = true", "thumbnails = true"):
+        assert line in html                                                                  # all off: each names its switch
+    assert html.count("pl-dot-off") >= 4 and "Web site and OPDS" in html
+
+
+def test_services_that_are_on_show_their_address_and_the_key_count(tmp_path):
+    path = make_config(tmp_path)
+    text = path.read_text(encoding="utf-8")
+    path.write_text(text.replace("port = 8080", 'port = 8080\nsubsonic = true\nwebdav = true\nbase_path = "/pluteus"', 1), encoding="utf-8", newline="")
+    app = create_app(load_config(str(path)), config_path=str(path), reload_interval=0.0)
+    app.state.state.set_appkey("alice", "a-key-123456")
+    client = TestClient(create_admin_app(app), follow_redirects=False)
+    html = client.get("/", headers=BOSS).text
+    assert "1 of 3 users have a key" in html and "/pluteus/dav/" in html
+    assert "subsonic = true" not in html.split("Subsonic (music apps")[1].split("</tr>")[0]       # on: no switch line shown
+    assert "kosync = true" in html and "a-key-123456" not in html                                 # a key is never shown

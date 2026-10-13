@@ -153,6 +153,24 @@ def _security_alert(u) -> str:
     return out
 
 
+def _services_box(services) -> str:
+    """Which optional servers this installation answers, the config line that switches each one, and the address apps use."""
+    if not services:
+        return ""
+    rows = []
+    for s in services:
+        if s["on"]:
+            state = _light("ok", "on")
+        else:
+            state = _light("off", "off") + " <span class='pl-muted'>&middot; <code>%s</code></span>" % escape(s["setting"])
+        address = ("<code>%s</code>" % escape(s["address"])) if (s["on"] and s["address"]) else "<span class='pl-muted'>&ndash;</span>"
+        keys = escape(s["keys"]) if (s["on"] and s["keys"]) else "<span class='pl-muted'>&ndash;</span>"
+        rows.append([escape(s["name"]), state, address, keys])
+    note = ("<p class='pl-muted'>Switch a service on with its line under <code>[server]</code> in <code>config.toml</code> and restart. "
+            "The address is added to your site address (the part before it).</p>")
+    return _box("Services", _table(["Service", "State", "Address", "Login"], rows, "") + note)
+
+
 def status_page(ctx: Ctx, d: dict) -> str:
     n = d.get("names", {})
 
@@ -171,7 +189,8 @@ def status_page(ctx: Ctx, d: dict) -> str:
         state = _root_light(r)
         space = "%s free of %s" % (_size(r["free"]), _size(r["total"])) if r["free"] is not None else ""
         roots.append([escape(r["name"]), "<code>%s</code>" % escape(r["path"]), state, escape(space)])
-    boxes = [_box("Server", facts), _box("Libraries", _table(["Name", "Folder", "State", "Disk"], roots, "No libraries."))]
+    services = _services_box(d.get("services"))
+    boxes = [_box("Server", facts)] + ([services] if services else []) + [_box("Libraries", _table(["Name", "Folder", "State", "Disk"], roots, "No libraries."))]
     up = d["uploads"]
     if up:
         rows = [[escape(u["name"]), _size(u["size"])] for u in up["users"]]

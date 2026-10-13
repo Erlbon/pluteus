@@ -164,7 +164,22 @@ def create_admin_app(main_app) -> Starlette:
         sessions = state.session_counts()
         devices = state.list_devices()
         locked = [r["name"] for r in limiter.snapshot() if r["locked_for"]]
+        keyed = len(state.appkey_users())
+        total = len(auth.users)
+        base = cfg.base_path
+        have = "%d of %d users have a key" % (keyed, total)
+        services = [
+            {"name": "Web site and OPDS", "on": True, "setting": "", "address": base + "/ and " + base + "/opds", "keys": "password or key"},
+            {"name": "Subsonic (music apps, Android Auto)", "on": cfg.subsonic, "setting": "subsonic = true",
+             "address": base or "/", "keys": have},
+            {"name": "WebDAV (mount as a drive)", "on": cfg.webdav, "setting": "webdav = true", "address": base + "/dav/",
+             "keys": "password or key"},
+            {"name": "KOReader sync", "on": cfg.kosync, "setting": "kosync = true", "address": base + "/kosync", "keys": have},
+            {"name": "Cover thumbnails (feeds, cover view)", "on": cfg.thumbnails, "setting": "thumbnails = true", "address": "", "keys": ""},
+            {"name": "Uploads", "on": bool(cfg.uploads_dir), "setting": "uploads_dir = ...", "address": "per-user folders", "keys": ""},
+        ]
         return {
+            "services": services,
             "update": updates.status() if updates else None,
             "bsdtar": bool(cbz.bsdtar()),
             "version": __version__, "python": platform.python_version(), "uptime": time.time() - st.started,
