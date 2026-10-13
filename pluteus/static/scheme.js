@@ -1,11 +1,23 @@
 /* Dark/light toggle. Runs in <head> (not deferred) so the saved choice is applied before the first paint.
-   The choice lives in this browser only (localStorage); with none saved the system setting decides. */
+   The choice lives in this browser only; with none saved the system setting decides. It is kept in a cookie as well as in
+   localStorage: a browser keeps localStorage apart for every port, but cookies are shared between ports of one address, so the
+   site (say :8100) and the admin page (:8101) show the same choice. */
 (function () {
   var KEY = "pluteus-scheme", root = document.documentElement;
-  try {
-    var saved = localStorage.getItem(KEY);
-    if (saved === "dark" || saved === "light") root.setAttribute("data-scheme", saved);
-  } catch (e) { /* storage blocked: the system setting still works */ }
+  function readCookie() {
+    var m = document.cookie.match(new RegExp("(?:^|; )" + KEY + "=(dark|light)"));
+    return m ? m[1] : null;
+  }
+  function remember(value) {
+    try { localStorage.setItem(KEY, value); } catch (e) { /* ignore */ }
+    try {
+      document.cookie = KEY + "=" + value + "; path=/; max-age=31536000; SameSite=Lax" + (location.protocol === "https:" ? "; Secure" : "");
+    } catch (e) { /* cookies blocked */ }
+  }
+  var saved = readCookie();
+  try { if (!saved) { var stored = localStorage.getItem(KEY); if (stored === "dark" || stored === "light") { saved = stored; remember(stored); } } }
+  catch (e) { /* storage blocked: the system setting still works */ }
+  if (saved === "dark" || saved === "light") root.setAttribute("data-scheme", saved);
 
   /* A do-nothing service worker, only so that Chrome offers "Install app" (it lives at <site prefix>/sw.js) */
   if ("serviceWorker" in navigator) {
@@ -23,7 +35,7 @@
         (window.matchMedia && matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
       var next = now === "dark" ? "light" : "dark";
       root.setAttribute("data-scheme", next);
-      try { localStorage.setItem(KEY, next); } catch (e) { /* ignore */ }
+      remember(next);
     });
   });
 })();

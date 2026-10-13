@@ -422,3 +422,11 @@ def test_a_do_nothing_service_worker_makes_the_site_installable(cfg, tmp_path):
     assert "addEventListener('fetch'" in r.text and "respondWith" in r.text.split("//")[-1] and "caches." not in r.text   # caches nothing
     script = client.get("/static/scheme.js").text
     assert "serviceWorker.register" in script and "sw.js" in script
+
+
+def test_the_scheme_choice_is_kept_in_a_cookie_so_the_site_and_the_admin_page_share_it():
+    import os
+    js = open(os.path.join(os.path.dirname(__file__), "..", "pluteus", "static", "scheme.js"), encoding="utf-8").read()
+    assert "document.cookie" in js and "max-age=31536000" in js and "SameSite=Lax" in js      # cookies are shared between ports of one address
+    assert "function remember(value)" in js and js.count("remember(") >= 3                     # used on load (carry over) and on every toggle
+    assert 'location.protocol === "https:"' in js                                               # Secure only where https is in use
