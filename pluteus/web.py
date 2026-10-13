@@ -320,7 +320,7 @@ def listing_page(root: str, parts: tuple, entries: list, page: int, pages: int, 
     return layout(title, body, ctx, scripts=scripts)
 
 
-COVER_KINDS = ("epub", "comic", "audio")
+COVER_KINDS = ("epub", "comic", "audio", "image")
 
 
 def _tiles(ctx: Ctx, root: str, entries: list, metas: dict, progress: dict, shelves: dict | None = None) -> list:

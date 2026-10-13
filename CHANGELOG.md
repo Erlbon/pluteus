@@ -3,6 +3,7 @@
 Release notes are taken from the section of the tagged version (`## 0.5.0 ...`).
 
 ## Unreleased (for 0.9.1)
+- **Cover view:** loose pictures (JPG, PNG, WebP, GIF) get a real thumbnail, not a type icon. A JPEG may have up to 120 million pixels (it is decoded at a reduced size); other formats keep the 20 million limit. A file that is not really a picture, and SVG, get none.
 - A `folder.jpg` (or `cover.jpg` ...) added to or removed from a folder shows on the next refresh: it used to take up to two minutes, because the answer was remembered by time and not by whether the folder had changed.
 - The admin Status page has a **Services** box: which optional servers are on or off (Subsonic, WebDAV, KOReader sync, thumbnails, uploads), the `config.toml` line that switches each one, the address apps use and how many users have a key.
 Found by driving the 0.9.0 Subsonic API with a real, strictly typed client library (py-opensonic):

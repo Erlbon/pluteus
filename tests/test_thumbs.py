@@ -148,3 +148,43 @@ def test_a_refused_picture_gives_no_cover_not_the_original(tmp_path):
     cfg = parse_config({"server": {"thumbnails": True}, "roots": [{"name": "lib", "path": str(lib)}],
                         "users": [{"name": "alice", "password_hash": hash_password("pw", n=2 ** 4), "roots": ["*"]}]})
     assert TestClient(create_app(cfg)).get("/thumb/lib/A/bomb.epub", headers=AUTH).status_code == 404
+
+
+# ---- loose pictures get a thumbnail too ----------------------------------------------------------------------------------------------------
+def jpeg(size=(1200, 800), color=(30, 120, 200)):
+    buf = io.BytesIO()
+    Image.new("RGB", size, color).save(buf, "JPEG", quality=85)
+    return buf.getvalue()
+
+
+@pytest.fixture
+def pictures(tmp_path):
+    lib = tmp_path / "lib"
+    (lib / "Photos").mkdir(parents=True)
+    (lib / "Photos" / "wide.jpg").write_bytes(jpeg())
+    (lib / "Photos" / "tall.png").write_bytes(png((10, 200, 10), size=(400, 800)))
+    (lib / "Photos" / "fake.jpg").write_bytes(b"not a picture at all")
+    (lib / "Photos" / "vector.svg").write_text("<svg xmlns='http://www.w3.org/2000/svg'><script>alert(1)</script></svg>")
+    cfg = parse_config({"server": {"thumbnails": True, "data_dir": str(tmp_path / "data")}, "roots": [{"name": "lib", "path": str(lib)}],
+                        "users": [{"name": "alice", "password_hash": hash_password("pw", n=2 ** 4), "roots": ["*"]}]})
+    return TestClient(create_app(cfg))
+
+
+def test_jpg_and_png_files_are_scaled_down_in_the_cover_view(pictures):
+    wide = pictures.get("/thumb/lib/Photos/wide.jpg?w=240", headers=AUTH)
+    assert wide.status_code == 200 and wide.headers["content-type"] == "image/jpeg" and size_of(wide.content) == (240, 160)
+    tall = pictures.get("/thumb/lib/Photos/tall.png?w=160", headers=AUTH)
+    assert tall.status_code == 200 and size_of(tall.content) == (160, 320)
+    page = pictures.get("/browse/lib/Photos?view=grid", headers={**AUTH, "Accept": "text/html"}).text
+    assert "src='/thumb/lib/Photos/wide.jpg?w=320'" in page and "src='/thumb/lib/Photos/tall.png?w=320'" in page
+
+
+def test_a_fake_picture_and_an_svg_get_no_thumbnail(pictures):
+    assert pictures.get("/thumb/lib/Photos/fake.jpg", headers=AUTH).status_code == 404           # not really a JPEG: refused by its bytes
+    assert pictures.get("/thumb/lib/Photos/vector.svg", headers=AUTH).status_code == 404           # SVG can carry script: never served
+
+
+def test_a_camera_sized_jpeg_is_allowed_but_a_big_png_is_not():
+    photo = jpeg(size=(8000, 6000))                                                  # 48 million pixels, small as a JPEG
+    assert thumbs.scaled(photo, 240) not in (None, False)
+    assert thumbs.scaled(png((9, 9, 9), size=(6000, 6000)), 240) is False             # a PNG over the limit is still refused

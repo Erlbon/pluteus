@@ -310,7 +310,7 @@ shown. They are also OPDS feeds (`/opds-shelves/favourite` and `/opds-shelves/ne
 the OPDS feeds (reader apps show covers) and the cover view below. With it off, no thumbnail is made or offered anywhere.
 
 In Settings, *Folders are shown as* **Covers** (or the *List / Covers* switch above any folder for a single visit) shows a tile with a
-cover for each book: the cover of an EPUB, the first page of a comic, the picture of a song; other files and folders show their type icon.
+cover for each book: the cover of an EPUB, the first page of a comic, the picture of a song, and the picture itself for a JPG, PNG, WebP or GIF; other files and folders show their type icon.
 The pictures are small JPEGs made on the first view (Pillow) and cached.
 
 ## Windows notes

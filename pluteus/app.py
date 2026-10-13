@@ -1009,6 +1009,8 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
     def cover_source(info, root: str):
         """(bytes, mime) of the picture that stands for a book: the cover of an EPUB, the first page of a comic, the picture of a song."""
         kind = kinds.kind_of(info.name)
+        if kind == "image":
+            return thumbs.image_file(info.path)
         if kind == "epub":
             return thumbs.epub_cover(info.path)
         if kind == "comic":

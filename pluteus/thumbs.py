@@ -18,6 +18,9 @@ from .meta import MAX_XML_BYTES, NS, _READ_ERRORS, _read_member
 # A picture is refused before it is decoded when it has more pixels than this: a small file can hold a huge picture (a flat
 # 10000 x 10000 PNG is under 400 KB but needs 400 MB of memory to decode).
 MAX_PIXELS = 20_000_000
+# A JPEG is decoded at a reduced size (draft mode), so a camera photo is cheap to scale; it may have more pixels than other formats.
+MAX_JPEG_PIXELS = 120_000_000
+MAX_IMAGE_FILE = 48 * 1024 * 1024               # the biggest picture file read to make a thumbnail of it
 # Only these widths are made, so the cache holds a few files per book, not one per possible number.
 WIDTHS = (96, 160, 240, 320, 480, 640, 900)
 MIN_WIDTH, MAX_WIDTH = WIDTHS[0], WIDTHS[-1]
@@ -62,7 +65,8 @@ def scaled(data: bytes, width: int):
     try:
         Image.MAX_IMAGE_PIXELS = None                              # we check the size ourselves, right below, before anything is decoded
         with Image.open(io.BytesIO(data)) as im:
-            if im.width * im.height > MAX_PIXELS:                  # from the header only: nothing has been decoded yet
+            limit = MAX_JPEG_PIXELS if im.format == "JPEG" else MAX_PIXELS
+            if im.width * im.height > limit:                       # from the header only: nothing has been decoded yet
                 return False
             im.draft("RGB", (width * 2, width * 3))                # JPEG: decode at a reduced size when possible
             im = im.convert("RGB")
@@ -73,6 +77,17 @@ def scaled(data: bytes, width: int):
             return out.getvalue(), "image/jpeg"
     except Exception:                                              # noqa: BLE001  a damaged or absurd picture is just "no cover"
         return False
+
+
+def image_file(path: str):
+    """(bytes, mime) of a loose picture file (JPEG, PNG, WebP or GIF), or None when it is another type or too big."""
+    try:
+        with open(path, "rb") as f:
+            data = f.read(MAX_IMAGE_FILE + 1)
+    except OSError:
+        return None
+    mime = sniff_image(data)
+    return (data, mime) if (mime and len(data) <= MAX_IMAGE_FILE) else None
 
 
 def clamp_width(text: str, default: int = 240) -> int:
