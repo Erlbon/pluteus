@@ -2,6 +2,14 @@
 
 Release notes are taken from the section of the tagged version (`## 0.5.0 ...`).
 
+## 0.6.0 - 2026-10-13
+- **Libraries tab** on the admin page: add and remove libraries without editing `config.toml`, with a **folder picker** (for a browser on
+  the same computer: the Windows and Linux programs; in Docker, type the path inside the container, or set `library_bases`). New libraries
+  are in use at once, and a hand edit of the file is picked up without a restart.
+- **Just run it:** `pluteus` with no arguments (a double-click on Windows) asks for an administrator name and password on the first run,
+  saves its settings in your own settings folder, starts, and opens the admin page. No config file to write.
+- `admin_url`: the Admin link in the top bar for administrators, also behind a proxy.
+
 ## 0.5.0 - 2026-10-13
 - **Quick share:** `pluteus share FOLDER` serves folders at once, with no config file, and draws the address as a **QR code** in the
   terminal. Open and read-only by default; `--private` makes the QR code a one-time access link; `--upload` lets guests upload into a

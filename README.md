@@ -5,7 +5,7 @@ OPDS app, download files, with per-user logins. Python, no Java, low memory, no 
 Built as a light replacement for Ubooquity, for people who keep their library as plain folders on disk
 (tested on about 10 TB of books and comics).
 
-**Status: 0.5.0, in daily use, young.** Named after the *pluteus*, the sloping shelf or bookcase of a
+**Status: 0.6.0, in daily use, young.** Named after the *pluteus*, the sloping shelf or bookcase of a
 medieval library. Pronounced "PLOO-tee-us".
 
 ## What you get
@@ -56,8 +56,12 @@ Put it behind HTTPS (a reverse proxy such as Caddy) before exposing it beyond yo
 ## Download (no Python needed)
 
 Each [release](https://github.com/Erlbon/pluteus/releases) has **`pluteus.exe`** (Windows) and **`pluteus-linux-x86_64.tar.gz`** (Linux,
-runs on most current distributions). Both are the same program as `python -m pluteus`: run `pluteus share FOLDER` (below) or
-`pluteus serve --config config.toml`. They are **not code-signed**, so Windows SmartScreen may warn on the first run ("More info",
+runs on most current distributions). Both are the same program as `python -m pluteus`.
+
+**Just run it** (double-click `pluteus.exe`, or `./pluteus`): the first time it asks for an administrator name and a password (you type
+it, it is not shown), saves its settings in your own settings folder (`%APPDATA%\Pluteus` on Windows, `~/.config/pluteus` on Linux),
+starts, and opens the admin page in your browser, where the **Libraries** tab adds your book and comic folders with a folder picker.
+After that, running it again just starts the server. Other commands: `pluteus share FOLDER` (below) and `pluteus serve --config config.toml`. They are **not code-signed**, so Windows SmartScreen may warn on the first run ("More info",
 then "Run anyway"). RAR and 7z comics (CBR, CB7) need `bsdtar` (built into Windows 10 and later; `libarchive-tools` on Debian and
 Ubuntu). Docker stays the recommended way to run a permanent server. The Linux download includes a systemd unit.
 

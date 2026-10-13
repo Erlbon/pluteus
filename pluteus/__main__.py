@@ -88,7 +88,9 @@ def _user_command(a) -> int:
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(prog="pluteus", description="Filesystem-first book and comic server.")
     ap.add_argument("--version", action="version", version="pluteus " + __version__)
-    sub = ap.add_subparsers(dest="cmd", required=True)
+    sub = ap.add_subparsers(dest="cmd")                # no command = start (the downloaded programs: double-click)
+    start = sub.add_parser("start", help="start with the settings in your own settings folder (asks the first time); the default")
+    start.add_argument("--config", default="", help="use this config.toml instead of the default one")
     serve = sub.add_parser("serve", help="run the server")
     serve.add_argument("--config", required=True, help="path to config.toml")
     share = sub.add_parser("share", help="quick share: serve folders on this network at once, no config file, with a QR code")
@@ -156,6 +158,9 @@ def main(argv=None) -> int:
             print("Error:", e, file=sys.stderr)
             return 1
         return 0
+    if a.cmd in (None, "start"):
+        from .firstrun import start as start_default
+        return start_default(getattr(a, "config", "") or None, _run_server)
     if a.cmd == "share":
         from .share import run as run_share
         return run_share(a.folders, private=a.private, upload=a.upload, port=a.port, host=a.host, show_qr=not a.no_qr, address=a.address)
@@ -174,6 +179,11 @@ def main(argv=None) -> int:
     if a.cmd == "check-config":
         print("OK: %d root(s), %d user(s)" % (len(cfg.roots), len(cfg.users)))
         return 0
+    return _run_server(cfg, a.config)
+
+
+def _run_server(cfg, config_path) -> int:
+    """Run the server (and the admin page when admin_port is set) until Ctrl+C."""
     from .fs import longpath
     for root in cfg.roots.values():
         if not os.path.isdir(longpath(root.path)):
@@ -181,7 +191,7 @@ def main(argv=None) -> int:
     import uvicorn
 
     from .app import create_app
-    app = create_app(cfg, config_path=a.config)
+    app = create_app(cfg, config_path=config_path)
     admin = None
     if cfg.admin_port:                                  # the admin page: its own port, for the local network only
         from .adminapp import start_admin_server
