@@ -24,7 +24,7 @@ def nav_link(title: str, href: str) -> dict:
 
 
 def publication(title: str, identifier: str, href: str, mime: str, updated: float, meta: dict | None = None,
-                stream: dict | None = None) -> dict:
+                stream: dict | None = None, cover: tuple | None = None) -> dict:
     meta = meta or {}
     info = {"@type": "http://schema.org/Book", "identifier": identifier, "title": meta.get("title") or title,
             "modified": _iso(updated)}
@@ -50,7 +50,10 @@ def publication(title: str, identifier: str, href: str, mime: str, updated: floa
             props["lastReadDate"] = _iso(stream["last_read_date"])
         links.append({"rel": PSE_STREAM_REL, "href": stream["href"], "type": stream["mime"], "properties": props,
                       "templated": True})
-    return {"metadata": info, "links": links}
+    result = {"metadata": info, "links": links}
+    if cover:
+        result["images"] = [{"href": cover[1], "type": "image/jpeg"}, {"href": cover[0], "type": "image/jpeg", "width": 160}]
+    return result
 
 
 def feed(*, title: str, self_href: str, start_href: str, navigation: list, publications: list, up_href: str | None = None,

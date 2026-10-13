@@ -52,8 +52,12 @@ def stream_mime(first_page_mime: str) -> str:
     return first_page_mime if first_page_mime in PSE_TYPES else "image/jpeg"
 
 
+IMAGE_REL = "http://opds-spec.org/image"
+THUMB_REL = "http://opds-spec.org/image/thumbnail"
+
+
 def book_entry(title: str, entry_id: str, href: str, mime: str, updated: float, size: int,
-               meta: dict | None = None, stream: dict | None = None) -> ET.Element:
+               meta: dict | None = None, stream: dict | None = None, cover: tuple | None = None) -> ET.Element:
     meta = meta or {}
     e = ET.Element(_q("entry"))
     _text(e, "title", meta.get("title") or title)
@@ -71,6 +75,9 @@ def book_entry(title: str, entry_id: str, href: str, mime: str, updated: float, 
     ET.SubElement(e, "{%s}format" % DC).text = mime
     ET.SubElement(e, _q("link"), {"rel": ACQUISITION_REL, "href": href, "type": mime,
                                   "length": str(size)})
+    if cover:                                           # (small picture url, larger picture url), both JPEG
+        ET.SubElement(e, _q("link"), {"rel": THUMB_REL, "href": cover[0], "type": "image/jpeg"})
+        ET.SubElement(e, _q("link"), {"rel": IMAGE_REL, "href": cover[1], "type": "image/jpeg"})
     if stream:
         # OPDS-PSE: read this comic page by page. href holds the literal {pageNumber} (0-based) for the client to fill in.
         attrs = {"rel": PSE_STREAM_REL, "href": stream["href"], "type": stream_mime(stream["mime"]),

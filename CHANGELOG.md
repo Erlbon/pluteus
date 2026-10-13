@@ -2,6 +2,11 @@
 
 Release notes are taken from the section of the tagged version (`## 0.5.0 ...`).
 
+## 0.8.2 - 2026-10-13
+- **Cover thumbnails in the OPDS feeds** (Atom and JSON): the cover of an EPUB, the first page of a comic, the picture of a song, as small
+  JPEGs cached on disk. New dependency: Pillow.
+- **KOReader progress sync** (`kosync = true`), logging in with the same per-user key as the music apps.
+
 ## 0.8.1 - 2026-10-13
 - **Read-only WebDAV** (`webdav = true`): mount the library in Explorer, Finder, Android file managers, Kodi.
 - **OPDS 2.0 (JSON)** feeds next to the Atom ones, chosen by the app's Accept header.

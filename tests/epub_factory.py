@@ -13,7 +13,7 @@ CONTAINER = """<?xml version="1.0"?>
 
 def make_epub(path, *, title="A Title", authors=("An Author",), language="en", date=None,
               calibre_series=None, series_index=None, collection=None, position=None,
-              creator_role=None, opf_dir="OEBPS", pad_bytes=0):
+              creator_role=None, opf_dir="OEBPS", pad_bytes=0, cover=None, cover_style="epub3"):
     opf = ["""<?xml version="1.0" encoding="utf-8"?>
 <package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="id">
 <metadata xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:opf="http://www.idpf.org/2007/opf">
@@ -36,7 +36,13 @@ def make_epub(path, *, title="A Title", authors=("An Author",), language="en", d
         opf.append('<meta refines="#c1" property="collection-type">series</meta>')
         if position is not None:
             opf.append('<meta refines="#c1" property="group-position">%s</meta>' % position)
-    opf.append("</metadata><manifest/><spine/></package>")
+    if cover and cover_style == "epub2":
+        opf.append('<meta name="cover" content="cov"/>')
+    manifest = "<manifest/>"
+    if cover:
+        props = ' properties="cover-image"' if cover_style == "epub3" else ""
+        manifest = '<manifest><item id="cov" href="images/my%20cover.png" media-type="image/png"' + props + "/></manifest>"
+    opf.append("</metadata>" + manifest + "<spine/></package>")
     if pad_bytes:
         opf.append("<!-- %s -->" % ("a" * pad_bytes))
     opf_path = "%s/content.opf" % opf_dir if opf_dir else "content.opf"
@@ -46,4 +52,6 @@ def make_epub(path, *, title="A Title", authors=("An Author",), language="en", d
         z.writestr("mimetype", "application/epub+zip")
         z.writestr("META-INF/container.xml", CONTAINER % opf_path)
         z.writestr(opf_path, "\n".join(opf))
+        if cover:
+            z.writestr("%s/images/my cover.png" % opf_dir if opf_dir else "images/my cover.png", cover)
     return path

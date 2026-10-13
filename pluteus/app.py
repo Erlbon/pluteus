@@ -29,7 +29,7 @@ from starlette.responses import (FileResponse, HTMLResponse, JSONResponse, Plain
                                  RedirectResponse, Response, StreamingResponse)
 from starlette.routing import Route
 
-from . import cbz, kinds, markdown, mediainfo, opds, opds2, tabular, textview, uploads, web, ziputil
+from . import cbz, kinds, markdown, mediainfo, opds, opds2, tabular, thumbs, textview, uploads, web, ziputil
 from .auth import Authenticator
 from .cbz import CbzError
 from .config import MIME_TYPES, UPLOADS_ROOT, Config
@@ -160,6 +160,7 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
     themes = Themes(cfg.themes_dir)
     reloader = UsersReloader(config_path, auth, reload_interval, on_config=lambda c: lib.set_roots(c.roots)) if config_path else None
     urls = Urls(cfg.base_path)
+    thumb_cache = thumbs.ThumbCache(cfg.cache_dir or cfg.data_dir)
     backup_dir = os.path.join(cfg.data_dir, "backups") if cfg.data_dir else ""
     housekeeping_due = [0.0]
     challenge = {"WWW-Authenticate": 'Basic realm="%s", charset="UTF-8"' % cfg.realm}
@@ -867,6 +868,64 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
             return PlainTextResponse("Cannot read this page (%s)" % e, 422)
         return Response(data, media_type=cbz.mime_for(pages[number]), headers=headers)
 
+    def cover_source(info, root: str):
+        """(bytes, mime) of the picture that stands for a book: the cover of an EPUB, the first page of a comic, the picture of a song."""
+        kind = kinds.kind_of(info.name)
+        if kind == "epub":
+            return thumbs.epub_cover(info.path)
+        if kind == "comic":
+            external = root != UPLOADS_ROOT
+            pages = meta.pages_for(info, external)
+            if not pages:
+                return None
+            data = cbz.read_page(info.path, pages[0], cbz.MAX_PAGE_BYTES, external)
+            mime = mediainfo.sniff_image(data)
+            return (data, mime) if mime else None
+        if kind in ("audio", "video"):
+            return mediainfo.read_cover(info.path)
+        return None
+
+    def make_thumb(info, root: str, width: int):
+        key = "%s|%s|%s|%d" % (info.path, info.size, info.mtime, width)
+        hit = thumb_cache.get(key)
+        if hit is not None:
+            return hit, "image/jpeg"
+        try:
+            found = cover_source(info, root)
+        except (CbzError, OSError):
+            found = None
+        if found is None:
+            return None
+        small = thumbs.scaled(found[0], width)
+        if small is None:                                       # no Pillow, or a picture it cannot read: the original, as it is
+            return found if len(found[0]) <= mediainfo.MAX_COVER else None
+        thumb_cache.put(key, small[0])
+        return small
+
+    @guarded("media")
+    async def thumb(request: Request, user):
+        """A small JPEG of a book's cover (?w= the width in pixels), for the OPDS feeds."""
+        root = request.path_params["root"]
+        parts = _parts(request.path_params["path"])
+        info = await run_in_threadpool(lib.file_info, user, root, parts, cfg.show_all_files)
+        width = thumbs.clamp_width(request.query_params.get("w", ""))
+        found = await run_in_threadpool(make_thumb, info, root, width)
+        if found is None:
+            raise NotFound("no cover")
+        data, mime = found
+        etag = '"%s"' % hashlib.sha1(("%s|%s|%d" % (info.size, info.mtime, width)).encode()).hexdigest()[:20]
+        headers = {"ETag": etag, "Cache-Control": "private, max-age=86400", "X-Content-Type-Options": "nosniff"}
+        if request.headers.get("if-none-match") == etag:
+            return Response(status_code=304, headers=headers)
+        return Response(data, media_type=mime, headers=headers)
+
+    def covers_for(root: str, entry):
+        """The two cover links (small, larger) of a book entry in a feed, for the kinds that have a picture."""
+        if kinds.kind_of(entry.name) not in ("epub", "comic", "audio"):
+            return None
+        base = urls.thumb(root, entry.parts)
+        return base + "?w=160", base + "?w=600"
+
     @guarded("api")
     async def progress(request: Request, user):
         root = request.path_params["root"]
@@ -944,7 +1003,7 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
                     mime = MIME_TYPES.get(os.path.splitext(e.name)[1].lower(), "application/octet-stream")
                     books.append(opds2.publication(e.name.rsplit(".", 1)[0], "urn:pluteus:" + root + ":" + "/".join(e.parts),
                                                    urls.download(root, e.parts), mime, clamp_time(e.mtime), metas.get(e.path),
-                                                   streams.get(e.path)))
+                                                   streams.get(e.path), covers_for(root, e)))
             body = opds2.feed(title=lib.display_name(parts[-1]) if parts else root, self_href=with_page(here, page),
                               start_href=urls.opds(), navigation=nav, publications=books,
                               up_href=urls.opds(root, parts[:-1]) if parts else urls.opds(),
@@ -961,7 +1020,7 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
                 mime = MIME_TYPES.get(os.path.splitext(e.name)[1].lower(), "application/octet-stream")
                 entries.append(opds.book_entry(e.name.rsplit(".", 1)[0], eid,
                                                urls.download(root, e.parts), mime, e.mtime, e.size,
-                                               metas.get(e.path), streams.get(e.path)))
+                                               metas.get(e.path), streams.get(e.path), covers_for(root, e)))
         up = urls.opds(root, parts[:-1]) if parts else urls.opds()
         updated = max((clamp_time(e.mtime) for e in shown), default=time.time())            # the newest entry on this page
         body = opds.build_feed(
@@ -1001,6 +1060,7 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
         Route("/cover/{root}/{path:path}", cover),
         Route("/zip/{root}/{path:path}", zip_entry),
         Route("/cbz/{root}/{path:path}", cbz_page),
+        Route("/thumb/{root}/{path:path}", thumb),
         Route("/manifest.webmanifest", manifest),
         Route("/sw.js", service_worker),
         Route("/join/{token}", join),
@@ -1026,21 +1086,24 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
         every = ["OPTIONS", "HEAD", "GET", "PROPFIND", "PROPPATCH", "PUT", "POST", "DELETE", "MKCOL", "COPY", "MOVE", "LOCK", "UNLOCK"]
         routes += [Route("/dav", dav_handler, methods=every), Route("/dav/", dav_handler, methods=every),
                    Route("/dav/{path:path}", dav_handler, methods=every)]
+
+    class Throttle:
+        """The Subsonic and KOReader logins share the web login's failure counting (same names, same locks)."""
+        def wait(self, request, name):
+            return limiter.wait_seconds(name, limiter_ip(request))
+
+        def fail(self, request, name):
+            note_failure(name, limiter_ip(request), "", False)
+
+        def ok(self, request, name):
+            limiter.success(name)
     if cfg.subsonic:
         from .subsonic import Subsonic
-
-        class Throttle:
-            """The Subsonic API shares the web login's failure counting (same names, same locks)."""
-            def wait(self, request, name):
-                return limiter.wait_seconds(name, limiter_ip(request))
-
-            def fail(self, request, name):
-                note_failure(name, limiter_ip(request), "", False)
-
-            def ok(self, request, name):
-                limiter.success(name)
         api = Subsonic(cfg, lib, state, auth, meta, Throttle())
         routes.append(Route("/rest/{name}", api.handle, methods=["GET", "POST"]))
+    if cfg.kosync:
+        from .kosync import KoSync
+        routes.append(Route("/kosync/{route:path}", KoSync(auth, state, Throttle()).handle, methods=["GET", "PUT", "POST"]))
     app = Starlette(routes=routes, middleware=[Middleware(SecurityHeaders)])
     app.state.library = lib
     app.state.state = state

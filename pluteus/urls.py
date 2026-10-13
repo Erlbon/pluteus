@@ -36,6 +36,9 @@ class Urls:
     def raw(self, root: str, parts) -> str:
         return self._build("raw", root, parts)
 
+    def thumb(self, root: str, parts) -> str:
+        return self._build("thumb", root, parts)
+
     def cover(self, root: str, parts) -> str:
         return self._build("cover", root, parts)
 

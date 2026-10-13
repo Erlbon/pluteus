@@ -292,9 +292,9 @@ def _new_key_box(new_key: tuple, address: str) -> str:
     name, secret = new_key
     return _box("Music app key for %s" % name,
                 "<p>Copy it now: it is shown only this once.</p><p><code class='pl-secret'>%s</code></p>"
-                "<p class='pl-muted'>In a Subsonic app (Symfonium, Tempo, Substreamer, DSub ...) use the server address <code>%s</code>, "
-                "the user name <code>%s</code> and this key as the password. Apps that support API keys can use it as the key without "
-                "a user name.</p>" % (escape(secret), escape(address), escape(name)))
+                "<p class='pl-muted'>In a Subsonic music app (Symfonium, Tempo, Substreamer, DSub ...), or in KOReader's progress sync "
+                "(the address then ends in /kosync), use the server address <code>%s</code>, the user name <code>%s</code> and this key as "
+                "the password. Subsonic apps that support API keys can use it as the key without a user name.</p>" % (escape(secret), escape(address), escape(name)))
 
 
 def users_page(ctx: Ctx, users: list, root_names: list, me: str, flash: str = "", error: str = "",

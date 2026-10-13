@@ -34,6 +34,9 @@ CREATE TABLE IF NOT EXISTS devices (
     token_hash TEXT PRIMARY KEY, username TEXT NOT NULL, pwfp TEXT NOT NULL,
     first_seen REAL NOT NULL, last_seen REAL NOT NULL, last_ip TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS appkeys (username TEXT PRIMARY KEY, secret TEXT NOT NULL, created REAL NOT NULL);
+CREATE TABLE IF NOT EXISTS kosync (
+    username TEXT NOT NULL, document TEXT NOT NULL, progress TEXT NOT NULL, percentage REAL NOT NULL,
+    device TEXT NOT NULL, device_id TEXT NOT NULL, timestamp REAL NOT NULL, PRIMARY KEY (username, document));
 """
 
 
@@ -187,6 +190,17 @@ class StateDB:
     def appkey_users(self) -> dict:
         """{user name: when the key was made}."""
         return {r[0]: r[1] for r in self._all("SELECT username, created FROM appkeys")}
+
+    # ---- KOReader progress sync ---------------------------------------------------------------------------------------------
+    def put_kosync(self, username: str, document: str, progress: str, percentage: float, device: str, device_id: str, now=None) -> None:
+        self._write("INSERT OR REPLACE INTO kosync VALUES (?,?,?,?,?,?,?)",
+                    (username, document, progress, percentage, device, device_id, time.time() if now is None else now))
+
+    def get_kosync(self, username: str, document: str):
+        row = self._one("SELECT progress, percentage, device, device_id, timestamp FROM kosync WHERE username=? AND document=?",
+                        (username, document))
+        return None if row is None else {"progress": row[0], "percentage": row[1], "device": row[2], "device_id": row[3],
+                                         "timestamp": int(row[4])}
 
     # ---- preferences ------------------------------------------------------------
     def get_prefs(self, username: str) -> dict:

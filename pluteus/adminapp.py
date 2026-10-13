@@ -272,7 +272,7 @@ def create_admin_app(main_app) -> Starlette:
             return HTMLResponse(adminweb.users_page(ctx, [], [], me, can_edit=False), status_code)
         model = AdminModel(config_path)
         return HTMLResponse(adminweb.users_page(ctx, model.users(), model.root_names(), me, flash, error,
-                                                subsonic=cfg.subsonic, keys=state.appkey_users(), new_key=new_key,
+                                                subsonic=cfg.subsonic or cfg.kosync, keys=state.appkey_users(), new_key=new_key,
                                                 address=address), status_code)
 
     @guarded
@@ -358,8 +358,8 @@ def create_admin_app(main_app) -> Starlette:
     @guarded
     async def make_appkey(request, user):
         """A new music app key for one user; shown once, on the page that answers (no redirect, so it is not kept in a URL)."""
-        if not (config_path and cfg.subsonic):
-            return PlainTextResponse("The music app API is not switched on (subsonic = true in config.toml).", 400)
+        if not (config_path and (cfg.subsonic or cfg.kosync)):
+            return PlainTextResponse("No app API is switched on (subsonic = true or kosync = true in config.toml).", 400)
         name = _first(await form_of(request), "name")
         known = {u.name for u in AdminModel(config_path).users()}
         if name not in known:

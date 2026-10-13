@@ -176,11 +176,19 @@ and password (Basic; use HTTPS when it is reachable from outside, Windows refuse
 listing shows, with the same folders, rights and markers (`roots`, `.private`, `.hidden`, `.adult`). Only OPTIONS, HEAD, GET and
 PROPFIND are answered: PUT, DELETE, MKCOL, COPY, MOVE and LOCK are refused, so nothing can be written. Files are always sent as downloads.
 
+## KOReader progress sync
+
+`kosync = true` in `[server]` lets **KOReader** devices (PocketBook, Kobo, Kindle, Android ...) keep their reading position here and
+continue on another device. Make a key for the user on the admin page (the same key as for the music apps). In KOReader: Tools,
+Progress sync, Custom sync server, the server address ending in `/kosync`, then Login with the user name and the key as the password.
+KOReader identifies a book by a hash of the file, so this stores one position per user and book hash: it syncs KOReader with KOReader
+and is not connected to the progress of the web readers. Not tried on a real device yet.
+
 ## OPDS 2.0
 
 The OPDS feeds under `/opds` answer in **OPDS 2.0 (JSON)** when the app asks for `application/opds+json` (or `?format=opds2` in a
 browser); otherwise they stay the familiar Atom feeds, so existing apps are not affected. Same folders, rights, paging, tags, series and
-comic page streaming. (The page-streaming link follows the OPDS-PSE extension; it is not yet tried against an app that reads it.)
+comic page streaming. Books carry **cover thumbnails** (`/thumb/...`, a small JPEG made with Pillow and cached in `data_dir`/`cache_dir`) in both the Atom and the JSON feeds: the cover of an EPUB, the first page of a comic. (The page-streaming link follows the OPDS-PSE extension; it is not yet tried against an app that reads it.)
 
 ## Endpoints
 
