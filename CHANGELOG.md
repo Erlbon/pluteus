@@ -2,6 +2,13 @@
 
 Release notes are taken from the section of the tagged version (`## 0.5.0 ...`).
 
+## 0.8.3 - 2026-10-13
+- **App keys:** the per-user key now works as the password in reader apps (OPDS), downloads and WebDAV too, read only (no uploads, no
+  changes, no admin page, no web session). Making or revoking a key signs the apps out at once.
+- **Cover view** for folders (Settings, or a List / Covers switch on each folder).
+- **Audiobooks:** chapter list (m4b) and bookmarks per user and file.
+- Packaging: Pillow is bundled in the exe and the Linux binary, so thumbnails are real thumbnails there too.
+
 ## 0.8.2 - 2026-10-13
 - **Cover thumbnails in the OPDS feeds** (Atom and JSON): the cover of an EPUB, the first page of a comic, the picture of a song, as small
   JPEGs cached on disk. New dependency: Pillow.

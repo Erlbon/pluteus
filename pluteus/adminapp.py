@@ -272,7 +272,7 @@ def create_admin_app(main_app) -> Starlette:
             return HTMLResponse(adminweb.users_page(ctx, [], [], me, can_edit=False), status_code)
         model = AdminModel(config_path)
         return HTMLResponse(adminweb.users_page(ctx, model.users(), model.root_names(), me, flash, error,
-                                                subsonic=cfg.subsonic or cfg.kosync, keys=state.appkey_users(), new_key=new_key,
+                                                keys=state.appkey_users(), new_key=new_key,
                                                 address=address), status_code)
 
     @guarded
@@ -358,14 +358,15 @@ def create_admin_app(main_app) -> Starlette:
     @guarded
     async def make_appkey(request, user):
         """A new music app key for one user; shown once, on the page that answers (no redirect, so it is not kept in a URL)."""
-        if not (config_path and (cfg.subsonic or cfg.kosync)):
-            return PlainTextResponse("No app API is switched on (subsonic = true or kosync = true in config.toml).", 400)
+        if not config_path:
+            return PlainTextResponse("No configuration file: users cannot be changed here.", 400)
         name = _first(await form_of(request), "name")
         known = {u.name for u in AdminModel(config_path).users()}
         if name not in known:
             return PlainTextResponse("No such user.", 400)
         secret = secrets.token_urlsafe(18)
         await run_in_threadpool(state.set_appkey, name, secret)
+        auth.forget_user(name)                        # logins made with the old key stop at once
         log.info("admin %s: music app key made for %s", user.name, name)
         host = request.headers.get("host", "")
         address = ("http://%s:%d/%s" % (host.rsplit(":", 1)[0] or "this-server", cfg.port, cfg.base_path.strip("/"))).rstrip("/")
@@ -375,6 +376,7 @@ def create_admin_app(main_app) -> Starlette:
     async def revoke_appkey(request, user):
         name = _first(await form_of(request), "name")
         await run_in_threadpool(state.delete_appkey, name)
+        auth.forget_user(name)
         log.info("admin %s: music app key revoked for %s", user.name, name)
         return done("/users", "keyrevoked")
 

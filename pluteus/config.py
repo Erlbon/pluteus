@@ -45,6 +45,7 @@ class User:
     adult: bool = False    # may see folders carrying the adult marker file
     upload: bool = True    # may use the personal upload folder (when uploads_dir is set)
     admin: bool = False    # may sign in to the admin page (admin_port); never given by default
+    read_only: bool = False  # set only on a login made with the user's app key: reading and listing, nothing else (see auth.py)
 
     def may_use(self, root_name: str) -> bool:
         return ALL_ROOTS in self.roots or root_name in self.roots

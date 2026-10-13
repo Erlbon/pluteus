@@ -15,7 +15,7 @@ FLASH = {
     "unlocked": "The lock is cleared.", "nothing": "There was nothing to clear.", "forgot": "That device is forgotten.",
     "signedout": "Signed out everywhere (sessions and known devices removed).",
     "libadded": "Library added. It is available now.", "libremoved": "Library removed. Nothing on disk was touched.",
-    "added": "User added.", "password": "Password changed.", "access": "Access saved.", "removed": "User removed.", "keyrevoked": "Music app key revoked.",
+    "added": "User added.", "password": "Password changed.", "access": "Access saved.", "removed": "User removed.", "keyrevoked": "App key revoked.",
 }
 
 
@@ -280,25 +280,26 @@ RIGHTS = (("Adult", "adult"), ("Uploads", "upload"), ("Admin", "admin"))    # on
 
 
 def _key_form(name: str, has_key: bool) -> str:
-    """The music app key controls of one user (shown when the Subsonic API is switched on)."""
-    state = ("A key is active." if has_key else "No key yet: music apps cannot log in as this user.")
+    """The app key controls of one user: one key for reader apps, music apps, KOReader sync and WebDAV (read-only)."""
+    state = ("A key is active." if has_key else "No key yet: apps cannot log in with a key as this user.")
     make = ("<form class='pl-admin-form' method='post' action='/users/appkey'><input type='hidden' name='name' value='%s'>"
             "<p class='pl-muted'>%s</p><button class='pl-btn' type='submit'>%s</button></form>"
             % (escape(name), escape(state), "Make a new key (the old one stops working)" if has_key else "Make a key"))
-    return make + (_post("/users/appkey/revoke", {"name": name}, "Revoke the key", "Revoke the music app key of %s?" % name, True) if has_key else "")
+    return make + (_post("/users/appkey/revoke", {"name": name}, "Revoke the key", "Revoke the app key of %s? Apps using it stop working until they get a new one." % name, True) if has_key else "")
 
 
 def _new_key_box(new_key: tuple, address: str) -> str:
     name, secret = new_key
-    return _box("Music app key for %s" % name,
+    return _box("App key for %s" % name,
                 "<p>Copy it now: it is shown only this once.</p><p><code class='pl-secret'>%s</code></p>"
-                "<p class='pl-muted'>In a Subsonic music app (Symfonium, Tempo, Substreamer, DSub ...), or in KOReader's progress sync "
-                "(the address then ends in /kosync), use the server address <code>%s</code>, the user name <code>%s</code> and this key as "
-                "the password. Subsonic apps that support API keys can use it as the key without a user name.</p>" % (escape(secret), escape(address), escape(name)))
+                "<p class='pl-muted'>Use it as the <b>password</b>, with the user name <code>%s</code>, in reader apps (OPDS: PocketBook, "
+                "Moon+ ...), music apps (Subsonic: Symfonium, Tempo ...; the server address is <code>%s</code>), KOReader's progress sync "
+                "(the address ends in /kosync) and WebDAV. A key can only read: no uploads, no changes, no admin page. Subsonic apps that "
+                "support API keys can use it as the key without a user name.</p>" % (escape(secret), escape(name), escape(address)))
 
 
 def users_page(ctx: Ctx, users: list, root_names: list, me: str, flash: str = "", error: str = "",
-               can_edit: bool = True, subsonic: bool = False, keys: dict | None = None, new_key: tuple | None = None,
+               can_edit: bool = True, keys: dict | None = None, new_key: tuple | None = None,
                address: str = "") -> str:
     if not can_edit:
         return page(ctx, "Users", "users", "<p>This server was started without a configuration file, so users cannot be "
@@ -315,7 +316,7 @@ def users_page(ctx: Ctx, users: list, root_names: list, me: str, flash: str = ""
                 "<form class='pl-admin-form' method='post' action='/users/access'><input type='hidden' name='name' value='%s'>%s%s"
                 "<button class='pl-btn' type='submit'>Save access</button></form>%s</details>"
                 % (escape(u.name), escape(u.name), _roots_boxes(root_names, u.roots), _flags(u.adult, u.upload, u.admin),
-                   (_key_form(u.name, u.name in (keys or {})) if subsonic else "") +
+                   _key_form(u.name, u.name in (keys or {})) +
                    ("" if u.name == me else _post("/users/remove", {"name": u.name}, "Remove user",
                                                   "Remove %s? Their upload folder and reading progress stay on the server." % u.name, True))))
         rows.append([USER_ICON + escape(u.name) + (" <span class='pl-muted'>(you)</span>" if u.name == me else ""),

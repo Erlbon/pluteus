@@ -34,6 +34,10 @@ CREATE TABLE IF NOT EXISTS devices (
     token_hash TEXT PRIMARY KEY, username TEXT NOT NULL, pwfp TEXT NOT NULL,
     first_seen REAL NOT NULL, last_seen REAL NOT NULL, last_ip TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS appkeys (username TEXT PRIMARY KEY, secret TEXT NOT NULL, created REAL NOT NULL);
+CREATE TABLE IF NOT EXISTS bookmarks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT NOT NULL, root TEXT NOT NULL, path TEXT NOT NULL,
+    position REAL NOT NULL, note TEXT NOT NULL, created REAL NOT NULL);
+CREATE INDEX IF NOT EXISTS bookmarks_file ON bookmarks (username, root, path);
 CREATE TABLE IF NOT EXISTS kosync (
     username TEXT NOT NULL, document TEXT NOT NULL, progress TEXT NOT NULL, percentage REAL NOT NULL,
     device TEXT NOT NULL, device_id TEXT NOT NULL, timestamp REAL NOT NULL, PRIMARY KEY (username, document));
@@ -190,6 +194,27 @@ class StateDB:
     def appkey_users(self) -> dict:
         """{user name: when the key was made}."""
         return {r[0]: r[1] for r in self._all("SELECT username, created FROM appkeys")}
+
+    # ---- bookmarks in audio and video files -------------------------------------------------------------------------------------
+    MAX_BOOKMARKS = 200
+
+    def add_bookmark(self, username: str, root: str, path: str, position: float, note: str, now=None):
+        """The new bookmark's id, or None when this file already has the maximum for this user."""
+        with self._lock, self._db:
+            have = self._db.execute("SELECT COUNT(*) FROM bookmarks WHERE username=? AND root=? AND path=?", (username, root, path)).fetchone()[0]
+            if have >= self.MAX_BOOKMARKS:
+                return None
+            cur = self._db.execute("INSERT INTO bookmarks (username, root, path, position, note, created) VALUES (?,?,?,?,?,?)",
+                                   (username, root, path, position, note, time.time() if now is None else now))
+            return cur.lastrowid
+
+    def list_bookmarks(self, username: str, root: str, path: str) -> list:
+        rows = self._all("SELECT id, position, note, created FROM bookmarks WHERE username=? AND root=? AND path=? ORDER BY position",
+                         (username, root, path))
+        return [{"id": r[0], "position": r[1], "note": r[2], "created": r[3]} for r in rows]
+
+    def delete_bookmark(self, username: str, bookmark_id: int) -> int:
+        return self._write("DELETE FROM bookmarks WHERE id=? AND username=?", (bookmark_id, username))
 
     # ---- KOReader progress sync ---------------------------------------------------------------------------------------------
     def put_kosync(self, username: str, document: str, progress: str, percentage: float, device: str, device_id: str, now=None) -> None:

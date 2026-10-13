@@ -7,6 +7,7 @@ check is cached in memory for a few minutes, keyed by a hash of the header
 from __future__ import annotations
 
 import base64
+import dataclasses
 import hashlib
 import hmac
 import os
@@ -37,9 +38,10 @@ def verify_password(password: str, stored: str) -> bool:
 
 
 class Authenticator:
-    def __init__(self, users: dict, cache_seconds: int = 300):
+    def __init__(self, users: dict, cache_seconds: int = 300, appkeys=None):
         self.users = users
         self.cache_seconds = cache_seconds
+        self.appkeys = appkeys or (lambda name: None)      # name -> the user's app key, or None (see authenticate)
         self._cache: dict = {}
         self._bad: dict = {}
         self._trusted: dict = {}          # hash of a header that was verified -> (user name, when); see trusted_user()
@@ -52,6 +54,15 @@ class Authenticator:
         self._cache = {}
         self._bad = {}
         self._trusted = {}
+
+    @staticmethod
+    def restricted(user):
+        """The user as seen through an app key: no admin page, no uploads, and read_only (the request guard refuses writes)."""
+        return dataclasses.replace(user, admin=False, upload=False, read_only=True)
+
+    def _view(self, name: str, via_key: bool):
+        user = self.users.get(name)
+        return self.restricted(user) if (user and via_key) else user
 
     def forget_user(self, name: str) -> None:
         """Drop every remembered login of one user (the admin page's "sign out everywhere"): reader apps then have to
@@ -68,7 +79,7 @@ class Authenticator:
         key = hashlib.sha256(header[6:].strip().encode("utf-8")).hexdigest()
         hit = self._trusted.get(key)
         if hit and time.monotonic() - hit[1] < max_age:
-            return self.users.get(hit[0])
+            return self._view(hit[0], hit[2])
         return None
 
     @staticmethod
@@ -98,7 +109,7 @@ class Authenticator:
         key = hashlib.sha256(header[6:].strip().encode("utf-8")).hexdigest()
         hit = self._cache.get(key)
         if hit and hit[1] > time.monotonic():
-            return self.users.get(hit[0])
+            return self._view(hit[0], hit[2])
         return None
 
     def known_bad(self, header) -> bool:
@@ -118,9 +129,16 @@ class Authenticator:
         now = time.monotonic()
         hit = self._cache.get(key)
         if hit and hit[1] > now:
-            return self.users.get(hit[0])
+            return self._view(hit[0], hit[2])
         creds = self.parse_basic(header)
-        user = self.check(*creds) if creds else None
+        via_key = False
+        user = None
+        if creds:
+            secret = self.appkeys(creds[0]) if creds[0] in self.users else None
+            if secret and hmac.compare_digest(secret.encode("utf-8"), creds[1].encode("utf-8")):
+                user, via_key = self.restricted(self.users[creds[0]]), True      # the app key: reading only
+            else:
+                user = self.check(*creds)
         if user is None:
             if len(self._bad) > 1000:
                 self._bad = {k: v for k, v in self._bad.items() if v > now}
@@ -128,8 +146,8 @@ class Authenticator:
             return None
         if len(self._cache) > 1000:
             self._cache = {k: v for k, v in self._cache.items() if v[1] > now}
-        self._cache[key] = (user.name, now + self.cache_seconds)
+        self._cache[key] = (user.name, now + self.cache_seconds, via_key)
         if len(self._trusted) > 1000:
             self._trusted = {k: v for k, v in self._trusted.items() if now - v[1] < TRUSTED_SECONDS}
-        self._trusted[key] = (user.name, now)
+        self._trusted[key] = (user.name, now, via_key)
         return user

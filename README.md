@@ -152,13 +152,20 @@ or changed user stops working immediately. Other settings (roots, port, ...) sti
 **TOML scoping:** a key belongs to the `[table]` header above it. Keep all settings in `[server]`; a setting
 typed under `[[roots]]` or `[[users]]` is refused with an error instead of being silently ignored.
 
+## App keys (for apps, read only)
+
+On the admin page, Users, Edit, **Make a key** gives a user one key for apps. It is the password (with the user name) in **reader apps
+over OPDS** (PocketBook, Moon+ ...), in **music apps** (Subsonic), in **KOReader sync** and for **WebDAV**, so no device has to store the
+real password. A key can only read: no uploads, no changes, no admin page, and it cannot start a web session. Making a new key or
+revoking it stops every app using the old one at once.
+
 ## Music apps (Subsonic API)
 
 Switch on `subsonic = true` in `[server]` and music apps that speak the **Subsonic / OpenSubsonic** API (Symfonium, Tempo, Substreamer,
 DSub, Ultrasonic ...) can browse and play the audio files, **Android Auto through such an app included**. Read-only, over the same
 folders and rights as the web site (`roots`, `.private`, `.hidden`, `.adult`).
 
-- **Login:** on the admin page, Users, Edit, **Make a key**. The key is shown once. Use it as the password (the salted-token login
+- **Login:** the app key of the user (see App keys above), shown once when it is made. Use it as the password (the salted-token login
   works) or, in apps that support it, as an **API key**; the real password also works in apps that send it as `p`. Failed logins count
   against the same lock as the web login. The key opens nothing but this read-only API and can be revoked.
 - **Server address in the app:** the same address as the web site (with `base_path` if you use one), for example `https://example.org/pluteus`.
@@ -274,6 +281,12 @@ Measured on 50 real EPUBs over SMB: about 1 s cold, 18 ms warm. Listing order is
 - **Hardening:** path segments are validated (no `..`, no `/`, and on Windows no `\` or `:`);
   the real path (symlinks, junctions) must stay inside the root; only configured file
   extensions are served; hidden and excluded items are indistinguishable from missing ones.
+
+## Cover view
+
+In Settings, *Folders are shown as* **Covers** (or the *List / Covers* switch above any folder for a single visit) shows a tile with a
+cover for each book: the cover of an EPUB, the first page of a comic, the picture of a song; other files and folders show their type icon.
+The pictures are small JPEGs made on the first view (Pillow) and cached.
 
 ## Windows notes
 
@@ -402,7 +415,7 @@ by its type at `/view/{root}/{path}`. Set `show_all_files = false` to go back to
 |---|---|
 | EPUB, CBZ | the book readers (above) |
 | images (jpg, png, gif, webp, avif, bmp, ico, svg) | fit to window / to width / actual size (click), the other images of the folder one key press away, next image preloaded |
-| audio (mp3, m4a, **m4b**, aac, ogg, opus, wav, flac), video (mp4, m4v, webm, ogv, mov, mkv) | a music player with the **cover, title, artist, album, year, genre and track** read from the file's tags (a `cover.jpg` / `folder.jpg` in the folder is the fallback), a scrubber, **lyrics** (plain from the tag, or timed from a `.lrc` file with the same name, highlighted as it plays), folder listings that show "Title - Artist"; video keeps the browser's own controls under the same information. Big buttons made for listening on a phone: **-30 s / +30 s**, **speed** (0.75x to 2.5x, remembered in the browser), a **sleep timer** (15, 30, 60 minutes or the end of the file). The position is saved per user and resumes; Range requests work, so seeking in a 1 GB audiobook is instant. When a file ends the next one in the folder starts (best effort: a browser may want a tap first). Lock-screen / notification controls (title, folder as album, skip, next/previous) through the Media Session API. Tried with a real 11-hour `.m4b` in a desktop browser (play, skips, speed, resume); **not yet on a phone**: whether playback continues with the screen off is up to the browser. Not built: chapter lists |
+| audio (mp3, m4a, **m4b**, aac, ogg, opus, wav, flac), video (mp4, m4v, webm, ogv, mov, mkv) | a music player with the **cover, title, artist, album, year, genre and track** read from the file's tags (a `cover.jpg` / `folder.jpg` in the folder is the fallback), a scrubber, **lyrics** (plain from the tag, or timed from a `.lrc` file with the same name, highlighted as it plays), folder listings that show "Title - Artist"; video keeps the browser's own controls under the same information. Big buttons made for listening on a phone: **-30 s / +30 s**, **speed** (0.75x to 2.5x, remembered in the browser), a **sleep timer** (15, 30, 60 minutes or the end of the file). The position is saved per user and resumes; Range requests work, so seeking in a 1 GB audiobook is instant. When a file ends the next one in the folder starts (best effort: a browser may want a tap first). Lock-screen / notification controls (title, folder as album, skip, next/previous) through the Media Session API. Tried with a real 11-hour `.m4b` in a desktop browser (play, skips, speed, resume); **not yet on a phone**: whether playback continues with the screen off is up to the browser. **Chapters** (the chapter list that audiobook tools write into an m4b; click to jump, the current one is marked) and **bookmarks** (saved per user and file, on the server). Not built: chapters stored as ID3 CHAP frames in mp3 files |
 | PDF | pdf.js (vendored under `static/vendor/pdfjs`, nothing from a CDN) draws one page at a time; range requests show page 1 of a big file before it has downloaded; fit width/page, zoom, invert for night reading, page seek bar, swipe/tap/keys; the page is saved per user. Needs `blob:` in the CSP `style-src` (set) |
 | Markdown (`.md`, `.markdown`) | rendered as a page: headings, lists, task lists, tables, code blocks, quotes, links; images and links to other files in the same library work. **Raw HTML in the file is shown as text, never run**; links may only go to http(s), mailto or the library; remote images are not loaded. A **Source** button shows the file as plain text. Files over 256 KB are shown as text instead. Rendered by the small `mistune` package |
 | CSV / TSV (`.csv`, `.tsv`) | a table: separator guessed (comma, semicolon, tab, bar), sticky header row, zebra rows, numbers right-aligned, **click a header to sort** (numbers sort as numbers, also with decimal commas), a **filter box**, quoted cells with commas and line breaks handled. Shows at most 5000 rows and 100 columns (cut with a notice); anything that is not really a table falls back to text. **Source** shows the raw text |

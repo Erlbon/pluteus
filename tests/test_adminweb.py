@@ -431,7 +431,7 @@ def test_music_app_keys_are_made_shown_once_and_revoked(tmp_path):
     assert r.status_code == 303 and app.state.state.get_appkey("alice") is None
 
 
-def test_the_key_controls_are_absent_when_the_api_is_off(admin):
+def test_the_key_controls_are_always_there(admin):
     client, _, _ = admin
-    assert "Make a key" not in client.get("/users", headers=BOSS).text
-    assert client.post("/users/appkey", content="name=alice", headers={**BOSS, **FORM}).status_code == 400
+    assert "Make a key" in client.get("/users", headers=BOSS).text
+    assert client.post("/users/appkey", content="name=alice", headers={**BOSS, **FORM}).status_code == 200

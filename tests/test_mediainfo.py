@@ -120,3 +120,70 @@ def test_the_listing_shows_title_artist_and_track(music):
     client, auth = make_client(music)
     page = client.get("/browse/music/Album", headers={**auth, **HTML}).text
     assert "Spark På Leggen" in page and "Kaizers Orchestra" in page and "plain.mp3" in page
+
+
+# ---- chapters and bookmarks ---------------------------------------------------------------------------------------------------------------
+CHAPTERS = os.path.join(HERE, "data", "chapters.m4b")
+
+
+def test_chapters_are_read_from_an_m4b():
+    chapters = mediainfo.read_chapters(CHAPTERS)
+    assert [t for t, _ in chapters] == [0.0, 2.0, 4.5] and [n for _, n in chapters] == ["Opening", "Kapittel to æøå", "Epilogue"]
+    assert mediainfo.read_chapters(TAGGED) == [] and mediainfo.read_chapters("nonexistent.m4b") == []
+
+
+def test_a_damaged_chapter_atom_gives_nothing(tmp_path):
+    bad = tmp_path / "bad.m4b"
+    data = open(CHAPTERS, "rb").read()
+    bad.write_bytes(data[:len(data) // 2])
+    assert isinstance(mediainfo.read_chapters(str(bad)), list)               # no exception, whatever is left
+    assert mediainfo._parse_chpl(b"\x01\x00\x00\x00\x00\x00\x00\x00\xff" + b"\x00" * 5) == []
+
+
+def test_the_player_lists_chapters_and_offers_bookmarks(music):
+    shutil.copy(CHAPTERS, music / "Album" / "book.m4b")
+    client, auth = make_client(music)
+    page = client.get("/view/music/Album/book.m4b", headers={**auth, **HTML}).text
+    assert "id='chapters-btn'" in page and "data-t='2.0'" in page and "Kapittel to æøå" in page and "Epilogue" in page
+    assert "id='bookmarks-btn'" in page and "data-bookmarks='/api/bookmarks/music/Album/book.m4b'" in page
+    plain = client.get("/view/music/Album/spark.mp3", headers={**auth, **HTML}).text
+    assert "id='chapters-btn'" not in plain
+
+
+def test_bookmarks_are_saved_listed_and_deleted_per_user(music):
+    client, auth = make_client(music)
+    url = "/api/bookmarks/music/Album/spark.mp3"
+    origin = {**auth, "Origin": "http://testserver"}
+    assert client.get(url, headers=auth).json() == {"bookmarks": []}
+    made = client.post(url, json={"position": 61.5, "note": "the good part"}, headers=origin)
+    assert made.status_code == 201
+    client.post(url, json={"position": 5, "note": ""}, headers=origin)
+    listed = client.get(url, headers=auth).json()["bookmarks"]
+    assert [b["position"] for b in listed] == [5, 61.5] and listed[1]["note"] == "the good part"       # in time order
+    assert client.delete(url + "?id=%d" % made.json()["id"], headers=origin).status_code == 200
+    assert [b["position"] for b in client.get(url, headers=auth).json()["bookmarks"]] == [5]
+
+
+def test_bookmarks_refuse_bad_input_other_files_and_other_users(music):
+    client, auth = make_client(music)
+    url = "/api/bookmarks/music/Album/spark.mp3"
+    origin = {**auth, "Origin": "http://testserver"}
+    for body in ({"position": -1}, {"position": "x"}, {}, {"position": 1e12}):
+        assert client.post(url, json=body, headers=origin).status_code == 400
+    (music / "Album" / "notes.txt").write_text("x")
+    assert client.get("/api/bookmarks/music/Album/notes.txt", headers=auth).status_code == 404
+    assert client.post(url, json={"position": 1}).status_code == 401
+    assert client.post(url, json={"position": 1}, headers=auth).status_code == 403                    # no Origin: cross-site refused
+    made = client.post(url, json={"position": 3}, headers=origin).json()["id"]
+    state = client.app.state.state
+    assert state.delete_bookmark("someone-else", made) == 0                                          # not theirs: nothing deleted
+    assert len(state.list_bookmarks("alice", "music", "Album/spark.mp3")) == 1
+
+
+def test_there_is_a_limit_per_file(music):
+    client, auth = make_client(music)
+    state = client.app.state.state
+    for i in range(state.MAX_BOOKMARKS):
+        assert state.add_bookmark("alice", "music", "Album/spark.mp3", float(i), "") is not None
+    r = client.post("/api/bookmarks/music/Album/spark.mp3", json={"position": 1}, headers={**auth, "Origin": "http://testserver"})
+    assert r.status_code == 400

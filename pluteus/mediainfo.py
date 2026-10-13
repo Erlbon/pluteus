@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import os
 import re
+import struct
 import threading
 import time
 
@@ -223,4 +224,70 @@ def facts(info: dict) -> list:
         tech.append(("%.1f kHz" % (info["samplerate"] / 1000)).replace(".0 ", " "))
     if tech:
         out.append(" · ".join(tech))
+    return out
+
+
+# ---- chapters of an audiobook (MP4 / m4b: the Nero "chpl" atom, which ffmpeg, mp4v2 and most audiobook tools write) -------------
+MAX_CHAPTERS = 500
+
+
+def _atoms(f, start: int, end: int):
+    """(type, start of the content, end) of each atom between start and end; only headers are read."""
+    pos = start
+    while pos + 8 <= end:
+        f.seek(pos)
+        head = f.read(8)
+        if len(head) < 8:
+            return
+        size, kind = struct.unpack(">I4s", head)
+        header = 8
+        if size == 1:
+            wide = f.read(8)
+            if len(wide) < 8:
+                return
+            size, header = struct.unpack(">Q", wide)[0], 16
+        elif size == 0:
+            size = end - pos
+        if size < header:
+            return
+        yield kind, pos + header, min(pos + size, end)
+        pos += size
+
+
+def read_chapters(path: str) -> list:
+    """[(seconds, title)] from the chapter list of an m4b / m4a / mp4, or [] when it has none. Never raises."""
+    try:
+        with open(path, "rb") as f:
+            size = os.fstat(f.fileno()).st_size
+            for kind, s, e in _atoms(f, 0, size):
+                if kind != b"moov":
+                    continue
+                for k2, s2, e2 in _atoms(f, s, e):
+                    if k2 != b"udta":
+                        continue
+                    for k3, s3, e3 in _atoms(f, s2, e2):
+                        if k3 == b"chpl":
+                            f.seek(s3)
+                            return _parse_chpl(f.read(min(e3 - s3, 1024 * 1024)))
+    except (OSError, struct.error, ValueError):
+        pass
+    return []
+
+
+def _parse_chpl(data: bytes) -> list:
+    if len(data) < 9:
+        return []
+    off = 8 if data[0] == 1 else 4                       # version 1 has four reserved bytes before the count
+    count = data[off]
+    off += 1
+    out = []
+    for _ in range(min(count, MAX_CHAPTERS)):
+        if off + 9 > len(data):
+            break
+        start = int.from_bytes(data[off:off + 8], "big") / 10_000_000         # 100 ns units
+        length = data[off + 8]
+        title = data[off + 9:off + 9 + length].decode("utf-8", "replace")
+        off += 9 + length
+        out.append((round(start, 2), _CONTROL.sub("", title).strip()[:200]))
+    out.sort(key=lambda item: item[0])
     return out

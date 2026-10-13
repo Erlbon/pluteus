@@ -79,3 +79,25 @@ def test_without_pillow_the_original_picture_is_sent(client, monkeypatch):
     monkeypatch.setattr(thumbs, "scaled", lambda data, width: None)
     r = c.get("/thumb/lib/A/three.epub?w=160", headers=AUTH)
     assert r.status_code == 200 and r.content == BIG
+
+
+# ---- the cover view of a folder -----------------------------------------------------------------------------------------------------------
+HTML = {"Accept": "text/html"}
+
+
+def test_the_cover_view_shows_a_picture_for_books_and_an_icon_for_the_rest(client):
+    c, _ = client
+    page = c.get("/browse/lib/A?view=grid", headers={**AUTH, **HTML}).text
+    assert "pl-grid" in page and "src='/thumb/lib/A/three.epub?w=320'" in page and "grid.js" in page
+    assert "pl-tile-fallback" in page and "Three" in page
+    assert "view=grid" in c.get("/browse/lib/A?view=grid&sort=size", headers={**AUTH, **HTML}).text      # the choice stays on the sort links
+
+
+def test_the_list_is_the_default_and_the_choice_can_be_saved_in_settings(client):
+    c, _ = client
+    assert "pl-grid" not in c.get("/browse/lib/A", headers={**AUTH, **HTML}).text
+    r = c.post("/settings", data={"theme": "default", "icons": "gold", "view": "grid"}, headers={**AUTH, "Origin": "http://testserver"},
+               follow_redirects=False)
+    assert r.status_code == 303
+    assert "pl-grid" in c.get("/browse/lib/A", headers={**AUTH, **HTML}).text
+    assert "pl-grid" not in c.get("/browse/lib/A?view=list", headers={**AUTH, **HTML}).text           # one request can ask for the other

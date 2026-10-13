@@ -264,6 +264,20 @@ a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible
   box-shadow: 0 6px 20px rgba(0, 0, 0, .3), 0 0 0 1px var(--pl-line); background: var(--pl-card); }
 .pl-list { clear: both; }
 
+/* the cover view of a folder: tiles with a picture over the title */
+.pl-viewbar { margin-top: -4px; }
+.pl-list.pl-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 16px 12px; padding: 0; list-style: none; }
+.pl-tile a { display: flex; flex-direction: column; gap: 6px; color: inherit; text-decoration: none; }
+.pl-tile-art { position: relative; display: flex; align-items: center; justify-content: center; aspect-ratio: 2 / 3; overflow: hidden;
+  border-radius: 10px; background: var(--pl-card); box-shadow: 0 0 0 1px var(--pl-line); }
+.pl-tile-art .pl-ico { width: 46%; height: 46%; color: var(--pl-accent); }
+.pl-tile-fallback { position: absolute; inset: 0; z-index: 0; display: flex; align-items: center; justify-content: center; }
+.pl-tile-img { position: absolute; inset: 0; z-index: 1; width: 100%; height: 100%; object-fit: cover; background: var(--pl-card); }
+.pl-tile-img.pl-gone { display: none; }
+.pl-tile-name { font-size: 13px; line-height: 1.25; overflow-wrap: anywhere; max-height: 3.8em; overflow: hidden; text-align: center; }
+.pl-tile a:hover .pl-tile-art { box-shadow: 0 0 0 2px var(--pl-accent); }
+.pl-tile-badge { z-index: 2; position: absolute; right: 6px; bottom: 6px; background: var(--pl-bg); padding: 1px 6px; border-radius: 999px; }
+
 /* upload folder */
 .pl-upload, .pl-newfolder { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; margin: 12px 0; }
 .pl-upload input[type=file] { max-width: 100%; }
@@ -390,6 +404,18 @@ html[data-icons="aurora"] .pl-ico-upload  { color: light-dark(#1f7ae0, #7cc8ff);
 .pl-lyrics-plain { white-space: pre-wrap; text-align: left; line-height: 1.6; }
 .pl-lyrics-synced p { margin: 6px 0; color: var(--pl-dim); transition: color .2s, transform .2s; font-size: 17px; }
 .pl-lyrics-synced p.pl-now { color: var(--pl-fg); font-weight: 600; transform: scale(1.04); }
+.pl-panel { width: min(100%, 560px); max-height: 38vh; overflow-y: auto; padding: 8px; border-radius: 14px;
+  background: color-mix(in srgb, var(--pl-card) 70%, transparent); }
+.pl-panel[hidden] { display: none; }
+.pl-chapter { display: flex; gap: 12px; width: 100%; text-align: left; font: inherit; color: var(--pl-fg); background: none; border: 0;
+  border-radius: 8px; padding: 8px 10px; cursor: pointer; }
+.pl-chapter:hover { background: var(--pl-card); }
+.pl-chapter.pl-now { color: var(--pl-accent); font-weight: 600; }
+.pl-chapter-time { color: var(--pl-dim); font-variant-numeric: tabular-nums; min-width: 4.5em; }
+.pl-bookmark-list { margin-top: 8px; }
+.pl-bookmark { display: flex; align-items: center; gap: 8px; padding: 4px 6px; }
+.pl-bookmark .pl-chapter { flex: 1; padding: 6px 8px; }
+.pl-bookmark-del { font: inherit; color: var(--pl-dim); background: none; border: 0; cursor: pointer; padding: 4px 8px; }
 .pl-video .pl-track { margin-bottom: 4px; }
 .pl-video .pl-track-title { font-size: 18px; }
 

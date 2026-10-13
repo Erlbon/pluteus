@@ -100,10 +100,66 @@
   }
 
   /* ---- lyrics: a button opens the panel; timed lines light up and scroll along ---- */
-  var lyricsBox = document.getElementById("lyrics"), lyricsButton = document.getElementById("lyrics-btn");
-  if (lyricsBox && lyricsButton) lyricsButton.addEventListener("click", function () {
-    lyricsBox.hidden = !lyricsBox.hidden;
-    lyricsButton.setAttribute("aria-expanded", lyricsBox.hidden ? "false" : "true");
+  var lyricsBox = document.getElementById("lyrics");
+  /* the buttons Lyrics / Chapters / Bookmarks: each opens its own panel, one at a time */
+  var panelButtons = Array.prototype.slice.call(document.querySelectorAll(".pl-panel-btn"));
+  function showPanel(name) {
+    panelButtons.forEach(function (b) {
+      var box = document.getElementById(b.dataset.panel);
+      var open = b.dataset.panel === name && box && box.hidden;
+      if (box) box.hidden = !open;
+      b.setAttribute("aria-expanded", open ? "true" : "false");
+    });
+  }
+  panelButtons.forEach(function (b) { b.addEventListener("click", function () { showPanel(b.dataset.panel); if (b.dataset.panel === "bookmarks") loadBookmarks(); }); });
+
+  /* ---- chapters (audiobooks): a click seeks; the current one is marked ---- */
+  var chapterRows = Array.prototype.slice.call(document.querySelectorAll("#chapters .pl-chapter"));
+  if (chapterRows.length) {
+    var chapterTimes = chapterRows.map(function (r) { return parseFloat(r.dataset.t); }), chapterNow = -1;
+    chapterRows.forEach(function (r) { r.addEventListener("click", function () { try { media.currentTime = parseFloat(r.dataset.t); } catch (e) { /* not seekable yet */ } if (media.paused) media.play(); }); });
+    media.addEventListener("timeupdate", function () {
+      var t = media.currentTime + 0.1, found = -1;
+      for (var i = 0; i < chapterTimes.length; i++) { if (chapterTimes[i] <= t) found = i; else break; }
+      if (found === chapterNow) return;
+      if (chapterNow >= 0) chapterRows[chapterNow].classList.remove("pl-now");
+      chapterNow = found;
+      if (found >= 0) {
+        chapterRows[found].classList.add("pl-now");
+        var box = document.getElementById("chapters");
+        if (box && !box.hidden) box.scrollTop = chapterRows[found].offsetTop - box.clientHeight / 2;
+      }
+    });
+  }
+
+  /* ---- bookmarks: saved on the server for this user and file ---- */
+  var bookmarkUrl = data.bookmarks || "", bookmarkList = document.getElementById("bookmark-list"), bookmarkAdd = document.getElementById("bookmark-add");
+  function bookmarkRow(b) {
+    var row = document.createElement("div"), go = document.createElement("button"), del = document.createElement("button");
+    row.className = "pl-bookmark";
+    go.type = "button"; go.className = "pl-chapter";
+    var when = document.createElement("span"); when.className = "pl-chapter-time"; when.textContent = clock(b.position);
+    go.appendChild(when); go.appendChild(document.createTextNode(" " + (b.note || "Bookmark")));
+    go.addEventListener("click", function () { try { media.currentTime = b.position; } catch (e) { /* not seekable yet */ } });
+    del.type = "button"; del.className = "pl-bookmark-del"; del.textContent = "\u00d7"; del.setAttribute("aria-label", "Delete this bookmark");
+    del.addEventListener("click", function () {
+      fetch(bookmarkUrl + "?id=" + b.id, { method: "DELETE", credentials: "same-origin" }).then(function () { loadBookmarks(); });
+    });
+    row.appendChild(go); row.appendChild(del);
+    return row;
+  }
+  function loadBookmarks() {
+    if (!bookmarkUrl || !bookmarkList) return;
+    fetch(bookmarkUrl, { credentials: "same-origin" }).then(function (r) { return r.ok ? r.json() : { bookmarks: [] }; }).then(function (d) {
+      while (bookmarkList.firstChild) bookmarkList.removeChild(bookmarkList.firstChild);
+      (d.bookmarks || []).forEach(function (b) { bookmarkList.appendChild(bookmarkRow(b)); });
+    }).catch(function () { /* offline */ });
+  }
+  if (bookmarkAdd) bookmarkAdd.addEventListener("click", function () {
+    fetch(bookmarkUrl, { method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ position: media.currentTime || 0, note: "" }) })
+      .then(function (r) { if (r.ok) { say("Bookmark saved at " + clock(media.currentTime), 1500); loadBookmarks(); } else say("The bookmark could not be saved", 3000); })
+      .catch(function () { say("The bookmark could not be saved", 3000); });
   });
   var lines = lyricsBox ? Array.prototype.slice.call(lyricsBox.querySelectorAll("p[data-t]")) : [];
   if (lines.length) {

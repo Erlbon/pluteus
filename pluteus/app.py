@@ -154,7 +154,7 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
     lib = Library(cfg)
     meta = MetaService(MetaCache(cfg.cache_dir or cfg.data_dir), enabled=cfg.metadata)
     state = StateDB(cfg.data_dir)
-    auth = Authenticator(cfg.users, cfg.auth_cache_seconds)
+    auth = Authenticator(cfg.users, cfg.auth_cache_seconds, appkeys=state.get_appkey)
     sessions = SessionManager(state, cfg.session_days)
     limiter = FailureLimiter()
     themes = Themes(cfg.themes_dir)
@@ -290,9 +290,12 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
         choice = state.get_prefs(username).get("icons") if username else None
         return choice if choice in ("gold", "aurora", "color") else "gold"
 
-    def ctx_for(user) -> web.Ctx:
+    def view_for(username: str) -> str:
+        return "grid" if state.get_prefs(username).get("view") == "grid" else "list"
+
+    def ctx_for(user, view: str = "") -> web.Ctx:
         return web.Ctx(urls, user.name, theme_for(user.name), readers=True, admin_link=current_admin_link.get(),
-                       icons=icons_for(user.name))
+                       icons=icons_for(user.name), view=view or view_for(user.name))
 
     def unauthorized(request: Request, mode: str, wait: int) -> Response:
         if wait:
@@ -325,6 +328,8 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
                                 request.url.path, request.headers.get("origin"), request.headers.get("host"),
                                 request.headers.get("sec-fetch-site"))
                     return PlainTextResponse("Cross-site request refused", 403)
+                if user.read_only and request.method not in SAFE_METHODS and mode != "api":
+                    return PlainTextResponse("This login (an app key) can only read", 403)
                 current_admin_link.set(admin_link_for(request, user))
                 try:
                     return await fn(request, user)
@@ -500,10 +505,12 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
             except (NotFound, PathError, OSError):
                 return ""
         has_cover = await run_in_threadpool(folder_picture)
+        asked = request.query_params.get("view", "")
+        asked = asked if asked in ("list", "grid") else ""
         return HTMLResponse(web.listing_page(
-            root, parts, shown, page, pages, len(entries), ctx_for(user), metas, progress, sort=sort, desc=desc,
+            root, parts, shown, page, pages, len(entries), ctx_for(user, asked), metas, progress, sort=sort, desc=desc,
             writable=root == UPLOADS_ROOT, flash=web.flash_text(request.query_params),
-            cover_url=urls.cover(root, parts) if (has_cover and parts) else ""))
+            cover_url=urls.cover(root, parts) if (has_cover and parts) else "", view_asked=asked))
 
     @guarded("web")
     async def settings(request: Request, user):
@@ -515,6 +522,8 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
                 prefs["theme"] = choice
             if icons in ("gold", "aurora", "color"):
                 prefs["icons"] = icons
+            if form.get("view") in ("list", "grid"):
+                prefs["view"] = form["view"]
             state.set_prefs(user.name, prefs)
             return RedirectResponse(urls.settings() + "?saved=1", 303)
         return HTMLResponse(web.settings_page(ctx_for(user), themes.names(), "saved" in request.query_params))
@@ -723,12 +732,14 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
             if not lyrics and len(mediainfo.parse_lrc(tags.get("lyrics", ""))) >= 3:      # timed lyrics stored inside the tag
                 lyrics = mediainfo.parse_lrc(tags["lyrics"])
             has_cover = bool(tags.get("has_cover")) or (kind == "audio" and bool(mediainfo.folder_cover(os.path.dirname(info.path))))
+            chapters = mediainfo.read_chapters(info.path)
             return web.media_viewer_page(
                 ctx, info.name, kind=kind, raw_url=urls.raw(root, parts), mime=kinds.INLINE_MIME[kinds.extension(info.name)],
                 download_url=download, back_url=back, progress_url=urls.api("progress", root, parts),
                 prev_url=prev_url, next_url=next_url, position=position, total=total,
                 album=lib.display_name(parts[-2]) if len(parts) > 1 else root,
-                tags=tags, cover_url=urls.cover(root, parts) if has_cover else "", synced=lyrics)
+                tags=tags, cover_url=urls.cover(root, parts) if has_cover else "", synced=lyrics, chapters=chapters,
+                bookmarks_url=urls.api("bookmarks", root, parts))
         if not as_text and kind == "pdf":
             return web.pdf_viewer_page(ctx, info.name, raw_url=urls.raw(root, parts), download_url=download, back_url=back,
                                        progress_url=urls.api("progress", root, parts))
@@ -927,6 +938,36 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
         return base + "?w=160", base + "?w=600"
 
     @guarded("api")
+    async def bookmarks(request: Request, user):
+        """Bookmarks in one audio or video file, per user: GET lists, POST {position, note} adds, DELETE ?id= removes."""
+        root = request.path_params["root"]
+        parts = _parts(request.path_params["path"])
+        info = await run_in_threadpool(lib.file_info, user, root, parts, cfg.show_all_files)
+        if kinds.kind_of(info.name) not in ("audio", "video"):
+            raise NotFound("not audio or video")
+        path = "/".join(parts)
+        if request.method == "POST":
+            try:
+                body = json.loads((await request.body())[:2048])
+                position, note = float(body["position"]), str(body.get("note", ""))[:200]
+            except (ValueError, KeyError, TypeError):
+                return JSONResponse({"error": "invalid bookmark"}, 400)
+            if not 0 <= position < 10_000_000:
+                return JSONResponse({"error": "invalid position"}, 400)
+            made = await run_in_threadpool(state.add_bookmark, user.name, root, path, position, note)
+            if made is None:
+                return JSONResponse({"error": "too many bookmarks in this file"}, 400)
+            return JSONResponse({"id": made}, 201)
+        if request.method == "DELETE":
+            try:
+                wanted = int(request.query_params.get("id", ""))
+            except ValueError:
+                return JSONResponse({"error": "id must be a number"}, 400)
+            await run_in_threadpool(state.delete_bookmark, user.name, wanted)
+            return JSONResponse({"ok": True})
+        return JSONResponse({"bookmarks": await run_in_threadpool(state.list_bookmarks, user.name, root, path)})
+
+    @guarded("api")
     async def progress(request: Request, user):
         root = request.path_params["root"]
         parts = _parts(request.path_params["path"])
@@ -1070,6 +1111,7 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
         Route("/files/{op}/{root}", file_op, methods=["POST"]),
         Route("/files/{op}/{root}/{path:path}", file_op, methods=["POST"]),
         Route("/api/progress/{root}/{path:path}", progress, methods=["GET", "PUT"]),
+        Route("/api/bookmarks/{root}/{path:path}", bookmarks, methods=["GET", "POST", "DELETE"]),
         Route("/opds", opds_root),
         Route("/opds/", opds_root),
         Route("/opds/{root}", opds_folder),

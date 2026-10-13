@@ -19,6 +19,7 @@ class Ctx:
     readers: bool = False        # show "Read" links (the in-browser readers)
     icons: str = "gold"          # the file-type icon style: gold (outlines), aurora (outlines, a colour each) or color (filled tiles)
     admin_link: str = ""         # address of the admin page, for an administrator on the local network; else empty
+    view: str = "list"           # how a folder is shown: "list" (rows) or "grid" (covers)
 
 
 def layout(title: str, body: str, ctx: Ctx, *, head: str = "", scripts: tuple = (), bar: bool = True,
@@ -190,9 +191,11 @@ def _upload_forms(urls: Urls, root: str, parts: tuple) -> str:
 SORT_LABELS = (("name", "Name"), ("type", "Type"), ("size", "Size"), ("date", "Modified"))
 
 
-def _query(sort: str, desc: bool, page: int = 1) -> str:
+def _query(sort: str, desc: bool, page: int = 1, view: str = "") -> str:
     """?sort=..&dir=..&page=.. with only the non-default parts (the default listing keeps its plain URL)."""
     pairs = []
+    if view:
+        pairs.append("view=" + view)
     if sort != "name" or desc:
         pairs += ["sort=" + sort] + (["dir=desc"] if desc else [])
     if page > 1:
@@ -200,21 +203,22 @@ def _query(sort: str, desc: bool, page: int = 1) -> str:
     return "?" + "&".join(pairs) if pairs else ""
 
 
-def _sort_bar(here: str, sort: str, desc: bool) -> str:
+def _sort_bar(here: str, sort: str, desc: bool, view: str = "") -> str:
     items = []
     for key, label in SORT_LABELS:
         if key == sort:                                       # the current column: its link flips the direction
             arrow = " &#9660;" if desc else " &#9650;"
-            href, cls = here + _query(key, not desc), " class='pl-sort-on'"
+            href, cls = here + _query(key, not desc, 1, view), " class='pl-sort-on'"
         else:                                                 # a new column: newest first for dates, else ascending
-            arrow, cls, href = "", "", here + _query(key, key == "date")
+            arrow, cls, href = "", "", here + _query(key, key == "date", 1, view)
         items.append("<a%s href='%s'>%s%s</a>" % (cls, escape(href), label, arrow))
     return "<nav class='pl-sortbar' aria-label='Sort this folder'><span class='pl-muted'>Sort:</span> %s</nav>" % " ".join(items)
 
 
 def listing_page(root: str, parts: tuple, entries: list, page: int, pages: int, total: int, ctx: Ctx,
                  metas: dict | None = None, progress: dict | None = None,
-                 sort: str = "name", desc: bool = False, writable: bool = False, flash: str = "", cover_url: str = "") -> str:
+                 sort: str = "name", desc: bool = False, writable: bool = False, flash: str = "", cover_url: str = "",
+                 view_asked: str = "") -> str:
     metas = metas or {}
     progress = progress or {}
     urls = ctx.urls
@@ -260,22 +264,60 @@ def listing_page(root: str, parts: tuple, entries: list, page: int, pages: int, 
                        _size(e.size), time.strftime("%Y-%m-%d", time.localtime(e.mtime)),
                        _row_actions(urls, root, e.parts, e.name) if writable else ""))
     here = urls.browse(root, parts)
+    tiles = _tiles(ctx, root, entries, metas, progress) if ctx.view == "grid" else []
     pager = ""
     if pages > 1:
-        prev = ("<a href='%s'>&larr; Previous</a>" % escape(here + _query(sort, desc, page - 1))) if page > 1 else ""
-        nxt = ("<a href='%s'>Next &rarr;</a>" % escape(here + _query(sort, desc, page + 1))) if page < pages else ""
+        prev = ("<a href='%s'>&larr; Previous</a>" % escape(here + _query(sort, desc, page - 1, view_asked))) if page > 1 else ""
+        nxt = ("<a href='%s'>Next &rarr;</a>" % escape(here + _query(sort, desc, page + 1, view_asked))) if page < pages else ""
         pager = "<div class='pl-pager'>%s<span class='pl-muted'>Page %d of %d</span>%s</div>" % (prev, page, pages, nxt)
     title = parts[-1] if parts else root
-    bar = _sort_bar(here, sort, desc) if total > 1 else ""
+    bar = _sort_bar(here, sort, desc, view_asked) if total > 1 else ""
+    grid = ctx.view == "grid"
+    other = "list" if grid else "grid"
+    bar += ("<nav class='pl-sortbar pl-viewbar' aria-label='How to show this folder'><span class='pl-muted'>View:</span> "
+            "<a%s href='%s'>List</a> <a%s href='%s'>Covers</a></nav>"
+            % ("" if grid else " class='pl-sort-on'", escape(here + _query(sort, desc, 1, "list")),
+               " class='pl-sort-on'" if grid else "", escape(here + _query(sort, desc, 1, "grid")))) if total > 1 else ""
     note = "<p class='pl-flash' role='status'>%s</p>" % escape(flash) if flash else ""
     forms = _upload_forms(urls, root, parts) if writable else ""
     picture = ("<img class='pl-folder-cover' src='%s' alt='Cover of this folder' loading='lazy'>" % escape(cover_url)
                if cover_url else "")
     body = ("<main class='pl-main'><div class='pl-crumbs'>%s</div>%s<h1>%s</h1><div class='pl-muted'>%d items &middot; "
-            "<a href='%s'>OPDS</a></div>%s%s<ul class='pl-list'>%s</ul>%s</main>"
+            "<a href='%s'>OPDS</a></div>%s%s<ul class='%s'>%s</ul>%s</main>"
             % (" / ".join(crumbs), picture, escape(title), total, escape(urls.opds(root, parts)),
-               note + forms, bar + pager, "".join(rows), pager))
-    return layout(title, body, ctx, scripts=(urls.static("uploads.js"),) if writable else ())
+               note + forms, bar + pager, "pl-list pl-grid" if grid else "pl-list", "".join(tiles if grid else rows), pager))
+    scripts = ((urls.static("uploads.js"),) if writable else ()) + ((urls.static("grid.js"),) if grid else ())
+    return layout(title, body, ctx, scripts=scripts)
+
+
+COVER_KINDS = ("epub", "comic", "audio")
+
+
+def _tiles(ctx: Ctx, root: str, entries: list, metas: dict, progress: dict) -> list:
+    """The cover view: one tile per entry, a picture (a cover when the file has one, else its type icon) over the title."""
+    urls, out = ctx.urls, []
+    for e in entries:
+        if e.is_dir:
+            out.append("<li class='pl-tile pl-tile-folder'><a href='%s'><span class='pl-tile-art'>%s</span>"
+                       "<span class='pl-tile-name'>%s</span></a></li>" % (escape(urls.browse(root, e.parts)), ROOT_ICON, escape(e.display)))
+            continue
+        kind = kinds.kind_of(e.name)
+        if not ctx.readers:
+            open_url = urls.download(root, e.parts)
+        elif kind in ("epub", "comic"):
+            open_url = urls.read(root, e.parts)
+        else:
+            open_url = urls.view(root, e.parts)
+        art = kind_icon(kind)
+        if kind in COVER_KINDS:
+            art = ("<img class='pl-tile-img' src='%s?w=320' alt='' loading='lazy'><span class='pl-tile-fallback'>%s</span>"
+                   % (escape(urls.thumb(root, e.parts)), art))
+        pct = progress.get("/".join(e.parts))
+        badge = "<span class='pl-badge pl-tile-badge'>%d%%</span>" % round(pct * 100) if pct else ""
+        label = _book_label(e, metas.get(e.path, {}))
+        out.append("<li class='pl-tile'><a href='%s' title='%s'><span class='pl-tile-art'>%s%s</span>"
+                   "<span class='pl-tile-name'>%s</span></a></li>" % (escape(open_url), escape(e.name), art, badge, label))
+    return out
 
 
 def _icon_button(ident: str, icon: str, label: str, extra: str = "") -> str:
@@ -429,13 +471,33 @@ def _lyrics_html(synced: list, plain: str) -> str:
     return ""
 
 
+def _chapters_html(chapters: list) -> str:
+    """The chapter list of an audiobook: one button per chapter, the script seeks to its second and marks the current one."""
+    if not chapters:
+        return ""
+    rows = "".join("<button type='button' class='pl-chapter' data-t='%s'><span class='pl-chapter-time'>%s</span> %s</button>"
+                   % (t, _clock(t), escape(title or "Chapter %d" % (i + 1))) for i, (t, title) in enumerate(chapters))
+    return "<div class='pl-panel pl-chapters' id='chapters' hidden>%s</div>" % rows
+
+
+def _bookmarks_html() -> str:
+    return ("<div class='pl-panel pl-bookmarks' id='bookmarks' hidden><button type='button' class='pl-btn' id='bookmark-add'>"
+            "Add a bookmark here</button><div id='bookmark-list' class='pl-bookmark-list'></div></div>")
+
+
+def _clock(seconds: float) -> str:
+    s = int(seconds)
+    return "%d:%02d:%02d" % (s // 3600, s % 3600 // 60, s % 60) if s >= 3600 else "%d:%02d" % (s // 60, s % 60)
+
+
 def media_viewer_page(ctx: Ctx, title: str, *, kind: str, raw_url: str, mime: str, download_url: str, back_url: str,
                       progress_url: str, prev_url, next_url, position: int, total: int, album: str = "",
-                      tags: dict | None = None, cover_url: str = "", synced: list | None = None) -> str:
+                      tags: dict | None = None, cover_url: str = "", synced: list | None = None, chapters: list | None = None,
+                      bookmarks_url: str = "") -> str:
     """The audio/video viewer. Audio gets a cover, the tags (title, artist, album, year, genre, track), a scrubber, big transport
     buttons and lyrics; video keeps the browser's own controls under the same information. Tags are untrusted text: escaped.
     viewer-media.js adds resume, auto-advance to the next file, the lyrics highlight and the lock-screen controls."""
-    tags, synced = tags or {}, synced or []
+    tags, synced, chapters = tags or {}, synced or [], chapters or []
     tag = "video" if kind == "video" else "audio"
     name = title.rsplit(".", 1)[0] if "." in title else title
     heading = tags.get("title") or name
@@ -454,8 +516,12 @@ def media_viewer_page(ctx: Ctx, title: str, *, kind: str, raw_url: str, mime: st
     skip_fwd = button("fwd30", "Forward 30 seconds", "fwd30", "30 s", after=True)
     speed = button("speed", "Playback speed", "speed", "1&times;")
     sleep = button("sleep", "Sleep timer", "moon", "Sleep")
-    words_button = ("<button class='pl-btn' id='lyrics-btn' type='button' aria-label='Show the lyrics' aria-expanded='false'>"
-                    "<span class='pl-btn-text'>Lyrics</span></button>" if lyrics else "")
+    def panel_button(panel: str, label: str) -> str:
+        return ("<button class='pl-btn pl-panel-btn' id='%s-btn' data-panel='%s' type='button' aria-label='Show: %s' "
+                "aria-expanded='false'><span class='pl-btn-text'>%s</span></button>" % (panel, panel, label, label))
+    words_button = (panel_button("lyrics", "Lyrics") if lyrics else "") + (panel_button("chapters", "Chapters") if chapters else "") + \
+        (panel_button("bookmarks", "Bookmarks") if bookmarks_url else "")
+    lyrics += _chapters_html(chapters) + (_bookmarks_html() if bookmarks_url else "")
     info = ("<div class='pl-track'><h1 class='pl-track-title'>%s</h1>%s%s</div>"
             % (escape(heading), "<div class='pl-track-by'>%s</div>" % by if by else "",
                "<div class='pl-chips'>%s</div>" % chips if chips else ""))
@@ -485,7 +551,7 @@ def media_viewer_page(ctx: Ctx, title: str, *, kind: str, raw_url: str, mime: st
     return _viewer(ctx, bar_title, back_url, tools=tools, stage=stage, foot=foot, classes="pl-mediaview pl-" + tag,
                    stage_class="pl-media-stage",
                    data=(("progress", progress_url), ("kind", kind), ("prev", prev_url or ""), ("next", next_url or ""),
-                         ("title", heading), ("artist", artist), ("album", album_name),
+                         ("title", heading), ("artist", artist), ("album", album_name), ("bookmarks", bookmarks_url),
                          ("artwork", cover_url or ctx.urls.static("icon/icon-512.png"))),
                    scripts=(ctx.urls.static("viewer-media.js"),))
 
@@ -598,16 +664,22 @@ def zip_page(ctx: Ctx, title: str, *, root: str, parts: tuple, entries: list, to
                    stage_class="pl-zip-stage")
 
 
+VIEW_STYLES = (("list", "A list"), ("grid", "Covers (a picture for each book)"))
+
+
 def settings_page(ctx: Ctx, themes: list, saved: bool = False) -> str:
     opts = "".join("<option value='%s'%s>%s</option>"
                    % (escape(t), " selected" if t == ctx.theme else "", escape(t)) for t in themes)
     icon_opts = "".join("<option value='%s'%s>%s</option>" % (k, " selected" if k == ctx.icons else "", escape(label))
                         for k, label in ICON_STYLES)
+    view_opts = "".join("<option value='%s'%s>%s</option>" % (k, " selected" if k == ctx.view else "", escape(label))
+                        for k, label in VIEW_STYLES)
     note = "<p class='pl-muted'>Saved.</p>" if saved else ""
     body = ("<main class='pl-main'><h1>Settings</h1>%s<form class='pl-card' method='post' action='%s'>"
             "<label class='pl-field'><span>Theme</span><select name='theme'>%s</select></label>"
             "<label class='pl-field'><span>File icons</span><select name='icons'>%s</select></label>"
+            "<label class='pl-field'><span>Folders are shown as</span><select name='view'>%s</select></label>"
             "<button class='pl-btn pl-btn-primary' type='submit'>Save</button></form>"
             "<p><a href='%s'>&larr; Back to the library</a></p></main>"
-            % (note, escape(ctx.urls.settings()), opts, icon_opts, escape(ctx.urls.home())))
+            % (note, escape(ctx.urls.settings()), opts, icon_opts, view_opts, escape(ctx.urls.home())))
     return layout("Settings", body, ctx)
