@@ -2,6 +2,9 @@
 
 Release notes are taken from the section of the tagged version (`## 0.5.0 ...`).
 
+## 0.7.1 - 2026-10-13
+- Player: the top bar shows "Title – Artist – Album"; tighter spacing so the play button fits on a laptop screen.
+
 ## 0.7.0 - 2026-10-13
 - **A modern music player:** cover art with a blurred backdrop, title, artist, album, year, genre, track and format read from the file's
   tags (`tinytag`, MIT), a real scrubber and a big play button. A `cover.jpg` / `folder.jpg` in the folder is used when the file has no picture.

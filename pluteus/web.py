@@ -479,7 +479,8 @@ def media_viewer_page(ctx: Ctx, title: str, *, kind: str, raw_url: str, mime: st
             % (_nav_link("prev", "prev", "Previous file", prev_url), position, total,
                _nav_link("next", "next", "Next file", next_url)))
     tools = _download_link(download_url) + _reader_scheme()
-    return _viewer(ctx, title, back_url, tools=tools, stage=stage, foot=foot, classes="pl-mediaview pl-" + tag,
+    bar_title = " – ".join(x for x in (heading, artist, album_name) if x)
+    return _viewer(ctx, bar_title, back_url, tools=tools, stage=stage, foot=foot, classes="pl-mediaview pl-" + tag,
                    stage_class="pl-media-stage",
                    data=(("progress", progress_url), ("kind", kind), ("prev", prev_url or ""), ("next", next_url or ""),
                          ("title", heading), ("artist", artist), ("album", album_name),
