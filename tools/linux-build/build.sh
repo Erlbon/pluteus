@@ -4,6 +4,7 @@
 set -euo pipefail
 here="$(cd "$(dirname "$0")/../.." && pwd)"
 out="${1:-$here/dist-linux}"
+case "$out" in /*) ;; *) out="$PWD/$out" ;; esac        # Docker treats a relative path as a volume NAME, so make it absolute
 mkdir -p "$out"
 docker build -q -t pluteus-linux-build "$here/tools/linux-build" > /dev/null
 MSYS_NO_PATHCONV=1 docker run --rm -v "$here:/src:ro" -v "$out:/out" pluteus-linux-build bash -c '
