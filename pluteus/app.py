@@ -15,6 +15,7 @@ import json
 import logging
 import os
 import re
+import threading
 import time
 from types import SimpleNamespace
 from pathlib import Path
@@ -32,6 +33,7 @@ from starlette.routing import Route
 
 from . import cbz, kinds, markdown, mediainfo, opds, opds2, tabular, thumbs, textview, uploads, web, ziputil
 from .auth import Authenticator
+from .bodies import read_limited
 from .cbz import CbzError
 from .config import MIME_TYPES, UPLOADS_ROOT, Config
 from .fs import SORTS, Library, NotFound, PathError, clamp_time, sort_entries
@@ -66,6 +68,49 @@ CSP = ("default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'sel
        "font-src 'self' data: blob:; connect-src 'self'; frame-src 'self' blob:; object-src 'none'; "
        "base-uri 'self'; form-action 'self'; frame-ancestors 'self'")
 NO_CACHE = {"Cache-Control": "no-cache"}
+
+
+_SECRET_QUERY = {"p", "apikey", "t", "s", "password", "token", "key", "secret"}
+access_log = logging.getLogger("pluteus.access")
+
+
+def _logged_target(scope) -> str:
+    """The request line for the access log with every secret removed: Subsonic apps send p= (the key, or even the password),
+    apiKey=, t= and s= in the address, and /join/TOKEN is a one-time access link."""
+    path = scope.get("path", "")
+    if "/join/" in path:
+        path = path.split("/join/")[0] + "/join/***"
+    query = scope.get("query_string", b"").decode("latin-1")
+    if not query:
+        return path
+    shown = []
+    for pair in query.split("&"):
+        name, sep, value = pair.partition("=")
+        shown.append(name + sep + ("***" if sep and name.lower() in _SECRET_QUERY else value))
+    return path + "?" + "&".join(shown)
+
+
+class AccessLog:
+    """One line per request (client, request, status) with secrets removed; replaces uvicorn's own access log, which prints the
+    full query string."""
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            return await self.app(scope, receive, send)
+        status = [0]
+
+        async def wrapped(message):
+            if message["type"] == "http.response.start":
+                status[0] = message["status"]
+            await send(message)
+        try:
+            await self.app(scope, receive, wrapped)
+        finally:
+            client = scope.get("client")
+            access_log.info('%s - "%s %s" %s', client[0] if client else "-", scope.get("method", "-"), _logged_target(scope), status[0])
 
 
 class SecurityHeaders:
@@ -162,6 +207,7 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
     reloader = UsersReloader(config_path, auth, reload_interval, on_config=lambda c: lib.set_roots(c.roots)) if config_path else None
     urls = Urls(cfg.base_path)
     thumb_cache = thumbs.ThumbCache(cfg.cache_dir or cfg.data_dir)
+    thumb_gate = threading.BoundedSemaphore(3)
     backup_dir = os.path.join(cfg.data_dir, "backups") if cfg.data_dir else ""
     housekeeping_due = [0.0]
     challenge = {"WWW-Authenticate": 'Basic realm="%s", charset="UTF-8"' % cfg.realm}
@@ -232,6 +278,7 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
         if now >= housekeeping_due[0]:
             housekeeping_due[0] = now + 3600
             await run_in_threadpool(state.housekeeping, backup_dir)
+            await run_in_threadpool(state.purge_appkeys, set(auth.users))
         user = sessions.user_for(request.cookies.get(COOKIE), auth.users)
         if user:
             return user, 0
@@ -331,7 +378,7 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
                                 request.url.path, request.headers.get("origin"), request.headers.get("host"),
                                 request.headers.get("sec-fetch-site"))
                     return PlainTextResponse("Cross-site request refused", 403)
-                if user.read_only and request.method not in SAFE_METHODS and mode != "api":
+                if user.read_only and request.method not in SAFE_METHODS:
                     return PlainTextResponse("This login (an app key) can only read", 403)
                 current_admin_link.set(admin_link_for(request, user))
                 try:
@@ -409,9 +456,10 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
     async def login_submit(request: Request):
         if not csrf_ok(request):
             return PlainTextResponse("Cross-site request refused", 403)
-        if too_big(request, 16384):
+        raw_form = await read_limited(request, 16384)
+        if raw_form is None:
             return PlainTextResponse("Request too large", 413)
-        form = _form(await request.body())
+        form = _form(raw_form)
         username, password = form.get("username", ""), form.get("password", "")
         next_url = _safe_next(form.get("next", ""), cfg.base_path, urls.home())
         ip = limiter_ip(request)
@@ -586,7 +634,10 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
     @guarded("web")
     async def settings(request: Request, user):
         if request.method == "POST":
-            form = _form(await request.body())
+            raw_form = await read_limited(request, 16384)
+            if raw_form is None:
+                return PlainTextResponse("Request too large", 413)
+            form = _form(raw_form)
             choice, icons = form.get("theme", ""), form.get("icons", "")
             prefs = dict(state.get_prefs(user.name))
             if themes.exists(choice):
@@ -647,9 +698,10 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
         if request.path_params["root"] != UPLOADS_ROOT or op not in ("mkdir", "rename", "delete"):
             raise NotFound("no such operation")
         parts = _parts(request.path_params.get("path", ""))
-        if too_big(request, 16384):
+        raw_form = await read_limited(request, 16384)
+        if raw_form is None:
             return PlainTextResponse("Request too large", 413)
-        form = _form(await request.body())
+        form = _form(raw_form)
         try:
             if op == "mkdir":
                 folder = await run_in_threadpool(lib.upload_dir, user, parts)
@@ -974,15 +1026,21 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
         hit = thumb_cache.get(key)
         if hit is not None:
             return hit, "image/jpeg"
-        try:
-            found = cover_source(info, root)
-        except (CbzError, OSError):
-            found = None
-        if found is None:
-            return None
-        small = thumbs.scaled(found[0], width)
-        if small is None:                                       # no Pillow, or a picture it cannot read: the original, as it is
+        with thumb_gate:                                        # a few at a time: each one decodes a whole picture in memory
+            hit = thumb_cache.get(key)                          # another request may have made it while this one waited
+            if hit is not None:
+                return hit, "image/jpeg"
+            try:
+                found = cover_source(info, root)
+            except (CbzError, OSError):
+                found = None
+            if found is None:
+                return None
+            small = thumbs.scaled(found[0], width)
+        if small is None:                                       # no Pillow: the original picture, as it is
             return found if len(found[0]) <= mediainfo.MAX_COVER else None
+        if small is False:                                      # unreadable or too big to decode safely: no cover
+            return None
         thumb_cache.put(key, small[0])
         return small
 
@@ -1022,8 +1080,9 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
             raise NotFound("not audio or video")
         path = "/".join(parts)
         if request.method == "POST":
+            raw_body = await read_limited(request, 2048)
             try:
-                body = json.loads((await request.body())[:2048])
+                body = json.loads(raw_body if raw_body is not None else b"")
                 position, note = float(body["position"]), str(body.get("note", ""))[:200]
             except (ValueError, KeyError, TypeError):
                 return JSONResponse({"error": "invalid bookmark"}, 400)
@@ -1051,8 +1110,8 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
         if request.method == "PUT":
             if "application/json" not in request.headers.get("content-type", ""):
                 return JSONResponse({"error": "a JSON body is required"}, 415)
-            raw = b"" if too_big(request, 8192) else await request.body()
-            if too_big(request, 8192) or len(raw) > 8192:
+            raw = await read_limited(request, 8192)
+            if raw is None:
                 return JSONResponse({"error": "body too large"}, 413)
             try:
                 data = json.loads(raw)
@@ -1262,8 +1321,14 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
         def wait(self, request, name):
             return limiter.wait_seconds(name, limiter_ip(request))
 
+        def wait_key(self, request):
+            return limiter.wait_seconds("", limiter_ip(request))
+
         def fail(self, request, name):
             note_failure(name, limiter_ip(request), "", False)
+
+        def fail_key(self, request):
+            limiter.failure_ip(limiter_ip(request))              # a wrong KEY counts against the address only
 
         def ok(self, request, name):
             limiter.success(name)
@@ -1274,7 +1339,7 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
     if cfg.kosync:
         from .kosync import KoSync
         routes.append(Route("/kosync/{route:path}", KoSync(auth, state, Throttle()).handle, methods=["GET", "PUT", "POST"]))
-    app = Starlette(routes=routes, middleware=[Middleware(SecurityHeaders)])
+    app = Starlette(routes=routes, middleware=[Middleware(AccessLog), Middleware(SecurityHeaders)])
     app.state.library = lib
     app.state.state = state
     app.state.sessions = sessions

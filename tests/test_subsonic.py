@@ -90,6 +90,44 @@ def test_repeated_failures_lock_the_account(lib):
     assert "Too many" in body(call(c, "ping", p="nope"))["error"]["message"]
 
 
+def test_junk_api_keys_do_not_block_other_people(lib):
+    c = make(lib)
+    for _ in range(8):
+        c.get("/rest/ping", params={"apiKey": "junk", "f": "json"})
+    assert body(c.get("/rest/ping", params={"apiKey": KEY, "f": "json"}))["status"] == "ok"          # a good key still works
+    assert body(call(c, "ping", p="pw-alice"))["status"] == "ok"                                      # and so does the password
+
+
+def test_a_stale_token_never_locks_the_user_name(lib):
+    c = make(lib)
+    for _ in range(8):
+        c.get("/rest/ping", params={"u": "alice", "t": "0" * 32, "s": "x", "f": "json"})           # an app with an old key, retrying
+    assert body(call(c, "ping", p="pw-alice"))["status"] == "ok"                                      # the name is not locked
+    assert body(call(c, "ping"))["status"] == "ok"
+
+
+def test_a_correct_key_gets_through_while_the_name_is_locked_for_passwords(lib):
+    c = make(lib)
+    for _ in range(8):
+        call(c, "ping", p="nope")                                      # guesses at the password lock the name for passwords
+    assert "Too many" in body(call(c, "ping", p="nope"))["error"]["message"]
+    assert body(call(c, "ping", p=KEY))["status"] == "ok"                                              # the key is not a guess
+
+
+def test_odd_credentials_are_errors_not_500s(lib):
+    c = make(lib)
+    r = c.get("/rest/ping", params={"u": "alice", "t": "caf\u00e9", "s": "x", "f": "json"})
+    assert r.status_code == 200 and body(r)["error"]["code"] == 40
+    r = c.get("/rest/ping", params={"u": "alice", "p": "enc:zz", "f": "json"})
+    assert r.status_code == 200 and body(r)["error"]["code"] == 40
+
+
+def test_a_huge_post_body_is_refused(lib):
+    c = make(lib)
+    r = c.post("/rest/ping?f=json", content=b"u=alice&p=" + b"x" * 40000, headers={"content-type": "application/x-www-form-urlencoded"})
+    assert body(r)["error"]["message"] == "The request is too large."
+
+
 def test_folders_and_directory_browsing(lib):
     c = make(lib)
     folders = body(call(c, "getMusicFolders"))["musicFolders"]["musicFolder"]

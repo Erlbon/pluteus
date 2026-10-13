@@ -95,6 +95,15 @@ class FailureLimiter:
                     self._recent(key, now)
         return started
 
+    def failure_ip(self, ip: str, now=None) -> None:
+        """Count one wrong app KEY against the address only. Keys are long random secrets, so a wrong one is never a guess at a
+        particular account: it must not lock any name (a stale key in a forgotten app would otherwise lock its owner out)."""
+        if not ip:
+            return
+        now = time.time() if now is None else now
+        with self._lock:
+            self._fails.setdefault(("ip", ip), []).append(now)
+
     def snapshot(self, now=None) -> list:
         """What the admin page shows: [{'name', 'locked_for' (seconds, 0 = not locked), 'locks' (how many so far),
         'recent_failures' (wrong passwords inside the window)}] for every name that has any of those. Read-only."""

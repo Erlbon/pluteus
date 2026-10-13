@@ -199,7 +199,12 @@ def _run_server(cfg, config_path) -> int:
         print("Admin page on http://%s:%d/ (local network only: never route or forward this port)"
               % (cfg.admin_host, cfg.admin_port), file=sys.stderr)
     try:
-        uvicorn.run(app, host=cfg.host, port=cfg.port, log_level="info")
+        import logging
+        handler = logging.StreamHandler()
+        handler.setFormatter(logging.Formatter("%(asctime)s %(message)s"))
+        logging.getLogger("pluteus.access").addHandler(handler)
+        logging.getLogger("pluteus.access").setLevel(logging.INFO)
+        uvicorn.run(app, host=cfg.host, port=cfg.port, log_level="info", access_log=False)
     finally:
         if admin:
             admin.stop()

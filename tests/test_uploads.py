@@ -364,3 +364,32 @@ def test_manifest_has_an_id_an_explicit_share_list_and_the_share_entry_can_be_sw
     client, _ = make(cfg, tmp_path, uploads_dir=str(tmp_path / "up"), base_path="/lib", share_target=False)
     off = client.get("/manifest.webmanifest").json()
     assert "share_target" not in off and off["id"] == "/lib/"                               # the app itself stays installable
+
+
+# ---- a failed finish leaves nothing behind ------------------------------------------------------------------------------------------------
+def test_a_failed_replace_does_not_leave_an_empty_file_behind(up, monkeypatch):
+    client, _, folder = up
+
+    def broken(src, dst):
+        raise PermissionError(13, "denied")
+    monkeypatch.setattr(uploads, "_replace", broken)
+    r = send(client, [("files", ("a.txt", b"data", "text/plain"))])
+    assert r.json()["failed"] and on_disk(folder) == []                       # no zero-byte a.txt, no temp file
+
+
+def test_a_busy_file_on_windows_is_retried(tmp_path, monkeypatch):
+    calls = []
+    real = os.replace
+
+    def flaky(src, dst):
+        calls.append(1)
+        if len(calls) < 3:
+            error = PermissionError(13, "sharing violation")
+            error.winerror = 32
+            raise error
+        return real(src, dst)
+    monkeypatch.setattr(uploads.os, "replace", flaky)
+    a, b = tmp_path / "a", tmp_path / "b"
+    a.write_text("x")
+    uploads._replace(str(a), str(b))
+    assert len(calls) == 3 and b.read_text() == "x"

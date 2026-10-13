@@ -15,8 +15,12 @@ from urllib.parse import unquote
 from .mediainfo import MAX_COVER, sniff_image
 from .meta import MAX_XML_BYTES, NS, _READ_ERRORS, _read_member
 
-MAX_PIXELS = 60_000_000
-MIN_WIDTH, MAX_WIDTH = 48, 900
+# A picture is refused before it is decoded when it has more pixels than this: a small file can hold a huge picture (a flat
+# 10000 x 10000 PNG is under 400 KB but needs 400 MB of memory to decode).
+MAX_PIXELS = 20_000_000
+# Only these widths are made, so the cache holds a few files per book, not one per possible number.
+WIDTHS = (96, 160, 240, 320, 480, 640, 900)
+MIN_WIDTH, MAX_WIDTH = WIDTHS[0], WIDTHS[-1]
 
 
 def epub_cover(path: str):
@@ -49,14 +53,17 @@ def epub_cover(path: str):
 
 
 def scaled(data: bytes, width: int):
-    """(JPEG bytes, 'image/jpeg') no wider than `width` pixels, or None when Pillow cannot read the picture."""
+    """(JPEG bytes, 'image/jpeg') no wider than `width` pixels. None when Pillow is not installed (the caller then sends the
+    original); False when the picture cannot be read or is too big to decode safely (no cover)."""
     try:
         from PIL import Image
     except ImportError:
         return None
     try:
-        Image.MAX_IMAGE_PIXELS = MAX_PIXELS
+        Image.MAX_IMAGE_PIXELS = None                              # we check the size ourselves, right below, before anything is decoded
         with Image.open(io.BytesIO(data)) as im:
+            if im.width * im.height > MAX_PIXELS:                  # from the header only: nothing has been decoded yet
+                return False
             im.draft("RGB", (width * 2, width * 3))                # JPEG: decode at a reduced size when possible
             im = im.convert("RGB")
             if im.width > width:
@@ -65,14 +72,16 @@ def scaled(data: bytes, width: int):
             im.save(out, "JPEG", quality=80, optimize=True)
             return out.getvalue(), "image/jpeg"
     except Exception:                                              # noqa: BLE001  a damaged or absurd picture is just "no cover"
-        return None
+        return False
 
 
-def clamp_width(text: str, default: int = 200) -> int:
+def clamp_width(text: str, default: int = 240) -> int:
+    """The width asked for, rounded up to one of WIDTHS (the biggest when it asks for more)."""
     try:
-        return min(MAX_WIDTH, max(MIN_WIDTH, int(text)))
+        wanted = int(text)
     except (TypeError, ValueError):
-        return default
+        wanted = default
+    return next((w for w in WIDTHS if w >= wanted), MAX_WIDTH)
 
 
 class ThumbCache:

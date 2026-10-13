@@ -16,6 +16,8 @@ import time
 from starlette.concurrency import run_in_threadpool
 from starlette.responses import JSONResponse
 
+from .bodies import read_limited
+
 DOCUMENT = re.compile(r"[A-Za-z0-9._-]{1,128}")
 
 
@@ -34,15 +36,14 @@ class KoSync:
         sent = request.headers.get("x-auth-key", "").lower()
         if not name or not sent:
             return None
-        if self.throttle.wait(request, name):
+        if self.throttle.wait_key(request):               # only the address is throttled: a wrong key never locks a user name
             return None
         user = self.auth.users.get(name)
         secret = self.state.get_appkey(name) if user else None
         expected = hashlib.md5(secret.encode("utf-8"), usedforsecurity=False).hexdigest() if secret else "0" * 32
-        if user is None or secret is None or not hmac.compare_digest(expected, sent):
-            self.throttle.fail(request, name)
+        if user is None or secret is None or not hmac.compare_digest(expected.encode("ascii"), sent.encode("utf-8", "replace")):
+            self.throttle.fail_key(request)
             return None
-        self.throttle.ok(request, name)
         return user
 
     async def handle(self, request):
@@ -61,10 +62,11 @@ class KoSync:
         return _answer({"message": "Not found"}, 404)
 
     async def put(self, request, user):
-        if int(request.headers.get("content-length", "0") or 0) > 4096:
+        raw = await read_limited(request, 4096)
+        if raw is None:
             return _answer({"message": "Too large"}, 413)
         try:
-            body = json.loads((await request.body())[:4096])
+            body = json.loads(raw)
             document, progress = str(body["document"]), str(body["progress"])
             percentage = float(body["percentage"])
         except (ValueError, KeyError, TypeError):

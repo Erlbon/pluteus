@@ -12,6 +12,7 @@ import os
 import re
 import secrets
 import shutil
+import time
 import unicodedata
 
 from python_multipart.multipart import MultipartParser, parse_options_header
@@ -84,6 +85,19 @@ def _claim(dirpath: str, name: str) -> str:
         except FileExistsError:
             continue
     raise UploadError("exists")
+
+
+def _replace(src: str, dst: str) -> None:
+    """os.replace, tried a few times on Windows: a virus scanner or the indexer may hold the new file open for a moment
+    (WinError 5 access denied / 32 sharing violation)."""
+    for attempt in range(4):
+        try:
+            os.replace(src, dst)
+            return
+        except PermissionError as e:
+            if getattr(e, "winerror", None) not in (5, 32) or attempt == 3:
+                raise
+            time.sleep(0.05 * (attempt + 1))
 
 
 class Intake:
@@ -186,11 +200,17 @@ class Intake:
             return
         os.close(cur["fd"])
         cur["fd"] = None
+        final = None
         try:
             final = _claim(self.dir, cur["name"])
-            os.replace(cur["tmp"], final)            # takes over the claimed name atomically
+            _replace(cur["tmp"], final)              # takes over the claimed name atomically
         except (OSError, UploadError):
             self._discard(cur)
+            if final:                                # the name was claimed with an empty file: do not leave it behind
+                try:
+                    os.remove(final)
+                except OSError:
+                    pass
             self.failed.append((cur["label"], "write"))
             return
         cur["tmp"] = None

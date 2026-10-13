@@ -71,7 +71,22 @@ def test_bad_bodies_are_refused(client, over):
     assert put(client, **over).status_code == 400
 
 
-def test_wrong_logins_are_throttled(client):
-    for _ in range(10):
+def test_wrong_keys_never_lock_the_user_name_only_the_address(client):
+    for _ in range(10):                                                  # an old key in a forgotten device, retrying
         client.get("/kosync/users/auth", headers={**AUTH, "x-auth-key": "0" * 32})
-    assert client.get("/kosync/users/auth", headers=AUTH).status_code == 401                              # locked, even with the right key
+    assert client.get("/kosync/users/auth", headers=AUTH).status_code == 200                              # the right key still works
+    assert client.post("/login", data={"username": "alice", "password": "pw"}, headers={"Origin": "http://testserver"},
+                       follow_redirects=False).status_code == 303                                         # and so does the web login
+    for _ in range(30):
+        client.get("/kosync/users/auth", headers={**AUTH, "x-auth-key": "0" * 32})
+    assert client.get("/kosync/users/auth", headers=AUTH).status_code == 401                              # a flood from one address stops
+
+
+def test_a_non_ascii_key_header_is_a_401_not_a_crash(client):
+    r = client.get("/kosync/users/auth", headers={"x-auth-user": "alice", "x-auth-key": "caf\u00e9".encode("latin-1")})
+    assert r.status_code == 401
+
+
+def test_an_oversized_body_is_refused_without_reading_it_all(client):
+    big = b'{"document": "%s"}' % (b"a" * 10000)
+    assert client.put("/kosync/syncs/progress", content=big, headers={**AUTH, "content-type": "application/json"}).status_code == 413

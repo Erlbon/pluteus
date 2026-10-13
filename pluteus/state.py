@@ -194,6 +194,13 @@ class StateDB:
         """{user name: secret}: the Subsonic login keys (few: one per user)."""
         return {r[0]: r[1] for r in self._all("SELECT username, secret FROM appkeys")}
 
+    def purge_appkeys(self, existing) -> int:
+        """Delete the keys of users that are no longer in the configuration (a new user with the same name must not inherit one)."""
+        gone = [name for name in self.appkeys() if name not in existing]
+        for name in gone:
+            self.delete_appkey(name)
+        return len(gone)
+
     def appkey_users(self) -> dict:
         """{user name: when the key was made}."""
         return {r[0]: r[1] for r in self._all("SELECT username, created FROM appkeys")}

@@ -29,6 +29,7 @@ from starlette.routing import Route
 
 from . import __version__, adminweb, cbz, folderpick, uploads
 from .admin import AdminModel
+from .bodies import read_limited
 from .app import _PLAIN_HOST as PLAIN_HOST
 from .app import SecurityHeaders
 from .config import ConfigError
@@ -117,9 +118,9 @@ def create_admin_app(main_app) -> Starlette:
         return wrapper
 
     async def form_of(request) -> dict:
-        if int(request.headers.get("content-length", "0") or 0) > BODY_LIMIT:
+        body = await read_limited(request, BODY_LIMIT)
+        if body is None:
             return {}
-        body = (await request.body())[:BODY_LIMIT]
         return parse_qs(body.decode("utf-8", "replace"), keep_blank_values=True)
 
     def done(where: str, code: str) -> RedirectResponse:
@@ -352,6 +353,8 @@ def create_admin_app(main_app) -> Starlette:
             if admins_after(model, name, None) < 1:
                 raise EditError("the last admin cannot be removed")
             model.remove_user(name)
+            state.delete_appkey(name)                     # a new user with the same name must not inherit the key
+            auth.forget_user(name)
             return "removed"
         return await change(request, user, action)
 
@@ -368,8 +371,7 @@ def create_admin_app(main_app) -> Starlette:
         await run_in_threadpool(state.set_appkey, name, secret)
         auth.forget_user(name)                        # logins made with the old key stop at once
         log.info("admin %s: music app key made for %s", user.name, name)
-        host = request.headers.get("host", "")
-        address = ("http://%s:%d/%s" % (host.rsplit(":", 1)[0] or "this-server", cfg.port, cfg.base_path.strip("/"))).rstrip("/")
+        address = site_link(request).rstrip("/")                      # the site as this page was opened (its own port, not admin_port)
         return await run_in_threadpool(users_html, user.name, "", "", 200, (name, secret), address)
 
     @guarded

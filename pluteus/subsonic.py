@@ -28,6 +28,7 @@ from starlette.responses import FileResponse, PlainTextResponse, Response
 
 from . import __version__, kinds, mediainfo
 from .auth import verify_password
+from .bodies import read_limited
 from .fs import NotFound, PathError
 
 API_VERSION = "1.16.1"
@@ -140,12 +141,11 @@ class Subsonic:
     async def handle(self, request) -> Response:
         params = dict(request.query_params)
         if request.method == "POST":
-            try:
-                body = (await request.body())[:16384].decode("utf-8", "replace")
-            except Exception:                           # noqa: BLE001
-                body = ""
+            raw = await read_limited(request, 16384)
+            if raw is None:
+                return render(envelope(error=ApiError(0, "The request is too large.")), "json" if params.get("f") == "json" else "xml")
             from urllib.parse import parse_qsl
-            params.update(dict(parse_qsl(body, keep_blank_values=True)))
+            params.update(dict(parse_qsl(raw.decode("utf-8", "replace"), keep_blank_values=True)))
         fmt = "json" if params.get("f") == "json" else "xml"
         name = request.path_params["name"].lower()
         name = name[:-5] if name.endswith(".view") else name
@@ -170,60 +170,89 @@ class Subsonic:
 
     # ---- login ---------------------------------------------------------------------------------------------------------
     async def authenticate(self, request, params):
+        """Three kinds of login. A KEY (apiKey, or the salted token made from it) is a long random secret, so a wrong one counts
+        against the address only and never locks a user name. A `p` password may be the key or the real password: the key is
+        tried first (cheap), and only a wrong real-password attempt counts against the user name, like the web login."""
         key, name = params.get("apiKey", ""), params.get("u", "")
         token, salt, password = params.get("t", ""), params.get("s", ""), params.get("p", "")
         if key and (name or token or password):
             raise ApiError(43, "Multiple conflicting authentication mechanisms provided.")
-        who = name or ("(api key)" if key else "")
         if not (key or (token and salt) or password):
             raise ApiError(10, "Required parameter is missing.")
-        wait = self.throttle.wait(request, who)
+        if key or (token and salt):
+            wait = self.throttle.wait_key(request)
+            if wait:
+                raise ApiError(40, "Too many failed attempts. Try again in %d seconds." % wait)
+            if key:
+                user = await run_in_threadpool(self._user_for_key, key)
+            else:
+                user = await run_in_threadpool(self._check_token, name, token, salt)
+            if user is None:
+                self.throttle.fail_key(request)
+                raise ApiError(44 if key else 40, "Invalid API key." if key else "Wrong username or password.")
+            self.throttle.ok(request, user.name)
+            return user
+        user = await run_in_threadpool(self._check_key_password, name, password)
+        if user is not None:
+            self.throttle.ok(request, user.name)
+            return user
+        wait = self.throttle.wait(request, name)
         if wait:
             raise ApiError(40, "Too many failed attempts. Try again in %d seconds." % wait)
-        user = None
-        if key:
-            user = await run_in_threadpool(self._user_for_key, key)
-            if user is None:
-                self.throttle.fail(request, who)
-                raise ApiError(44, "Invalid API key.")
-        else:
-            user = await run_in_threadpool(self._check_login, name, token, salt, password)
-            if user is None:
-                self.throttle.fail(request, who)
-                raise ApiError(40, "Wrong username or password.")
+        user = await run_in_threadpool(self._check_real_password, name, password)
+        if user is None:
+            self.throttle.fail(request, name)
+            raise ApiError(40, "Wrong username or password.")
         self.throttle.ok(request, user.name)
         return user
+
+    @staticmethod
+    def _same(a: str, b: str) -> bool:
+        return hmac.compare_digest(a.encode("utf-8", "replace"), b.encode("utf-8", "replace"))
 
     def _user_for_key(self, key: str):
         found = None
         for username, secret in self.state.appkeys().items():
-            if hmac.compare_digest(secret.encode("utf-8"), key.encode("utf-8")):
+            if self._same(secret, key):
                 found = self.auth.users.get(username)
         return found
 
-    def _check_login(self, name: str, token: str, salt: str, password: str):
+    def _check_token(self, name: str, token: str, salt: str):
+        """The salted-token login: t = md5(key + salt). An unknown name or a user without a key costs as much as a wrong token."""
         user = self.auth.users.get(name)
         secret = self.state.get_appkey(name) if user else None
-        if user is None:
-            verify_password(password or "x", self.auth._dummy)       # an unknown name costs as much as a wrong password
+        if user is None or secret is None:
+            verify_password("x", self.auth._dummy)
             return None
-        if token and salt:
-            if secret is None:
-                return None
-            expected = hashlib.md5((secret + salt).encode("utf-8"), usedforsecurity=False).hexdigest()
-            return user if hmac.compare_digest(expected, token.lower()) else None
+        expected = hashlib.md5((secret + salt).encode("utf-8"), usedforsecurity=False).hexdigest()
+        return user if self._same(expected, token.lower()) else None
+
+    @staticmethod
+    def _plain(password: str):
+        """The legacy `p` value: plain, or `enc:` + hex."""
         if password.startswith("enc:"):
             try:
-                password = bytes.fromhex(password[4:]).decode("utf-8")
+                return bytes.fromhex(password[4:]).decode("utf-8")
             except ValueError:
                 return None
-        if secret is not None and hmac.compare_digest(secret.encode("utf-8"), password.encode("utf-8")):
-            return user
+        return password
+
+    def _check_key_password(self, name: str, password: str):
+        """The user when the legacy `p` value is the user's key (no password hashing)."""
+        user, password = self.auth.users.get(name), self._plain(password)
+        secret = self.state.get_appkey(name) if (user and password is not None) else None
+        return user if (secret is not None and self._same(secret, password)) else None
+
+    def _check_real_password(self, name: str, password: str):
+        user, password = self.auth.users.get(name), self._plain(password)
+        if user is None or password is None:
+            verify_password("x", self.auth._dummy)       # an unknown name costs as much as a wrong password
+            return None
         cache_key = hashlib.sha256((name + SEP + password).encode("utf-8")).hexdigest()
         now = time.monotonic()
         if self._pw_ok.get(cache_key, 0) > now:
             return user
-        if verify_password(password, user.password_hash):               # the real password, legacy login
+        if verify_password(password, user.password_hash):
             if len(self._pw_ok) > 500:
                 self._pw_ok = {k: v for k, v in self._pw_ok.items() if v > now}
             self._pw_ok[cache_key] = now + self.cfg.auth_cache_seconds

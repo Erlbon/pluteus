@@ -48,6 +48,30 @@ def test_a_key_login_cannot_write_or_become_a_session(setup):
     assert c.get("/", headers={"Accept": "text/html"}, follow_redirects=False).status_code in (303, 401)  # no cookie was given
 
 
+def test_a_key_cannot_write_progress_or_bookmarks_either(setup):
+    c, _, _ = setup
+    key = {**basic("alice", KEY), "Origin": "http://testserver"}
+    assert c.put("/api/progress/books/a.epub", json={"locator": "x", "percent": 0.5}, headers=key).status_code == 403
+    assert c.get("/api/progress/books/a.epub", headers=key).status_code == 200                      # reading is fine
+    real = {**basic("alice", "pw-alice"), "Origin": "http://testserver"}
+    assert c.put("/api/progress/books/a.epub", json={"locator": "x", "percent": 0.5}, headers=real).status_code == 200
+
+
+def test_a_removed_user_does_not_leave_a_key_behind(setup, tmp_path):
+    c, app, admin = setup
+    app.state.state.set_appkey("ghost", "ghost-key")
+    assert app.state.state.purge_appkeys({"alice"}) == 1
+    assert app.state.state.get_appkey("ghost") is None and app.state.state.get_appkey("alice") == KEY
+
+
+def test_the_access_log_hides_secrets():
+    from pluteus.app import _logged_target
+    scope = {"path": "/rest/ping.view", "query_string": b"u=alice&p=SECRET&apiKey=K&t=T&s=S&f=json&id=7"}
+    shown = _logged_target(scope)
+    assert "SECRET" not in shown and "apiKey=***" in shown and "u=alice" in shown and "id=7" in shown
+    assert _logged_target({"path": "/pluteus/join/abc123", "query_string": b""}) == "/pluteus/join/***"
+
+
 def test_a_key_login_is_never_an_admin(setup):
     _, _, admin = setup
     assert admin.get("/", headers=basic("alice", KEY)).status_code in (401, 403)

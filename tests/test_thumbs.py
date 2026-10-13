@@ -43,10 +43,10 @@ def test_the_epub_cover_is_found_both_ways(client):
 
 def test_a_comic_uses_its_first_page_and_widths_are_clamped(client):
     c, _ = client
-    assert size_of(c.get("/thumb/lib/A/comic.cbz?w=100", headers=AUTH).content) == (100, 150)
+    assert size_of(c.get("/thumb/lib/A/comic.cbz?w=100", headers=AUTH).content) == (160, 240)       # rounded up to a fixed width
     assert size_of(c.get("/thumb/lib/A/comic.cbz?w=1", headers=AUTH).content)[0] == thumbs.MIN_WIDTH
     assert size_of(c.get("/thumb/lib/A/comic.cbz?w=99999", headers=AUTH).content)[0] == 800        # never enlarged, never above the limit
-    assert size_of(c.get("/thumb/lib/A/comic.cbz?w=abc", headers=AUTH).content)[0] == 200          # not a number: the default
+    assert size_of(c.get("/thumb/lib/A/comic.cbz?w=abc", headers=AUTH).content)[0] == 240          # not a number: the default
 
 
 def test_no_cover_is_a_404_and_the_login_applies(client):
@@ -124,3 +124,27 @@ def test_by_default_the_cover_view_is_not_offered(quiet):
     page = quiet.get("/browse/lib/A?view=grid", headers={**AUTH, **HTML}).text
     assert "pl-grid" not in page and "Covers" not in page                               # not even when the address asks for it
     assert "Folders are shown as" not in quiet.get("/settings", headers={**AUTH, **HTML}).text
+
+
+# ---- a small file can hold a huge picture ---------------------------------------------------------------------------------------------------
+def test_a_picture_with_too_many_pixels_is_refused_before_it_is_decoded():
+    flat = png((10, 10, 10), size=(6000, 6000))                                   # about 120 KB of PNG, 36 million pixels
+    assert len(flat) < 200_000
+    assert thumbs.scaled(flat, 160) is False
+    assert thumbs.scaled(b"not a picture", 160) is False
+
+
+def test_only_a_few_widths_exist_so_the_cache_cannot_blow_up(client):
+    c, tmp = client
+    for w in range(48, 120, 7):
+        c.get("/thumb/lib/A/three.epub?w=%d" % w, headers=AUTH)
+    assert len(list((tmp / "data" / "thumbs").glob("*.jpg"))) <= 2
+    assert [thumbs.clamp_width(str(n)) for n in (1, 96, 97, 500, 5000)] == [96, 96, 160, 640, 900]
+
+
+def test_a_refused_picture_gives_no_cover_not_the_original(tmp_path):
+    lib = tmp_path / "lib"
+    make_epub(lib / "A" / "bomb.epub", title="Bomb", cover=png((9, 9, 9), size=(6000, 6000)))
+    cfg = parse_config({"server": {"thumbnails": True}, "roots": [{"name": "lib", "path": str(lib)}],
+                        "users": [{"name": "alice", "password_hash": hash_password("pw", n=2 ** 4), "roots": ["*"]}]})
+    assert TestClient(create_app(cfg)).get("/thumb/lib/A/bomb.epub", headers=AUTH).status_code == 404
