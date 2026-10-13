@@ -2,6 +2,11 @@
 
 Release notes are taken from the section of the tagged version (`## 0.5.0 ...`).
 
+## Unreleased (for 0.9.1)
+Found by driving the 0.9.0 Subsonic API with a real, strictly typed client library (py-opensonic):
+- `getArtists` and `getIndexes` always carry `ignoredArticles` (it was dropped when empty, and a strict app refuses the answer without it).
+- `getAlbum` carries `created`, like the other album items.
+
 ## 0.9.0 - 2026-10-13
 The feature-complete pre-release. Since 0.6.0: a music player with tags, covers, lyrics, chapters and bookmarks; Subsonic, WebDAV, KOReader sync and OPDS 2.0
 (all off until switched on); per-user app keys; favourites and read next; an optional cover view and cover thumbnails; and the fixes below

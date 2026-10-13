@@ -65,10 +65,13 @@ def read_id(value: str):
 
 
 # ---- answers --------------------------------------------------------------------------------------------------------------
+KEEP_EMPTY = {"ignoredArticles"}                 # required by the API even when it is empty
+
+
 def prune(value):
     """Leave out empty values (None and empty strings) so the answer holds only what is known."""
     if isinstance(value, dict):
-        return {k: prune(v) for k, v in value.items() if v is not None and v != ""}
+        return {k: prune(v) for k, v in value.items() if v is not None and (v != "" or k in KEEP_EMPTY)}
     if isinstance(value, list):
         return [prune(v) for v in value]
     return value
@@ -447,6 +450,7 @@ class Subsonic:
                           "artist": self.lib.display_name(parts[0]) if len(parts) > 1 else "",
                           "artistId": make_id(root, parts[:1]) if len(parts) > 1 else None, "coverArt": p["id"],
                           "songCount": len(listed), "duration": sum(s.get("duration") or 0 for s in listed),
+                          "created": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(clamp_time(max((e.mtime for e in songs), default=0)))),
                           "year": next((s["year"] for s in listed if s.get("year")), None),
                           "genre": next((s["genre"] for s in listed if s.get("genre")), None), "song": listed}}
 

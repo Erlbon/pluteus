@@ -272,3 +272,16 @@ def test_several_apps_asking_at_once_share_one_scan(lib):
     finally:
         api.lib.list_dir = real
     assert 0 < len(scans) <= 4                                                          # not five full scans (the album walk lists 2 artists)
+
+
+def test_ignored_articles_is_always_present_even_when_empty(lib):
+    c = make(lib)
+    assert body(call(c, "getArtists"))["artists"]["ignoredArticles"] == ""          # strict clients refuse the answer without it
+    assert body(call(c, "getIndexes"))["indexes"]["ignoredArticles"] == ""
+
+
+def test_get_album_carries_created_like_every_other_album_item(lib):
+    c = make(lib)
+    kid = subsonic.make_id("music", ("Kaizers", "Ompa"))
+    album = body(call(c, "getAlbum", id=kid))["album"]
+    assert album["created"].endswith("Z") and album["songCount"] == 2           # a strict client refuses an album without it
