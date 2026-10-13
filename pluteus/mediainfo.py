@@ -255,9 +255,13 @@ def _atoms(f, start: int, end: int):
 
 
 def read_chapters(path: str) -> list:
-    """[(seconds, title)] from the chapter list of an m4b / m4a / mp4, or [] when it has none. Never raises."""
+    """[(seconds, title)] from the chapter list of an m4b / m4a / mp4 (Nero chpl) or an mp3 (ID3 CHAP frames), or [] when it has none.
+    Never raises."""
     try:
         with open(path, "rb") as f:
+            if f.read(3) == b"ID3":                                  # an mp3 with chapter frames
+                f.seek(0)
+                return _id3_chapters(f)
             size = os.fstat(f.fileno()).st_size
             for kind, s, e in _atoms(f, 0, size):
                 if kind != b"moov":
@@ -269,7 +273,7 @@ def read_chapters(path: str) -> list:
                         if k3 == b"chpl":
                             f.seek(s3)
                             return _parse_chpl(f.read(min(e3 - s3, 1024 * 1024)))
-    except (OSError, struct.error, ValueError):
+    except (OSError, struct.error, ValueError, IndexError):
         pass
     return []
 
@@ -289,5 +293,66 @@ def _parse_chpl(data: bytes) -> list:
         title = data[off + 9:off + 9 + length].decode("utf-8", "replace")
         off += 9 + length
         out.append((round(start, 2), _CONTROL.sub("", title).strip()[:200]))
+    out.sort(key=lambda item: item[0])
+    return out
+
+
+def _synchsafe(raw: bytes) -> int:
+    return (raw[0] << 21) | (raw[1] << 14) | (raw[2] << 7) | raw[3]
+
+
+def _id3_text(data: bytes) -> str:
+    """A text frame body: one encoding byte, then the text."""
+    if not data:
+        return ""
+    enc, text = data[0], data[1:]
+    codec = {0: "latin-1", 1: "utf-16", 2: "utf-16-be", 3: "utf-8"}.get(enc, "latin-1")
+    return _CONTROL.sub("", text.decode(codec, "replace").replace("\x00", "")).strip()[:200]
+
+
+def _id3_frames(body: bytes, major: int):
+    """(id, data) of each frame of an ID3v2.3 / 2.4 tag (or of the sub-frames inside a frame)."""
+    pos = 0
+    while pos + 10 <= len(body) and body[pos] != 0:
+        ident = body[pos:pos + 4]
+        size = _synchsafe(body[pos + 4:pos + 8]) if major == 4 else int.from_bytes(body[pos + 4:pos + 8], "big")
+        data = body[pos + 10:pos + 10 + size]
+        if size <= 0 or pos + 10 + size > len(body):
+            if size > 0 and ident == b"CHAP":
+                data = body[pos + 10:]                      # a cut-off last frame: take what is there
+            else:
+                return
+        yield ident, data
+        pos += 10 + size
+
+
+def _id3_chapters(f) -> list:
+    head = f.read(10)
+    if len(head) < 10 or head[3] not in (3, 4):
+        return []
+    major, flags = head[3], head[5]
+    size = _synchsafe(head[6:10])
+    body = f.read(min(size, 8 * 1024 * 1024))
+    if flags & 0x80 and major == 3:                         # unsynchronisation of the whole tag
+        body = body.replace(b"\xff\x00", b"\xff")
+    if flags & 0x40 and len(body) >= 4:                     # an extended header comes first: skip it
+        skip = _synchsafe(body[:4]) if major == 4 else int.from_bytes(body[:4], "big") + 4
+        body = body[skip:]
+    out = []
+    for ident, data in _id3_frames(body, major):
+        if ident != b"CHAP":
+            continue
+        end = data.find(b"\x00")
+        if end < 0 or len(data) < end + 17:
+            continue
+        start_ms = int.from_bytes(data[end + 1:end + 5], "big")
+        title = ""
+        for sub, sub_data in _id3_frames(data[end + 17:], major):
+            if sub == b"TIT2":
+                title = _id3_text(sub_data)
+                break
+        out.append((round(start_ms / 1000, 2), title))
+        if len(out) >= MAX_CHAPTERS:
+            break
     out.sort(key=lambda item: item[0])
     return out

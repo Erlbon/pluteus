@@ -187,3 +187,23 @@ def test_there_is_a_limit_per_file(music):
         assert state.add_bookmark("alice", "music", "Album/spark.mp3", float(i), "") is not None
     r = client.post("/api/bookmarks/music/Album/spark.mp3", json={"position": 1}, headers={**auth, "Origin": "http://testserver"})
     assert r.status_code == 400
+
+
+def test_chapters_are_read_from_id3_chap_frames_of_an_mp3():
+    chapters = mediainfo.read_chapters(os.path.join(HERE, "data", "chapters.mp3"))
+    assert [t for t, _ in chapters] == [0.0, 2.0, 4.5] and [n for _, n in chapters] == ["Intro", "Del to æøå", "Slutt"]
+
+
+def test_odd_id3_tags_never_raise(tmp_path):
+    for name, data in (("a.mp3", b"ID3"), ("b.mp3", b"ID3\x04\x00\x00\x00\x00\x00\x20" + b"CHAP\x00\x00\x00\x10" + b"\x00" * 30),
+                       ("c.mp3", b"ID3\x02\x00\x00\x00\x00\x00\x05abcde"), ("d.mp3", b"ID3\x03\x00\x40\x00\x00\x00\x08" + b"\xff" * 8)):
+        f = tmp_path / name
+        f.write_bytes(data)
+        assert isinstance(mediainfo.read_chapters(str(f)), list)
+
+
+def test_an_mp3_audiobook_page_lists_its_chapters(music):
+    shutil.copy(os.path.join(HERE, "data", "chapters.mp3"), music / "Album" / "book.mp3")
+    client, auth = make_client(music)
+    page = client.get("/view/music/Album/book.mp3", headers={**auth, **HTML}).text
+    assert "id='chapters-btn'" in page and "Del to æøå" in page and "data-t='4.5'" in page

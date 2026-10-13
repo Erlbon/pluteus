@@ -2,6 +2,9 @@
 
 Release notes are taken from the section of the tagged version (`## 0.5.0 ...`).
 
+## 0.8.4 - 2026-10-13
+- **Chapters for mp3 audiobooks** (ID3 CHAP frames), next to the m4b chapter list.
+
 ## 0.8.3 - 2026-10-13
 - **App keys:** the per-user key now works as the password in reader apps (OPDS), downloads and WebDAV too, read only (no uploads, no
   changes, no admin page, no web session). Making or revoking a key signs the apps out at once.
