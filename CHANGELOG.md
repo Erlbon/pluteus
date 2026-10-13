@@ -3,6 +3,7 @@
 Release notes are taken from the section of the tagged version (`## 0.5.0 ...`).
 
 ## Unreleased (for 0.9.2)
+- **Music player:** a volume control (a speaker that mutes, and a short slider) at the end of the position bar, on wide screens only; the level is remembered. A phone keeps using its own volume buttons.
 - **EPUB reader:** the mouse wheel (and a touchpad swipe) turns pages in the page-by-page view, one page per gesture. In the scrolling view the wheel scrolls as before, and Ctrl + wheel stays the browser's zoom.
 
 ## 0.9.1 - 2026-10-13

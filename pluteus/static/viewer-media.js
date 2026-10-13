@@ -98,6 +98,31 @@
     ["play", "pause", "ended"].forEach(function (n) { media.addEventListener(n, paint); });
     ["timeupdate", "loadedmetadata", "durationchange"].forEach(function (n) { media.addEventListener(n, tick); });
     paint(); tick();
+
+    /* volume (shown on wide screens only, see base.css): remembered in this browser; the icon is a mute switch */
+    var volume = document.getElementById("volume"), muteButton = document.getElementById("mute");
+    if (volume && muteButton) {
+      var level = 1;
+      try { var saved = parseFloat(localStorage.getItem("pluteus-media-volume")); if (saved >= 0 && saved <= 1) level = saved; } catch (e) { /* storage blocked */ }
+      var showVolume = function () {
+        volume.value = String(Math.round((media.muted ? 0 : media.volume) * 100));
+        var icon = muteButton.querySelector(".pl-icon");
+        if (icon) icon.className = "pl-icon " + (media.muted || media.volume === 0 ? "pl-i-mute" : "pl-i-volume");
+        muteButton.setAttribute("aria-label", media.muted ? "Unmute" : "Mute");
+      };
+      media.volume = level;
+      volume.addEventListener("input", function () {
+        media.muted = false;
+        media.volume = volume.value / 100;
+        try { localStorage.setItem("pluteus-media-volume", String(media.volume)); } catch (e) { /* storage blocked */ }
+      });
+      muteButton.addEventListener("click", function () {
+        if (media.volume === 0) { media.muted = false; media.volume = 0.5; }                    // at zero the icon brings the sound back
+        else media.muted = !media.muted;
+      });
+      media.addEventListener("volumechange", showVolume);
+      showVolume();
+    }
     document.addEventListener("keydown", function (e) {
       if (e.altKey || e.ctrlKey || e.metaKey) return;                    // Alt+Arrow is the browser's Back / Forward
       if (e.target && /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)) return;      // the scrubber and fields keep their own keys

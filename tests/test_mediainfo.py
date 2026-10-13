@@ -124,6 +124,17 @@ def test_the_folder_listing_shows_file_names_not_tags(music):
     assert "Spark På Leggen" not in page and "Kaizers Orchestra" not in page
 
 
+# ---- volume (wide screens only) -----------------------------------------------------------------------------------------------------------
+def test_the_music_player_has_a_volume_control_that_the_script_remembers(music):
+    client, auth = make_client(music)
+    page = client.get("/view/music/Album/spark.mp3", headers={**auth, **HTML}).text
+    assert "id='volume'" in page and "id='mute'" in page and page.index("id='dur'") < page.index("id='volume'")
+    js = open(os.path.join(HERE, "..", "pluteus", "static", "viewer-media.js"), encoding="utf-8").read()
+    css = open(os.path.join(HERE, "..", "pluteus", "static", "base.css"), encoding="utf-8").read()
+    assert "pluteus-media-volume" in js and "volumechange" in js
+    assert ".pl-vol { display: none; }" in css and "@media (min-width: 720px)" in css      # a phone has its own volume buttons
+
+
 # ---- the transport row ----------------------------------------------------------------------------------------------------------------------
 def test_the_speed_is_written_along_the_play_button_and_the_row_has_no_text_labels(music):
     client, auth = make_client(music)

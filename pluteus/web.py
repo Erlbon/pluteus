@@ -590,7 +590,9 @@ def media_viewer_page(ctx: Ctx, title: str, *, kind: str, raw_url: str, mime: st
                  "<audio id='media' controls preload='metadata' src='%s'><p>Your browser cannot play this file; "
                  "<a href='%s'>download it</a>.</p></audio>"
                  "<div class='pl-scrub'><span id='cur'>0:00</span><input type='range' id='scrub' min='0' max='1000' value='0' "
-                 "aria-label='Position'><span id='dur'>&ndash;:&ndash;&ndash;</span></div>"
+                 "aria-label='Position'><span id='dur'>&ndash;:&ndash;&ndash;</span>"
+                 "<span class='pl-vol'><button type='button' id='mute' class='pl-vol-btn' aria-label='Mute'><span class='pl-icon pl-i-volume'></span></button>"
+                 "<input type='range' id='volume' min='0' max='100' value='100' aria-label='Volume'></span></div>"
                  "<div class='pl-transport'>%s%s<span class='pl-play-wrap'>%s%s</span>%s%s</div><div class='pl-tools'>%s%s</div>%s"
                  "<div class='pl-toast' id='status' hidden></div></div>"
                  % (backdrop, picture, info, escape(raw_url), escape(download_url), speed_down, skip_back, speed_val,

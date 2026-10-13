@@ -429,6 +429,15 @@ html[data-icons="aurora"] .pl-ico-upload  { color: light-dark(#1f7ae0, #7cc8ff);
 .pl-scrub input { flex: 1; accent-color: var(--pl-accent); height: 28px; min-width: 0; }
 .pl-transport { display: none; align-items: center; gap: 14px; justify-content: center; }
 .pl-js .pl-scrub { display: flex; }
+/* volume: a speaker and a short slider at the end of the position bar; on wide screens only (a phone has its own volume buttons) */
+.pl-vol { display: none; }
+@media (min-width: 720px) {
+  .pl-js .pl-vol { display: inline-flex; align-items: center; gap: 4px; margin-left: 8px; }
+  .pl-vol input { flex: none; width: 88px; height: 24px; }
+}
+.pl-vol-btn { font: inherit; background: none; border: 0; padding: 4px; cursor: pointer; color: var(--pl-accent); border-radius: 8px; line-height: 0; }
+.pl-vol-btn:hover { background: var(--pl-card); }
+.pl-vol-btn .pl-icon { width: 20px; height: 20px; }
 .pl-js .pl-transport { display: flex; }
 .pl-transport .pl-btn { min-height: 52px; min-width: 72px; justify-content: center; border-radius: 14px; display: inline-flex; align-items: center; gap: 6px; }
 .pl-transport .pl-icon { color: var(--pl-accent); width: 32px; height: 32px; vertical-align: 0; }
