@@ -142,7 +142,12 @@ def main(argv=None) -> int:
         from .supervise import run as supervise
         return supervise(a.config, a.log, a.delay)
     if a.cmd == "admin":
-        from .admin_gui import main as admin_main
+        try:
+            from .admin_gui import main as admin_main
+        except ImportError:                              # the packaged program leaves out tkinter
+            print("The admin window is not part of this build. Use the web admin page (admin_port) or the `user` commands.",
+                  file=sys.stderr)
+            return 2
         return admin_main(["--config", a.config] if a.config else [])
     if a.cmd == "hash-password":
         try:

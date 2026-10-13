@@ -1,0 +1,20 @@
+# systemd unit for the Linux download. Copy the program to /opt/pluteus/pluteus and your config to /etc/pluteus/config.toml, then:
+#   sudo cp tools/pluteus.service /etc/systemd/system/pluteus.service
+#   sudo systemctl daemon-reload && sudo systemctl enable --now pluteus
+[Unit]
+Description=Pluteus library server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+ExecStart=/opt/pluteus/pluteus serve --config /etc/pluteus/config.toml
+Restart=on-failure
+User=pluteus
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/var/lib/pluteus
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

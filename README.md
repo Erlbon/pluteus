@@ -5,7 +5,7 @@ OPDS app, download files, with per-user logins. Python, no Java, low memory, no 
 Built as a light replacement for Ubooquity, for people who keep their library as plain folders on disk
 (tested on about 10 TB of books and comics).
 
-**Status: 0.4.0, in daily use, young.** Named after the *pluteus*, the sloping shelf or bookcase of a
+**Status: 0.5.0, in daily use, young.** Named after the *pluteus*, the sloping shelf or bookcase of a
 medieval library. Pronounced "PLOO-tee-us".
 
 ## What you get
@@ -52,6 +52,14 @@ Then open `http://localhost:8080/` in a browser, or add `http://<host>:8080/opds
 an OPDS reader (KOReader, Panels, Moon+ Reader, Librera...). Reader apps log in with HTTP Basic; browsers
 get a login page and a session cookie.
 Put it behind HTTPS (a reverse proxy such as Caddy) before exposing it beyond your LAN.
+
+## Download (no Python needed)
+
+Each [release](https://github.com/Erlbon/pluteus/releases) has **`pluteus.exe`** (Windows) and **`pluteus-linux-x86_64.tar.gz`** (Linux,
+runs on most current distributions). Both are the same program as `python -m pluteus`: run `pluteus share FOLDER` (below) or
+`pluteus serve --config config.toml`. They are **not code-signed**, so Windows SmartScreen may warn on the first run ("More info",
+then "Run anyway"). RAR and 7z comics (CBR, CB7) need `bsdtar` (built into Windows 10 and later; `libarchive-tools` on Debian and
+Ubuntu). Docker stays the recommended way to run a permanent server. The Linux download includes a systemd unit.
 
 ## Quick share (no config file)
 

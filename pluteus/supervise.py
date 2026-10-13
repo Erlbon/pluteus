@@ -68,7 +68,9 @@ def _stamp(message: str) -> bytes:
 def run(config: str, log: str, delay: float = 10.0, max_runs: int | None = None, command: list | None = None) -> int:
     """Run the server in a loop. `command` and `max_runs` exist for tests; normally this never returns."""
     job = _kill_on_close_job()                     # noqa: F841 - must stay referenced until we exit
-    command = command or [sys.executable, "-m", "pluteus", "serve", "--config", config]
+    # A packaged exe (PyInstaller) is the program itself: it has no `-m`. Otherwise run this Python on the pluteus package.
+    own = [sys.executable] if getattr(sys, "frozen", False) else [sys.executable, "-m", "pluteus"]
+    command = command or own + ["serve", "--config", config]
     flags = CREATE_NO_WINDOW if sys.platform == "win32" else 0
     runs = 0
     while max_runs is None or runs < max_runs:

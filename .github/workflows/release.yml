@@ -1,0 +1,94 @@
+name: Release
+
+# Push a tag like v0.5.0 (it must equal "v" + the version in pluteus/__init__.py, and CHANGELOG.md needs a "## 0.5.0" section) to build
+# pluteus.exe on Windows and pluteus-linux-x86_64.tar.gz on Linux, test both, and publish them as a GitHub Release.
+# Re-running on an existing tag (Actions > Release > Run workflow) uploads the files again instead of failing.
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing tag to (re)build and publish, e.g. v0.5.0"
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    env:
+      TAG: ${{ github.event.inputs.tag || github.ref_name }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: python -m pip install ".[dev]" pyinstaller
+      - name: Check the tag against the version, and write the release notes
+        shell: bash
+        run: |
+          version=$(python -c "import pluteus; print(pluteus.__version__)")
+          [ "$TAG" = "v$version" ] || { echo "Tag $TAG does not match version $version"; exit 1; }
+          awk -v v="$version" '/^## /{p = (index($0, "## " v " ") == 1)} p' CHANGELOG.md > release_notes.md
+          [ -s release_notes.md ] || { echo "CHANGELOG.md has no section for $version"; exit 1; }
+          cat release_notes.md
+      - run: python -m pytest -q
+      - name: Build pluteus.exe
+        run: python -m PyInstaller pluteus.spec --noconfirm
+      - name: Smoke test the program
+        shell: bash
+        run: |
+          ./dist/pluteus.exe --version
+          ./dist/pluteus.exe share tests --port 8600 --no-qr > share.log 2>&1 &
+          sleep 8
+          curl -fsS http://127.0.0.1:8600/healthz
+          curl -fsS -o /dev/null http://127.0.0.1:8600/static/base.css
+          curl -fsS -o /dev/null http://127.0.0.1:8600/static/vendor/epub.min.js
+          curl -fsS -o /dev/null http://127.0.0.1:8600/
+          cat share.log
+      - name: Publish the GitHub Release
+        shell: bash
+        run: |
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" dist/pluteus.exe --clobber
+          else
+            gh release create "$TAG" dist/pluteus.exe --title "Pluteus $TAG" --notes-file release_notes.md
+          fi
+
+  linux:
+    needs: windows
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      TAG: ${{ github.event.inputs.tag || github.ref_name }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
+      - name: Build in the old-glibc Docker toolchain
+        run: bash tools/linux-build/build.sh dist-linux
+      - name: Smoke test on a clean system without Python
+        run: |
+          docker run -d --name smoke -p 8600:8600 -v "$PWD/dist-linux:/app:ro" -v "$PWD/tests:/media/share:ro" debian:bullseye-slim /app/pluteus share /media/share --port 8600 --no-qr
+          sleep 8
+          curl -fsS http://127.0.0.1:8600/healthz
+          curl -fsS -o /dev/null http://127.0.0.1:8600/static/base.css
+          curl -fsS -o /dev/null http://127.0.0.1:8600/
+          docker run --rm -v "$PWD/dist-linux:/app:ro" debian:bullseye-slim /app/pluteus --version
+          docker rm -f smoke
+      - name: Package and upload
+        run: |
+          mkdir -p pkg/pluteus
+          cp dist-linux/pluteus LICENSE README.md config.example.toml tools/pluteus.service pkg/pluteus/
+          cp tools/PACKAGE-README.txt pkg/pluteus/README.txt
+          tar -C pkg -czf pluteus-linux-x86_64.tar.gz pluteus
+          gh release upload "$TAG" pluteus-linux-x86_64.tar.gz --clobber

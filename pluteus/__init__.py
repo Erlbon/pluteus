@@ -1,3 +1,3 @@
 """pluteus: a small filesystem-first book and comic server (OPDS + web + download)."""
 
-__version__ = "0.4.0"
+__version__ = "0.5.0"
