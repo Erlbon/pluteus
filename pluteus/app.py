@@ -296,7 +296,8 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
 
     def ctx_for(user, view: str = "") -> web.Ctx:
         return web.Ctx(urls, user.name, theme_for(user.name), readers=True, admin_link=current_admin_link.get(),
-                       icons=icons_for(user.name), view=view or view_for(user.name),
+                       icons=icons_for(user.name), view=(view or view_for(user.name)) if cfg.thumbnails else "list",
+                       thumbs=cfg.thumbnails,
                        extras=state.get_prefs(user.name).get("player_extras", True) is not False)
 
     def unauthorized(request: Request, mode: str, wait: int) -> Response:
@@ -988,6 +989,8 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
     @guarded("media")
     async def thumb(request: Request, user):
         """A small JPEG of a book's cover (?w= the width in pixels), for the OPDS feeds."""
+        if not cfg.thumbnails:
+            raise NotFound("thumbnails are switched off")
         root = request.path_params["root"]
         parts = _parts(request.path_params["path"])
         info = await run_in_threadpool(lib.file_info, user, root, parts, cfg.show_all_files)
@@ -1004,7 +1007,7 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
 
     def covers_for(root: str, entry):
         """The two cover links (small, larger) of a book entry in a feed, for the kinds that have a picture."""
-        if kinds.kind_of(entry.name) not in ("epub", "comic", "audio"):
+        if not cfg.thumbnails or kinds.kind_of(entry.name) not in ("epub", "comic", "audio"):
             return None
         base = urls.thumb(root, entry.parts)
         return base + "?w=160", base + "?w=600"

@@ -24,7 +24,7 @@ def client(tmp_path):
     make_epub(lib / "A" / "two.epub", title="Two", cover=BIG, cover_style="epub2")
     make_epub(lib / "A" / "none.epub", title="None")
     make_cbz(lib / "A" / "comic.cbz", [("p1.png", BIG), ("p2.png", png((0, 0, 255)))])
-    cfg = parse_config({"server": {"data_dir": str(tmp_path / "data")}, "roots": [{"name": "lib", "path": str(lib)}],
+    cfg = parse_config({"server": {"data_dir": str(tmp_path / "data"), "thumbnails": True}, "roots": [{"name": "lib", "path": str(lib)}],
                         "users": [{"name": "alice", "password_hash": hash_password("pw", n=2 ** 4), "roots": ["*"]}]})
     return TestClient(create_app(cfg)), tmp_path
 
@@ -101,3 +101,26 @@ def test_the_list_is_the_default_and_the_choice_can_be_saved_in_settings(client)
     assert r.status_code == 303
     assert "pl-grid" in c.get("/browse/lib/A", headers={**AUTH, **HTML}).text
     assert "pl-grid" not in c.get("/browse/lib/A?view=list", headers={**AUTH, **HTML}).text           # one request can ask for the other
+
+
+# ---- thumbnails are off until switched on ---------------------------------------------------------------------------------------------------
+@pytest.fixture
+def quiet(tmp_path):
+    lib = tmp_path / "lib"
+    make_epub(lib / "A" / "three.epub", title="Three", cover=BIG)
+    cfg = parse_config({"roots": [{"name": "lib", "path": str(lib)}],
+                        "users": [{"name": "alice", "password_hash": hash_password("pw", n=2 ** 4), "roots": ["*"]}]})
+    return TestClient(create_app(cfg))
+
+
+def test_by_default_there_are_no_thumbnails_anywhere(quiet):
+    assert quiet.get("/thumb/lib/A/three.epub", headers=AUTH).status_code == 404
+    assert "thumb" not in quiet.get("/opds/lib/A", headers=AUTH).text
+    feed = quiet.get("/opds/lib/A", headers={**AUTH, "Accept": "application/opds+json"}).json()
+    assert "images" not in feed["publications"][0]
+
+
+def test_by_default_the_cover_view_is_not_offered(quiet):
+    page = quiet.get("/browse/lib/A?view=grid", headers={**AUTH, **HTML}).text
+    assert "pl-grid" not in page and "Covers" not in page                               # not even when the address asks for it
+    assert "Folders are shown as" not in quiet.get("/settings", headers={**AUTH, **HTML}).text

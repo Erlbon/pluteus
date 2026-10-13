@@ -2,6 +2,10 @@
 
 Release notes are taken from the section of the tagged version (`## 0.5.0 ...`).
 
+## 0.8.8 - 2026-10-13
+- **`thumbnails = true`** (in `[server]`, off by default) switches cover thumbnails on: the cover links in the OPDS feeds, the `/thumb`
+  route and the web cover view with its switches. Left off, none of it exists and no thumbnail is ever made.
+
 ## 0.8.7 - 2026-10-13
 - **Favourites and Read next in the OPDS feeds** (Atom and JSON): reader apps list them at the top of the library, in the order chosen, with covers and page streaming like any folder.
 

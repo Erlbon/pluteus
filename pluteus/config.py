@@ -88,6 +88,7 @@ class Config:
     join_user: str = ""
     share_target: bool = True      # the installed app appears in the Android Share menu (needs uploads_dir); false = leave it out of the manifest
     webdav: bool = False           # read-only WebDAV under /dav (mount the library in Explorer, Finder, file managers)
+    thumbnails: bool = False       # cover thumbnails (/thumb): in the OPDS feeds and the web cover view. Off until switched on
     kosync: bool = False           # KOReader progress sync under /kosync
     subsonic: bool = False       # answer the Subsonic / OpenSubsonic API under /rest (music apps, Android Auto through them)
     update_check: bool = False     # the admin page asks GitHub once a day for a newer version and security advisories (opt-in)
@@ -102,7 +103,7 @@ class Config:
 # [[roots]] by mistake would silently do nothing. Every table's keys are therefore checked.
 _SERVER_KEYS = {"host", "port", "page_size", "base_path", "realm", "auth_cache_seconds", "anonymous_user",
                 "session_days", "cookie_secure", "trust_proxy", "allowed_hosts", "opds_pse", "show_all_files", "text_view_kb",
-                "admin_port", "admin_host", "site_port", "update_check", "update_repo", "share_target", "join_token", "join_user", "admin_url", "library_bases", "subsonic", "webdav", "kosync"}
+                "admin_port", "admin_host", "site_port", "update_check", "update_repo", "share_target", "join_token", "join_user", "admin_url", "library_bases", "subsonic", "webdav", "kosync", "thumbnails"}
 _GLOBAL_KEYS = {"exclude", "extensions", "display_strip", "adult_marker", "private_marker", "hidden_marker", "metadata", "cache_dir",
                 "data_dir", "themes_dir", "theme", "uploads_dir", "upload_max_mb", "upload_quota_mb"}
 _ROOT_KEYS = {"name", "path"}
@@ -262,7 +263,7 @@ def parse_config(data: dict, check_roots: bool = True) -> Config:
         admin_port=admin_port, admin_host=str(server.get("admin_host", "127.0.0.1")),
         site_port=_in_range(server, "site_port", 0, 0, 65535),
         library_bases=tuple(str(b) for b in server.get("library_bases", ())), admin_url=_admin_url(server.get("admin_url", "")), join_token=str(server.get("join_token", "")), join_user=str(server.get("join_user", "")),
-        share_target=bool(server.get("share_target", True)), subsonic=bool(server.get("subsonic", False)), webdav=bool(server.get("webdav", False)), kosync=bool(server.get("kosync", False)), update_check=bool(server.get("update_check", False)), update_repo=_repo_name(server.get("update_repo", "Erlbon/pluteus")),
+        share_target=bool(server.get("share_target", True)), subsonic=bool(server.get("subsonic", False)), webdav=bool(server.get("webdav", False)), kosync=bool(server.get("kosync", False)), thumbnails=bool(server.get("thumbnails", False)), update_check=bool(server.get("update_check", False)), update_repo=_repo_name(server.get("update_repo", "Erlbon/pluteus")),
         host=str(server.get("host", "127.0.0.1")), port=_in_range(server, "port", 8080, 1, 65535),
         page_size=_in_range(server, "page_size", 50, 1, 1000), base_path=base_path,
         display_strip=strip, extensions=extensions, excludes=excludes,

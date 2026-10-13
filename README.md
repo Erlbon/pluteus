@@ -195,7 +195,7 @@ and is not connected to the progress of the web readers. Not tried on a real dev
 
 The OPDS feeds under `/opds` answer in **OPDS 2.0 (JSON)** when the app asks for `application/opds+json` (or `?format=opds2` in a
 browser); otherwise they stay the familiar Atom feeds, so existing apps are not affected. Same folders, rights, paging, tags, series and
-comic page streaming. Books carry **cover thumbnails** (`/thumb/...`, a small JPEG made with Pillow and cached in `data_dir`/`cache_dir`) in both the Atom and the JSON feeds: the cover of an EPUB, the first page of a comic. (The page-streaming link follows the OPDS-PSE extension; it is not yet tried against an app that reads it.)
+comic page streaming. With `thumbnails = true` books carry **cover thumbnails** (`/thumb/...`, a small JPEG made with Pillow and cached in `data_dir`/`cache_dir`) in both the Atom and the JSON feeds: the cover of an EPUB, the first page of a comic. (The page-streaming link follows the OPDS-PSE extension; it is not yet tried against an app that reads it.)
 
 ## Endpoints
 
@@ -290,6 +290,9 @@ that reaches the end leaves it by itself. Stored per user in `state.sqlite3`. En
 shown. They are also OPDS feeds (`/opds-shelves/favourite` and `/opds-shelves/next`, listed at the top of the library when they hold something).
 
 ## Cover view
+
+**Off until you switch it on:** put `thumbnails = true` under `[server]` in `config.toml` and restart. That switches on the cover links in
+the OPDS feeds (reader apps show covers) and the cover view below. With it off, no thumbnail is made or offered anywhere.
 
 In Settings, *Folders are shown as* **Covers** (or the *List / Covers* switch above any folder for a single visit) shows a tile with a
 cover for each book: the cover of an EPUB, the first page of a comic, the picture of a song; other files and folders show their type icon.

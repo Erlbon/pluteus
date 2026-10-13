@@ -21,6 +21,7 @@ class Ctx:
     admin_link: str = ""         # address of the admin page, for an administrator on the local network; else empty
     extras: bool = True          # the speed and sleep controls in the audio/video player
     view: str = "list"           # how a folder is shown: "list" (rows) or "grid" (covers)
+    thumbs: bool = False         # thumbnails are switched on (thumbnails = true): the cover view and its switches exist
 
 
 def layout(title: str, body: str, ctx: Ctx, *, head: str = "", scripts: tuple = (), bar: bool = True,
@@ -306,7 +307,7 @@ def listing_page(root: str, parts: tuple, entries: list, page: int, pages: int, 
     bar += ("<nav class='pl-sortbar pl-viewbar' aria-label='How to show this folder'><span class='pl-muted'>View:</span> "
             "<a%s href='%s'>List</a> <a%s href='%s'>Covers</a></nav>"
             % ("" if grid else " class='pl-sort-on'", escape(here + _query(sort, desc, 1, "list")),
-               " class='pl-sort-on'" if grid else "", escape(here + _query(sort, desc, 1, "grid")))) if total > 1 else ""
+               " class='pl-sort-on'" if grid else "", escape(here + _query(sort, desc, 1, "grid")))) if (total > 1 and ctx.thumbs) else ""
     note = "<p class='pl-flash' role='status'>%s</p>" % escape(flash) if flash else ""
     forms = _upload_forms(urls, root, parts) if writable else ""
     picture = ("<img class='pl-folder-cover' src='%s' alt='Cover of this folder' loading='lazy'>" % escape(cover_url)
@@ -720,9 +721,11 @@ def settings_page(ctx: Ctx, themes: list, saved: bool = False) -> str:
     body = ("<main class='pl-main'><h1>Settings</h1>%s<form class='pl-card' method='post' action='%s'>"
             "<label class='pl-field'><span>Theme</span><select name='theme'>%s</select></label>"
             "<label class='pl-field'><span>File icons</span><select name='icons'>%s</select></label>"
-            "<label class='pl-field'><span>Folders are shown as</span><select name='view'>%s</select></label>"
+            "%s"
             "<label class='pl-field'><span>Speed and sleep controls in the music player</span><select name='extras'>%s</select></label>"
             "<button class='pl-btn pl-btn-primary' type='submit'>Save</button></form>"
             "<p><a href='%s'>&larr; Back to the library</a></p></main>"
-            % (note, escape(ctx.urls.settings()), opts, icon_opts, view_opts, extras_opts, escape(ctx.urls.home())))
+            % (note, escape(ctx.urls.settings()), opts, icon_opts,
+               ("<label class='pl-field'><span>Folders are shown as</span><select name='view'>%s</select></label>" % view_opts) if ctx.thumbs else "",
+               extras_opts, escape(ctx.urls.home())))
     return layout("Settings", body, ctx)
