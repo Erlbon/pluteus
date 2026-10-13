@@ -5,7 +5,7 @@ Release notes are taken from the section of the tagged version (`## 0.5.0 ...`).
 ## 0.9.0 - 2026-10-13
 The feature-complete pre-release. Since 0.6.0: a music player with tags, covers, lyrics, chapters and bookmarks; Subsonic, WebDAV, KOReader sync and OPDS 2.0
 (all off until switched on); per-user app keys; favourites and read next; an optional cover view and cover thumbnails; and the fixes below
-from a two-part code review. The player's controls were redone: old-school double-triangle skip arrows without text, round gold - and + for the speed on the outside, the speed written along the top of the play button (tap it to switch between 1x, 1.25x, 1.5x and 2x), and the sleep timer and bookmarks only for audiobooks (m4b). It needs testing on real devices (Subsonic apps and Android Auto, WebDAV, PocketBook covers, KOReader sync) before 1.0:
+from a two-part code review. The player's controls were redone: old-school double-triangle skip arrows without text, round gold - and + for the speed on the outside, the speed written along the top of the play button when it is not normal (tap the area to switch between 1x, 1.25x, 1.5x and 2x), and the sleep timer and bookmarks only for audiobooks (m4b). It needs testing on real devices (Subsonic apps and Android Auto, WebDAV, PocketBook covers, KOReader sync) before 1.0:
 only security and stability fixes are added until then.
 
 ### Review fixes

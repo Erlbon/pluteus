@@ -207,10 +207,12 @@
   /* The buttons hold an icon and a text: only the text changes */
   function setLabel(button, text) { var t = button.querySelector(".pl-btn-text"); (t || button).textContent = text; }
   function getLabel(button) { var t = button.querySelector(".pl-btn-text"); return (t || button).textContent; }
+  function rateText() { return (rate % 1 === 0 ? rate.toFixed(0) : String(rate)) + "×"; }
   function applyRate() {
     media.defaultPlaybackRate = rate;
     media.playbackRate = rate;
-    if (speedButton) setLabel(speedButton, (rate % 1 === 0 ? rate.toFixed(0) : String(rate)) + "×");
+    /* Written along the play button only when it is not normal speed; the chip on a video always shows it */
+    if (speedButton) setLabel(speedButton, rate === 1 && speedButton.classList.contains("pl-speed-arc") ? "" : rateText());
   }
   applyRate();
   media.addEventListener("loadedmetadata", applyRate);              // some browsers reset it when a file loads
@@ -219,7 +221,7 @@
     rate = RATES[i];
     try { localStorage.setItem("pluteus-media-rate", String(rate)); } catch (e) { /* storage blocked */ }
     applyRate();
-    say("Speed " + getLabel(speedButton), 1200);
+    say("Speed " + rateText(), 1200);
   }
   /* the readout in the middle is a switch: normal -> 1.25 -> 1.5 -> 2 -> normal (the - and + beside it fine-tune) */
   var QUICK = [1, 1.25, 1.5, 2];
@@ -228,7 +230,7 @@
     rate = QUICK[(i + 1) % QUICK.length];                            // from any other speed the first click goes to the next quick one
     try { localStorage.setItem("pluteus-media-rate", String(rate)); } catch (e) { /* storage blocked */ }
     applyRate();
-    say("Speed " + getLabel(speedButton), 1200);
+    say("Speed " + rateText(), 1200);
   });
   if (slower) slower.addEventListener("click", function () { stepRate(-1); });
   if (faster) faster.addEventListener("click", function () { stepRate(1); });

@@ -142,6 +142,12 @@ def test_sleep_and_bookmarks_are_for_audiobooks_only(music):
 
 
 # ---- the player script keeps the listener's place --------------------------------------------------------------------------------------------
+def test_normal_speed_is_not_written_on_the_play_button():
+    js = open(os.path.join(HERE, "..", "pluteus", "static", "viewer-media.js"), encoding="utf-8").read()
+    assert 'rate === 1 && speedButton.classList.contains("pl-speed-arc") ? "" : rateText()' in js
+    assert js.count('say("Speed " + rateText()') == 2
+
+
 def test_the_autoplay_flag_is_taken_off_the_address_and_keys_are_left_alone_in_fields():
     js = open(os.path.join(HERE, "..", "pluteus", "static", "viewer-media.js"), encoding="utf-8").read()
     assert "history.replaceState" in js and js.count("autoplay=1") >= 3
