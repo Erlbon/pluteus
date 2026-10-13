@@ -259,3 +259,23 @@ def test_the_speed_and_sleep_row_can_be_switched_off_in_settings(music):
     page = client.get("/view/music/Album/spark.mp3", headers={**auth, **HTML}).text
     assert "id='speed'" not in page and "id='sleep'" not in page and "id='play'" in page and "id='lyrics-btn'" in page
     assert "<option value='hide' selected>" in client.get("/settings", headers={**auth, **HTML}).text
+
+
+# ---- a folder picture that appears (or goes) is noticed on the next refresh ---------------------------------------------------------------------
+def test_a_folder_jpg_added_later_is_seen_at_once_and_a_removed_one_is_forgotten(tmp_path):
+    folder = tmp_path / "album"
+    folder.mkdir()
+    assert mediainfo.folder_cover(str(folder)) == ""                          # nothing yet: remembered as nothing
+    (folder / "folder.jpg").write_bytes(JPEG)
+    assert mediainfo.folder_cover(str(folder)).endswith("folder.jpg")         # the folder changed: looked at again, no waiting
+    (folder / "folder.jpg").unlink()
+    assert mediainfo.folder_cover(str(folder)) == ""
+
+
+def test_the_listing_shows_a_folder_jpg_that_was_added_after_the_first_visit(music):
+    client, auth = make_client(music)
+    url = "/browse/music/Album"
+    assert "pl-folder-cover" not in client.get(url, headers={**auth, **HTML}).text
+    (music / "Album" / "folder.jpg").write_bytes(JPEG)
+    page = client.get(url, headers={**auth, **HTML}).text                      # the same server, no restart, straight away
+    assert "pl-folder-cover" in page

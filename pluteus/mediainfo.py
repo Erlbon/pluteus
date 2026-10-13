@@ -104,12 +104,24 @@ _folder_cache: dict = {}
 _folder_lock = threading.Lock()
 
 
+def _stamp(directory: str):
+    try:
+        return os.stat(directory).st_mtime_ns
+    except OSError:
+        return None
+
+
 def folder_cover(directory: str) -> str:
-    """The path of cover.jpg / folder.jpg / front.jpg ... in `directory` ('' if none). Remembered for two minutes per folder."""
+    """The path of cover.jpg / folder.jpg / front.jpg ... in `directory` ('' if none).
+
+    Remembered per folder, but only while the folder itself has not changed: adding or removing a file changes the folder's
+    modified time, so a folder.jpg you put there is seen on the next refresh, not minutes later. (Some file systems keep the
+    time only to the second, so "nothing found" is also looked at again after ten seconds, and a hit after ten minutes.)"""
     now = time.monotonic()
+    stamp = _stamp(directory)
     with _folder_lock:
         hit = _folder_cache.get(directory)
-        if hit and hit[1] > now:
+        if hit and hit[1] > now and hit[2] == stamp:
             return hit[0]
     found = ""
     for name in FOLDER_COVER_NAMES:
@@ -126,7 +138,7 @@ def folder_cover(directory: str) -> str:
     with _folder_lock:
         if len(_folder_cache) > 2000:
             _folder_cache.clear()
-        _folder_cache[directory] = (found, now + 120)
+        _folder_cache[directory] = (found, now + (600 if found else 10), stamp)
     return found
 
 
