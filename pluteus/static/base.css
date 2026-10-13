@@ -391,7 +391,7 @@ html[data-icons="aurora"] .pl-ico-upload  { color: light-dark(#1f7ae0, #7cc8ff);
 /* the second row of the player: speed, sleep, lyrics, chapters, bookmarks. One height, one shape, quieter than the transport row. */
 .pl-tools { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; align-items: center; margin: 10px 0 2px; }
 .pl-tools .pl-btn { height: 40px; box-sizing: border-box; border-radius: 999px; font-size: 15px; }
-.pl-tools .pl-btn { display: inline-flex; align-items: center; gap: 6px; padding: 0 16px; min-width: 0; min-height: 0; }
+.pl-tools .pl-btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 0 16px; min-width: 112px; min-height: 0; }
 .pl-tools .pl-icon { width: 1.15em; height: 1.15em; color: var(--pl-accent); vertical-align: 0; }
 .pl-tools .pl-btn[aria-expanded="true"] { border-color: var(--pl-accent); color: var(--pl-accent); }
 /* - and +: round, gold, bold, outside the skip buttons */
