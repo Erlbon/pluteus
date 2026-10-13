@@ -10,7 +10,7 @@ a = Analysis(
     pathex=["."],
     datas=[("pluteus/static", "pluteus/static")],
     hiddenimports=hidden,
-    excludes=["tkinter", "_tkinter", "pytest", "PIL", "matplotlib", "numpy"],
+    excludes=["tkinter", "_tkinter", "pytest", "matplotlib", "numpy"],
     noarchive=False,
 )
 pyz = PYZ(a.pure)
