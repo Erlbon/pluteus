@@ -54,6 +54,8 @@ def create_admin_app(main_app) -> Starlette:
     cfg, state, auth, limiter, themes = st.cfg, st.state, st.auth, st.limiter, st.themes
     config_path = st.config_path
     updates = UpdateChecker(cfg.update_repo) if cfg.update_check else None
+    if updates:
+        updates.status()                  # starts the first check in a background thread now, so the dot is ready when the page is first opened
     ctx = Ctx(Urls(""), "", cfg.theme if themes.exists(cfg.theme) else DEFAULT)
     challenge = {"WWW-Authenticate": 'Basic realm="pluteus admin", charset="UTF-8"'}
 

@@ -106,7 +106,7 @@ It works in Docker, on Linux and on Windows alike, with nothing to install on th
   in the top bar, pointing at the same host name or address on the admin port (publish it under the same number as
   `admin_port`). Through the public address the link never appears.
 - **Services:** a box on the Status page lists which optional servers are on or off (Subsonic, WebDAV, KOReader sync, cover thumbnails, uploads), the `config.toml` line that switches each one on, the address apps use, and how many users have an app key.
-- **Update and security check (opt-in):** with `update_check = true` the Status page asks GitHub once a day, in the background,
+- **Update and security check (opt-in):** with `update_check = true` the admin server asks GitHub at startup and then once a day (when the Status page is next opened), in the background,
   for the newest release tag and for published security advisories of `update_repo` (default `Erlbon/pluteus`). A dot beside the version
   is green (up to date), yellow (a newer version exists; update with `git pull` and a rebuild), grey (could not check) or red, with a red
   notice on top, when a published advisory names your version as vulnerable. Nothing about your library or users is sent. For the

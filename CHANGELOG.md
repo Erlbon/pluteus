@@ -3,6 +3,7 @@
 Release notes are taken from the section of the tagged version (`## 0.5.0 ...`).
 
 ## Unreleased (for 0.9.3)
+- **Update check:** with `update_check = true` the first check now starts when the admin server starts, not when the Status page is first opened, so the dot is ready.
 - **EPUB reader, scrolling layout:** the mouse wheel over the book now scrolls it (the browser did not pass a wheel turn over the book's own page on to the box that scrolls it, so pluteus forwards it). The page-by-page layout is unchanged.
 
 ## 0.9.2 - 2026-10-13

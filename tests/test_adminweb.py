@@ -412,6 +412,29 @@ def test_admin_url_must_be_a_plain_http_address(tmp_path, bad):
         load_config(str(path))
 
 
+# ---- the update check starts when the admin server starts ----------------------------------------------------------------------------------
+def test_the_update_check_starts_at_boot_and_only_when_switched_on(tmp_path, monkeypatch):
+    from pluteus import adminapp
+    started = []
+
+    class Spy:
+        def __init__(self, repo):
+            self.repo = repo
+
+        def status(self):
+            started.append(self.repo)
+            return {"state": "checking", "latest": "", "advisories": [], "checked": 0.0}
+    monkeypatch.setattr(adminapp, "UpdateChecker", Spy)
+    path = make_config(tmp_path)
+    off = create_app(load_config(str(path)), config_path=str(path), reload_interval=0.0)
+    create_admin_app(off)
+    assert started == []                                                                  # off by default: nothing asked, nothing sent
+    path.write_text(path.read_text(encoding="utf-8").replace("port = 8080", "port = 8080" + chr(10) + "update_check = true", 1), encoding="utf-8", newline="")
+    on = create_app(load_config(str(path)), config_path=str(path), reload_interval=0.0)
+    create_admin_app(on)
+    assert started == ["Erlbon/pluteus"]                                                  # asked once at boot, before any page is opened
+
+
 # ---- music app keys (the Subsonic API) --------------------------------------------------------------------------------------------------
 def test_music_app_keys_are_made_shown_once_and_revoked(tmp_path):
     path = make_config(tmp_path)
