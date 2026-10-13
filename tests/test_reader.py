@@ -235,3 +235,12 @@ def test_android_back_and_pull_to_refresh_handling(signed_in):
     assert "html:has(body.pl-reader-page) { overscroll-behavior-y: contain; }" in css
     content = (static / "themes" / "default" / "reader-content.css").read_text(encoding="utf-8")
     assert "overscroll-behavior: contain" in content                                      # the book's own iframe too
+
+
+def test_the_epub_reader_turns_pages_with_the_mouse_wheel():
+    import os
+    js = open(os.path.join(os.path.dirname(__file__), "..", "pluteus", "static", "reader-epub.js"), encoding="utf-8").read()
+    assert 'document.addEventListener("wheel", onWheel, { passive: false })' in js
+    assert 'contents.document.addEventListener("wheel", onWheel' in js                    # also over the book page itself
+    assert 'settings.flow !== "paginated" || e.ctrlKey' in js                              # the scrolling view and Ctrl+wheel are left alone
+    assert "wheelLock = now + 350" in js                                                   # one page per gesture

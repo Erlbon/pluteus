@@ -160,6 +160,29 @@
   document.addEventListener("keydown", onKey);
   rendition.on("keydown", onKey);                       // keys pressed while the book page has focus
 
+  /* The mouse wheel (and a touchpad) turns pages in the page-by-page view; one page per gesture, however many wheel events it sends.
+     In the scrolling view the wheel scrolls as usual, and Ctrl + wheel stays the browser's zoom. */
+  var wheelSum = 0, wheelLast = 0, wheelLock = 0;
+  function onWheel(e) {
+    if (settings.flow !== "paginated" || e.ctrlKey || !rendition.manager) return;                // not the scrolling view, not zoom, not before the book is shown
+    if (e.target && e.target.closest && e.target.closest("#toc, #settings")) return;        // the two menus scroll themselves
+    e.preventDefault();
+    var now = Date.now(), delta = (e.deltaY || e.deltaX || 0) * (e.deltaMode === 1 ? 33 : 1);
+    if (now < wheelLock) return;
+    if (now - wheelLast > 250) wheelSum = 0;                                                  // a new gesture
+    wheelLast = now;
+    wheelSum += delta;
+    if (Math.abs(wheelSum) < 40) return;
+    var forward = wheelSum > 0;
+    wheelSum = 0;
+    wheelLock = now + 350;
+    (forward ? next : prev)();
+  }
+  document.addEventListener("wheel", onWheel, { passive: false });
+  rendition.hooks.content.register(function (contents) {                                        // a wheel over the book page itself
+    contents.document.addEventListener("wheel", onWheel, { passive: false });
+  });
+
   var touchX = null, touchY = null;
   rendition.on("touchstart", function (e) { var t = e.changedTouches[0]; touchX = t.screenX; touchY = t.screenY; });
   rendition.on("touchend", function (e) {

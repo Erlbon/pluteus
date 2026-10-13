@@ -2,13 +2,14 @@
 
 Release notes are taken from the section of the tagged version (`## 0.5.0 ...`).
 
+## Unreleased (for 0.9.2)
+- **EPUB reader:** the mouse wheel (and a touchpad swipe) turns pages in the page-by-page view, one page per gesture. In the scrolling view the wheel scrolls as before, and Ctrl + wheel stays the browser's zoom.
+
 ## 0.9.1 - 2026-10-13
 - **Cover view:** loose pictures (JPG, PNG, WebP, GIF) get a real thumbnail, not a type icon. A JPEG may have up to 120 million pixels (it is decoded at a reduced size); other formats keep the 20 million limit. A file that is not really a picture, and SVG, get none.
 - A `folder.jpg` (or `cover.jpg` ...) added to or removed from a folder shows on the next refresh: it used to take up to two minutes, because the answer was remembered by time and not by whether the folder had changed.
 - The admin Status page has a **Services** box: which optional servers are on or off (Subsonic, WebDAV, KOReader sync, thumbnails, uploads), the `config.toml` line that switches each one, the address apps use and how many users have a key.
-Found by driving the 0.9.0 Subsonic API with a real, strictly typed client library (py-opensonic):
-- `getArtists` and `getIndexes` always carry `ignoredArticles` (it was dropped when empty, and a strict app refuses the answer without it).
-- `getAlbum` carries `created`, like the other album items.
+- **Subsonic**, found by driving the API with a real, strictly typed client library (py-opensonic): `getArtists` and `getIndexes` always carry `ignoredArticles` (it was dropped when empty, and a strict app refuses the answer without it), and `getAlbum` carries `created`, like the other album items.
 
 ## 0.9.0 - 2026-10-13
 The feature-complete pre-release. Since 0.6.0: a music player with tags, covers, lyrics, chapters and bookmarks; Subsonic, WebDAV, KOReader sync and OPDS 2.0
