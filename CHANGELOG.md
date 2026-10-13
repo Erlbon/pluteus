@@ -3,6 +3,7 @@
 Release notes are taken from the section of the tagged version (`## 0.5.0 ...`).
 
 ## Unreleased (for 0.9.2)
+- **Movie player:** a movie now has the same gold controls as the music player under the picture (position bar, time, volume on wide screens, -, rewind, play with the speed on top, fast-forward, +), plus a full-screen button that takes the whole player full screen. A click on the picture plays or pauses, a double click goes full screen. Without the script the browser's own controls remain.
 - **Music player:** the position bar and the volume slider are drawn by pluteus: a thin gold track that fills up to a small round gold handle, the same in Chrome and Firefox.
 - **Music player:** a volume control (a speaker that mutes, and a short slider) at the end of the position bar, on wide screens only; the level is remembered. A phone keeps using its own volume buttons.
 - **EPUB reader:** the mouse wheel (and a touchpad swipe) turns pages in the page-by-page view, one page per gesture. In the scrolling view the wheel scrolls as before, and Ctrl + wheel stays the browser's zoom.

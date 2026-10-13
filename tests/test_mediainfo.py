@@ -143,6 +143,24 @@ def test_the_sliders_have_a_gold_track_and_handle_that_follows_the_value():
     assert 'setProperty("--p"' in js and js.count("fill(scrub)") >= 2 and "fill(volume)" in js
 
 
+# ---- a movie gets the same controls as the music player --------------------------------------------------------------------------------------
+def test_a_movie_page_has_the_music_players_controls_and_a_full_screen_button(music):
+    (music / "Album" / "clip.mp4").write_bytes(b"\x00\x00\x00\x18ftypmp42" + b"\x00" * 64)
+    client, auth = make_client(music)
+    page = client.get("/view/music/Album/clip.mp4", headers={**auth, **HTML}).text
+    for ident in ("scrub", "cur", "dur", "volume", "mute", "play", "back30", "fwd30", "speed-down", "speed-up", "fs"):
+        assert "id='%s'" % ident in page, ident
+    assert "<video id='media' controls" in page and "pl-videobox" in page            # native controls remain until the script takes over
+    assert "pl-speed-arc" in page and "id='sleep'" not in page                      # the speed on the play button; no sleep timer on a movie
+    song = client.get("/view/music/Album/spark.mp3", headers={**auth, **HTML}).text
+    assert "id='fs'" not in song                                                    # full screen is for movies only
+
+
+def test_the_script_handles_clicks_and_full_screen_for_movies():
+    js = open(os.path.join(HERE, "..", "pluteus", "static", "viewer-media.js"), encoding="utf-8").read()
+    assert "toggleFullscreen" in js and "webkitEnterFullscreen" in js and 'media.addEventListener("dblclick"' in js
+
+
 # ---- the transport row ----------------------------------------------------------------------------------------------------------------------
 def test_the_speed_is_written_along_the_play_button_and_the_row_has_no_text_labels(music):
     client, auth = make_client(music)

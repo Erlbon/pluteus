@@ -103,6 +103,23 @@
     ["timeupdate", "loadedmetadata", "durationchange"].forEach(function (n) { media.addEventListener(n, tick); });
     paint(); tick();
 
+    /* a movie: a click on the picture plays or pauses, a double click goes full screen, and the full-screen button takes the whole
+       player (picture and controls) full screen; an iPhone can only do the picture, with the browser's own controls */
+    var fsButton = document.getElementById("fs"), box = document.querySelector(".pl-videobox");
+    function toggleFullscreen() {
+      if (!box) return;
+      var inside = document.fullscreenElement || document.webkitFullscreenElement;
+      if (inside) { (document.exitFullscreen || document.webkitExitFullscreen).call(document); return; }
+      if (box.requestFullscreen) box.requestFullscreen().catch(function () { /* refused */ });
+      else if (box.webkitRequestFullscreen) box.webkitRequestFullscreen();
+      else if (media.webkitEnterFullscreen) media.webkitEnterFullscreen();
+    }
+    if (fsButton) fsButton.addEventListener("click", toggleFullscreen);
+    if (box) {
+      media.addEventListener("click", function () { playButton.click(); });
+      media.addEventListener("dblclick", function (e) { e.preventDefault(); toggleFullscreen(); });
+    }
+
     /* volume (shown on wide screens only, see base.css): remembered in this browser; the icon is a mute switch */
     var volume = document.getElementById("volume"), muteButton = document.getElementById("mute");
     if (volume && muteButton) {

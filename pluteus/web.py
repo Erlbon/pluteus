@@ -577,26 +577,29 @@ def media_viewer_page(ctx: Ctx, title: str, *, kind: str, raw_url: str, mime: st
     info = ("<div class='pl-track'><h1 class='pl-track-title'>%s</h1>%s%s</div>"
             % (escape(heading), "<div class='pl-track-by'>%s</div>" % by if by else "",
                "<div class='pl-chips'>%s</div>" % chips if chips else ""))
+    # the position bar, volume and (for a movie) full screen, and the row of big buttons: the same for music and movies
+    fullscreen = ("<button type='button' id='fs' class='pl-vol-btn pl-fs-btn' aria-label='Full screen'><span class='pl-icon pl-i-fullscreen'></span></button>"
+                  if kind == "video" else "")
+    scrub_row = ("<div class='pl-scrub'><span id='cur'>0:00</span><input type='range' id='scrub' min='0' max='1000' value='0' "
+                 "aria-label='Position'><span id='dur'>&ndash;:&ndash;&ndash;</span>"
+                 "<span class='pl-vol'><button type='button' id='mute' class='pl-vol-btn' aria-label='Mute'><span class='pl-icon pl-i-volume'></span></button>"
+                 "<input type='range' id='volume' min='0' max='100' value='100' aria-label='Volume'></span>%s</div>" % fullscreen)
+    transport_row = ("<div class='pl-transport'>%s%s<span class='pl-play-wrap'>%s%s</span>%s%s</div>"
+                     % (speed_down, skip_back, speed_val, button("play", "Play", "play", extra="pl-play"), skip_fwd, speed_up))
     if kind == "video":
-        stage = ("<div class='pl-media-box'>%s<video id='media' controls preload='metadata' playsinline src='%s'>"
-                 "<p>Your browser cannot play this file; <a href='%s'>download it</a>.</p></video>"
-                 "<div class='pl-media-controls'>%s%s%s%s%s</div><div class='pl-tools'>%s</div>%s<div class='pl-toast' id='status' hidden></div></div>"
-                 % (info, escape(raw_url), escape(download_url), speed_down, skip_back, speed_chip, skip_fwd, speed_up, sleep, lyrics))
+        stage = ("<div class='pl-media-box pl-player pl-videobox'>%s<div class='pl-videowrap'><video id='media' controls preload='metadata' playsinline src='%s'>"
+                 "<p>Your browser cannot play this file; <a href='%s'>download it</a>.</p></video></div>%s%s<div class='pl-tools'>%s</div>%s"
+                 "<div class='pl-toast' id='status' hidden></div></div>"
+                 % (info, escape(raw_url), escape(download_url), scrub_row, transport_row, words_button + sleep, lyrics))
     else:
         picture = ("<img class='pl-cover-img' src='%s' alt='Cover'>" % escape(cover_url) if cover_url
                    else "<div class='pl-cover-blank'>%s</div>" % ico("audio"))
         backdrop = "<img class='pl-bg' src='%s' alt=''>" % escape(cover_url) if cover_url else ""
         stage = ("<div class='pl-media-box pl-player'>%s<div class='pl-cover'>%s</div>%s"
                  "<audio id='media' controls preload='metadata' src='%s'><p>Your browser cannot play this file; "
-                 "<a href='%s'>download it</a>.</p></audio>"
-                 "<div class='pl-scrub'><span id='cur'>0:00</span><input type='range' id='scrub' min='0' max='1000' value='0' "
-                 "aria-label='Position'><span id='dur'>&ndash;:&ndash;&ndash;</span>"
-                 "<span class='pl-vol'><button type='button' id='mute' class='pl-vol-btn' aria-label='Mute'><span class='pl-icon pl-i-volume'></span></button>"
-                 "<input type='range' id='volume' min='0' max='100' value='100' aria-label='Volume'></span></div>"
-                 "<div class='pl-transport'>%s%s<span class='pl-play-wrap'>%s%s</span>%s%s</div><div class='pl-tools'>%s%s</div>%s"
+                 "<a href='%s'>download it</a>.</p></audio>%s%s<div class='pl-tools'>%s%s</div>%s"
                  "<div class='pl-toast' id='status' hidden></div></div>"
-                 % (backdrop, picture, info, escape(raw_url), escape(download_url), speed_down, skip_back, speed_val,
-                    button("play", "Play", "play", extra="pl-play"), skip_fwd, speed_up, sleep, words_button, lyrics))
+                 % (backdrop, picture, info, escape(raw_url), escape(download_url), scrub_row, transport_row, sleep, words_button, lyrics))
     foot = ("%s<span style='flex:1'></span><span>%d / %d</span>%s"
             % (_nav_link("prev", "prev", "Previous file", prev_url), position, total,
                _nav_link("next", "next", "Next file", next_url)))
