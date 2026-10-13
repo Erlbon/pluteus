@@ -2,6 +2,12 @@
 
 Release notes are taken from the section of the tagged version (`## 0.5.0 ...`).
 
+## 0.8.0 - 2026-10-13
+- **Subsonic / OpenSubsonic API** (`subsonic = true`): music apps such as Symfonium, Tempo and Substreamer can browse and stream the
+  library, and Android Auto works through them. Login by a per-user **music app key** made on the admin page (token login, API key or
+  legacy password); read-only; same folders and rights as the site.
+- A folder's own picture (`folder.jpg`, `cover.jpg`, `front.jpg` ...) is shown at the top right of its listing.
+
 ## 0.7.1 - 2026-10-13
 - Player: the top bar shows "Title – Artist – Album"; tighter spacing so the play button fits on a laptop screen.
 

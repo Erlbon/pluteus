@@ -410,3 +410,28 @@ def test_admin_url_must_be_a_plain_http_address(tmp_path, bad):
     path.write_text(path.read_text().replace("admin_port = 8101", "admin_port = 8101\nadmin_url = '%s'" % bad))
     with pytest.raises(ConfigError):
         load_config(str(path))
+
+
+# ---- music app keys (the Subsonic API) --------------------------------------------------------------------------------------------------
+def test_music_app_keys_are_made_shown_once_and_revoked(tmp_path):
+    path = make_config(tmp_path)
+    path.write_text(path.read_text(encoding="utf-8").replace("port = 8080", "port = 8080\nsubsonic = true", 1), encoding="utf-8", newline="")
+    cfg = load_config(str(path))
+    app = create_app(cfg, config_path=str(path), reload_interval=0.0)
+    client = TestClient(create_admin_app(app), follow_redirects=False)
+    assert "Make a key" in client.get("/users", headers=BOSS).text
+    r = client.post("/users/appkey", content="name=alice", headers={**BOSS, **FORM})
+    secret = app.state.state.get_appkey("alice")
+    assert r.status_code == 200 and secret and secret in r.text and "only this once" in r.text
+    assert secret not in client.get("/users", headers=BOSS).text                               # never shown again
+    assert "A key is active." in client.get("/users", headers=BOSS).text
+    assert client.post("/users/appkey", content="name=nobody", headers={**BOSS, **FORM}).status_code == 400
+    assert client.post("/users/appkey", content="name=alice", headers=BOSS).status_code == 403   # same-site posts only
+    r = client.post("/users/appkey/revoke", content="name=alice", headers={**BOSS, **FORM})
+    assert r.status_code == 303 and app.state.state.get_appkey("alice") is None
+
+
+def test_the_key_controls_are_absent_when_the_api_is_off(admin):
+    client, _, _ = admin
+    assert "Make a key" not in client.get("/users", headers=BOSS).text
+    assert client.post("/users/appkey", content="name=alice", headers={**BOSS, **FORM}).status_code == 400

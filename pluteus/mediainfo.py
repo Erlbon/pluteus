@@ -87,6 +87,13 @@ def brief(path: str) -> dict:
     return {"title": info["title"], "authors": [info["artist"]] if info.get("artist") else [], "track": info.get("track")}
 
 
+def song_info(path: str) -> dict:
+    """The compact tag set a music app needs (cached by the caller): no lyrics, no comment."""
+    info = read_info(path)
+    keep = ("title", "artist", "albumartist", "album", "year", "genre", "track", "disc", "duration", "bitrate")
+    return {k: info[k] for k in keep if info.get(k)}
+
+
 def sniff_image(data: bytes) -> str:
     """The image type from the first bytes, or '' (SVG and everything else is refused)."""
     if data[:3] == b"\xff\xd8\xff":
@@ -130,6 +137,22 @@ def folder_cover(directory: str) -> str:
     return found
 
 
+def read_folder_cover(directory: str):
+    """(bytes, mime) of the folder's own picture (folder.jpg, cover.jpg ...), or None."""
+    sidecar = folder_cover(directory)
+    if not sidecar:
+        return None
+    try:
+        if os.path.getsize(sidecar) > MAX_COVER:
+            return None
+        with open(sidecar, "rb") as f:
+            data = f.read(MAX_COVER + 1)
+    except OSError:
+        return None
+    mime = sniff_image(data)
+    return (data, mime) if mime and len(data) <= MAX_COVER else None
+
+
 def read_cover(path: str):
     """(bytes, mime) of the picture embedded in the file, else of the folder's cover.jpg and the like, else None."""
     TinyTag = _tinytag()
@@ -141,17 +164,7 @@ def read_cover(path: str):
                 return data, sniff_image(data)
         except Exception:                               # noqa: BLE001
             pass
-    sidecar = folder_cover(os.path.dirname(path))
-    if sidecar:
-        try:
-            if os.path.getsize(sidecar) <= MAX_COVER:
-                with open(sidecar, "rb") as f:
-                    data = f.read(MAX_COVER + 1)
-                if len(data) <= MAX_COVER and sniff_image(data):
-                    return data, sniff_image(data)
-        except OSError:
-            pass
-    return None
+    return read_folder_cover(os.path.dirname(path))
 
 
 _STAMP = re.compile(r"\[(\d{1,3}):(\d{2})(?:[.:](\d{1,3}))?\]")

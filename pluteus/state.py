@@ -33,6 +33,7 @@ CREATE TABLE IF NOT EXISTS dismissed (
 CREATE TABLE IF NOT EXISTS devices (
     token_hash TEXT PRIMARY KEY, username TEXT NOT NULL, pwfp TEXT NOT NULL,
     first_seen REAL NOT NULL, last_seen REAL NOT NULL, last_ip TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS appkeys (username TEXT PRIMARY KEY, secret TEXT NOT NULL, created REAL NOT NULL);
 """
 
 
@@ -167,6 +168,25 @@ class StateDB:
                              % ",".join("?" * len(chunk)), (username, root, *chunk))
             out.update({p: {"locator": loc, "updated": upd} for p, loc, upd in rows})
         return out
+
+    # ---- app keys: the one secret a music app uses for the Subsonic API (read-only, revocable, not the password) ------------
+    def get_appkey(self, username: str):
+        row = self._one("SELECT secret FROM appkeys WHERE username=?", (username,))
+        return row[0] if row else None
+
+    def set_appkey(self, username: str, secret: str, now=None) -> None:
+        self._write("INSERT OR REPLACE INTO appkeys VALUES (?,?,?)", (username, secret, time.time() if now is None else now))
+
+    def delete_appkey(self, username: str) -> int:
+        return self._write("DELETE FROM appkeys WHERE username=?", (username,))
+
+    def appkeys(self) -> dict:
+        """{user name: secret}: the Subsonic login keys (few: one per user)."""
+        return {r[0]: r[1] for r in self._all("SELECT username, secret FROM appkeys")}
+
+    def appkey_users(self) -> dict:
+        """{user name: when the key was made}."""
+        return {r[0]: r[1] for r in self._all("SELECT username, created FROM appkeys")}
 
     # ---- preferences ------------------------------------------------------------
     def get_prefs(self, username: str) -> dict:

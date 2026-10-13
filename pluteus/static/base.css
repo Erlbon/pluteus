@@ -259,6 +259,11 @@ a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible
   background: var(--pl-fg); color: var(--pl-bg); border-radius: 999px; font-size: 13px; opacity: .92;
 }
 
+/* the folder's own picture (folder.jpg, cover.jpg ...): shown at the right of the heading, scaled by the browser */
+.pl-folder-cover { float: right; width: min(34vw, 200px); max-height: 200px; object-fit: contain; border-radius: 12px; margin: 0 0 8px 16px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, .3), 0 0 0 1px var(--pl-line); background: var(--pl-card); }
+.pl-list { clear: both; }
+
 /* upload folder */
 .pl-upload, .pl-newfolder { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; margin: 12px 0; }
 .pl-upload input[type=file] { max-width: 100%; }

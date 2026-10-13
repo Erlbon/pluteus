@@ -214,7 +214,7 @@ def _sort_bar(here: str, sort: str, desc: bool) -> str:
 
 def listing_page(root: str, parts: tuple, entries: list, page: int, pages: int, total: int, ctx: Ctx,
                  metas: dict | None = None, progress: dict | None = None,
-                 sort: str = "name", desc: bool = False, writable: bool = False, flash: str = "") -> str:
+                 sort: str = "name", desc: bool = False, writable: bool = False, flash: str = "", cover_url: str = "") -> str:
     metas = metas or {}
     progress = progress or {}
     urls = ctx.urls
@@ -269,9 +269,11 @@ def listing_page(root: str, parts: tuple, entries: list, page: int, pages: int, 
     bar = _sort_bar(here, sort, desc) if total > 1 else ""
     note = "<p class='pl-flash' role='status'>%s</p>" % escape(flash) if flash else ""
     forms = _upload_forms(urls, root, parts) if writable else ""
-    body = ("<main class='pl-main'><div class='pl-crumbs'>%s</div><h1>%s</h1><div class='pl-muted'>%d items &middot; "
+    picture = ("<img class='pl-folder-cover' src='%s' alt='Cover of this folder' loading='lazy'>" % escape(cover_url)
+               if cover_url else "")
+    body = ("<main class='pl-main'><div class='pl-crumbs'>%s</div>%s<h1>%s</h1><div class='pl-muted'>%d items &middot; "
             "<a href='%s'>OPDS</a></div>%s%s<ul class='pl-list'>%s</ul>%s</main>"
-            % (" / ".join(crumbs), escape(title), total, escape(urls.opds(root, parts)),
+            % (" / ".join(crumbs), picture, escape(title), total, escape(urls.opds(root, parts)),
                note + forms, bar + pager, "".join(rows), pager))
     return layout(title, body, ctx, scripts=(urls.static("uploads.js"),) if writable else ())
 

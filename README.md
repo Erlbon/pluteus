@@ -152,6 +152,22 @@ or changed user stops working immediately. Other settings (roots, port, ...) sti
 **TOML scoping:** a key belongs to the `[table]` header above it. Keep all settings in `[server]`; a setting
 typed under `[[roots]]` or `[[users]]` is refused with an error instead of being silently ignored.
 
+## Music apps (Subsonic API)
+
+Switch on `subsonic = true` in `[server]` and music apps that speak the **Subsonic / OpenSubsonic** API (Symfonium, Tempo, Substreamer,
+DSub, Ultrasonic ...) can browse and play the audio files, **Android Auto through such an app included**. Read-only, over the same
+folders and rights as the web site (`roots`, `.private`, `.hidden`, `.adult`).
+
+- **Login:** on the admin page, Users, Edit, **Make a key**. The key is shown once. Use it as the password (the salted-token login
+  works) or, in apps that support it, as an **API key**; the real password also works in apps that send it as `p`. Failed logins count
+  against the same lock as the web login. The key opens nothing but this read-only API and can be revoked.
+- **Server address in the app:** the same address as the web site (with `base_path` if you use one), for example `https://example.org/pluteus`.
+- **How folders are read:** `Artist/Album/songs`. The first level is the artist, the second the album; tags (title, track, year, genre)
+  come from the files, cached. Cover art is the picture inside the file, else `folder.jpg` / `cover.jpg` in the folder.
+- **Supported:** ping, folders, indexes and directories, artists / artist / album / song, album lists, random songs, a simple search,
+  cover art (sent at its original size), stream and download (Range works; no transcoding). Playlists, starring, scrobbling and the like are
+  answered with empty results.
+
 ## Endpoints
 
 | URL | What |

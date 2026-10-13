@@ -352,6 +352,14 @@ class Library:
                 out.append(filled[e.name])
         return out
 
+    def folder_path(self, user: User, root_name: str, parts) -> str:
+        """The real location of a folder this user may open (the same checks as a listing), else NotFound."""
+        path = self._dir_path(user, root_name, tuple(parts))
+        if not os.path.isdir(path):
+            raise NotFound("not a folder")
+        self._inside(user, root_name, path)
+        return path
+
     def file_info(self, user: User, root_name: str, parts, any_type: bool = False) -> FileInfo:
         """One servable file. any_type=True allows every regular file, not just the configured book types."""
         parts = tuple(parts)

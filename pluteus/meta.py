@@ -200,6 +200,19 @@ class MetaService:
         out.update((e.path, tags) for e, tags in zip(songs, self._pool.map(self._tags, songs)) if tags)
         return out
 
+    def song_tags(self, entry) -> dict:
+        """The tags a music app needs for one audio file, through the same cache (key "si:")."""
+        key = "si:" + entry.path
+        hit = self.cache.get(key, entry.size, entry.mtime)
+        if hit is not None:
+            return hit
+        data = mediainfo.song_info(entry.path)
+        self.cache.put(key, entry.size, entry.mtime, data)
+        return data
+
+    def song_tags_many(self, entries) -> list:
+        return list(self._pool.map(self.song_tags, entries))
+
     def _tags(self, entry) -> dict:
         """Title, artist and track of an audio or video file, through the same cache."""
         key = "mi:" + entry.path

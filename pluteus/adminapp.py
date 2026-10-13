@@ -15,6 +15,7 @@ import functools
 import logging
 import os
 import platform
+import secrets
 import shutil
 import threading
 import time
@@ -266,11 +267,13 @@ def create_admin_app(main_app) -> Starlette:
             return JSONResponse({"error": "That folder does not exist."}, 404)
 
     # ---- users ------------------------------------------------------------------------------------------------------------
-    def users_html(me: str, flash: str = "", error: str = "", status_code: int = 200):
+    def users_html(me: str, flash: str = "", error: str = "", status_code: int = 200, new_key=None, address: str = ""):
         if not config_path:
             return HTMLResponse(adminweb.users_page(ctx, [], [], me, can_edit=False), status_code)
         model = AdminModel(config_path)
-        return HTMLResponse(adminweb.users_page(ctx, model.users(), model.root_names(), me, flash, error), status_code)
+        return HTMLResponse(adminweb.users_page(ctx, model.users(), model.root_names(), me, flash, error,
+                                                subsonic=cfg.subsonic, keys=state.appkey_users(), new_key=new_key,
+                                                address=address), status_code)
 
     @guarded
     async def users(request, user):
@@ -352,7 +355,31 @@ def create_admin_app(main_app) -> Starlette:
             return "removed"
         return await change(request, user, action)
 
+    @guarded
+    async def make_appkey(request, user):
+        """A new music app key for one user; shown once, on the page that answers (no redirect, so it is not kept in a URL)."""
+        if not (config_path and cfg.subsonic):
+            return PlainTextResponse("The music app API is not switched on (subsonic = true in config.toml).", 400)
+        name = _first(await form_of(request), "name")
+        known = {u.name for u in AdminModel(config_path).users()}
+        if name not in known:
+            return PlainTextResponse("No such user.", 400)
+        secret = secrets.token_urlsafe(18)
+        await run_in_threadpool(state.set_appkey, name, secret)
+        log.info("admin %s: music app key made for %s", user.name, name)
+        host = request.headers.get("host", "")
+        address = ("http://%s:%d/%s" % (host.rsplit(":", 1)[0] or "this-server", cfg.port, cfg.base_path.strip("/"))).rstrip("/")
+        return await run_in_threadpool(users_html, user.name, "", "", 200, (name, secret), address)
+
+    @guarded
+    async def revoke_appkey(request, user):
+        name = _first(await form_of(request), "name")
+        await run_in_threadpool(state.delete_appkey, name)
+        log.info("admin %s: music app key revoked for %s", user.name, name)
+        return done("/users", "keyrevoked")
+
     routes = [
+        Route("/users/appkey", make_appkey, methods=["POST"]), Route("/users/appkey/revoke", revoke_appkey, methods=["POST"]),
         Route("/", status), Route("/logout", logout, methods=["POST"]), Route("/security", security),
         Route("/libraries", libraries), Route("/libraries/add", library_add, methods=["POST"]),
         Route("/libraries/remove", library_remove, methods=["POST"]), Route("/libraries/browse", library_browse),

@@ -493,9 +493,16 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
         metas = await run_in_threadpool(meta.lookup_many, shown)
         book_paths = ["/".join(e.parts) for e in shown if not e.is_dir]
         progress = await run_in_threadpool(state.progress_for, user.name, root, book_paths)
+        def folder_picture():
+            try:
+                return mediainfo.folder_cover(lib.folder_path(user, root, parts))
+            except (NotFound, PathError, OSError):
+                return ""
+        has_cover = await run_in_threadpool(folder_picture)
         return HTMLResponse(web.listing_page(
             root, parts, shown, page, pages, len(entries), ctx_for(user), metas, progress, sort=sort, desc=desc,
-            writable=root == UPLOADS_ROOT, flash=web.flash_text(request.query_params)))
+            writable=root == UPLOADS_ROOT, flash=web.flash_text(request.query_params),
+            cover_url=urls.cover(root, parts) if (has_cover and parts) else ""))
 
     @guarded("web")
     async def settings(request: Request, user):
@@ -767,10 +774,13 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
         """The picture of an audio or video file: the one inside it, else cover.jpg / folder.jpg of its folder."""
         root = request.path_params["root"]
         parts = _parts(request.path_params["path"])
-        info = await run_in_threadpool(lib.file_info, user, root, parts, cfg.show_all_files)
-        if kinds.kind_of(info.name) not in ("audio", "video"):
-            raise NotFound("no cover")
-        found = await run_in_threadpool(mediainfo.read_cover, info.path)
+        def find():
+            try:                                                # a file: its own picture, else its folder's
+                info = lib.file_info(user, root, parts, cfg.show_all_files)
+                return mediainfo.read_cover(info.path) if kinds.kind_of(info.name) in ("audio", "video") else None
+            except NotFound:                                    # a folder: folder.jpg, cover.jpg ...
+                return mediainfo.read_folder_cover(lib.folder_path(user, root, parts))
+        found = await run_in_threadpool(find)
         if found is None:
             raise NotFound("no cover")
         data, mime = found
@@ -985,6 +995,21 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
         Route("/opds/{root}/{path:path}", opds_folder),
         Route("/dl/{root}/{path:path}", download),
     ]
+    if cfg.subsonic:
+        from .subsonic import Subsonic
+
+        class Throttle:
+            """The Subsonic API shares the web login's failure counting (same names, same locks)."""
+            def wait(self, request, name):
+                return limiter.wait_seconds(name, limiter_ip(request))
+
+            def fail(self, request, name):
+                note_failure(name, limiter_ip(request), "", False)
+
+            def ok(self, request, name):
+                limiter.success(name)
+        api = Subsonic(cfg, lib, state, auth, meta, Throttle())
+        routes.append(Route("/rest/{name}", api.handle, methods=["GET", "POST"]))
     app = Starlette(routes=routes, middleware=[Middleware(SecurityHeaders)])
     app.state.library = lib
     app.state.state = state

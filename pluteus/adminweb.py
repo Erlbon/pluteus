@@ -15,7 +15,7 @@ FLASH = {
     "unlocked": "The lock is cleared.", "nothing": "There was nothing to clear.", "forgot": "That device is forgotten.",
     "signedout": "Signed out everywhere (sessions and known devices removed).",
     "libadded": "Library added. It is available now.", "libremoved": "Library removed. Nothing on disk was touched.",
-    "added": "User added.", "password": "Password changed.", "access": "Access saved.", "removed": "User removed.",
+    "added": "User added.", "password": "Password changed.", "access": "Access saved.", "removed": "User removed.", "keyrevoked": "Music app key revoked.",
 }
 
 
@@ -279,8 +279,27 @@ def _flags(adult: bool, upload: bool, admin: bool) -> str:
 RIGHTS = (("Adult", "adult"), ("Uploads", "upload"), ("Admin", "admin"))    # one table column each; add a pair for a new right
 
 
+def _key_form(name: str, has_key: bool) -> str:
+    """The music app key controls of one user (shown when the Subsonic API is switched on)."""
+    state = ("A key is active." if has_key else "No key yet: music apps cannot log in as this user.")
+    make = ("<form class='pl-admin-form' method='post' action='/users/appkey'><input type='hidden' name='name' value='%s'>"
+            "<p class='pl-muted'>%s</p><button class='pl-btn' type='submit'>%s</button></form>"
+            % (escape(name), escape(state), "Make a new key (the old one stops working)" if has_key else "Make a key"))
+    return make + (_post("/users/appkey/revoke", {"name": name}, "Revoke the key", "Revoke the music app key of %s?" % name, True) if has_key else "")
+
+
+def _new_key_box(new_key: tuple, address: str) -> str:
+    name, secret = new_key
+    return _box("Music app key for %s" % name,
+                "<p>Copy it now: it is shown only this once.</p><p><code class='pl-secret'>%s</code></p>"
+                "<p class='pl-muted'>In a Subsonic app (Symfonium, Tempo, Substreamer, DSub ...) use the server address <code>%s</code>, "
+                "the user name <code>%s</code> and this key as the password. Apps that support API keys can use it as the key without "
+                "a user name.</p>" % (escape(secret), escape(address), escape(name)))
+
+
 def users_page(ctx: Ctx, users: list, root_names: list, me: str, flash: str = "", error: str = "",
-               can_edit: bool = True) -> str:
+               can_edit: bool = True, subsonic: bool = False, keys: dict | None = None, new_key: tuple | None = None,
+               address: str = "") -> str:
     if not can_edit:
         return page(ctx, "Users", "users", "<p>This server was started without a configuration file, so users cannot be "
                     "changed here.</p>", flash, error)
@@ -296,8 +315,9 @@ def users_page(ctx: Ctx, users: list, root_names: list, me: str, flash: str = ""
                 "<form class='pl-admin-form' method='post' action='/users/access'><input type='hidden' name='name' value='%s'>%s%s"
                 "<button class='pl-btn' type='submit'>Save access</button></form>%s</details>"
                 % (escape(u.name), escape(u.name), _roots_boxes(root_names, u.roots), _flags(u.adult, u.upload, u.admin),
-                   "" if u.name == me else _post("/users/remove", {"name": u.name}, "Remove user",
-                                                 "Remove %s? Their upload folder and reading progress stay on the server." % u.name, True)))
+                   (_key_form(u.name, u.name in (keys or {})) if subsonic else "") +
+                   ("" if u.name == me else _post("/users/remove", {"name": u.name}, "Remove user",
+                                                  "Remove %s? Their upload folder and reading progress stay on the server." % u.name, True))))
         rows.append([USER_ICON + escape(u.name) + (" <span class='pl-muted'>(you)</span>" if u.name == me else ""),
                      roots_cell(u.roots)] + rights + [edit])
     table = _table(["User", "Folders"] + [label for label, _ in RIGHTS] + [""], rows, "No users.")
@@ -310,4 +330,5 @@ def users_page(ctx: Ctx, users: list, root_names: list, me: str, flash: str = ""
            % (_roots_boxes(root_names, ()), _flags(False, True, False)))
     note = ("<p class='pl-muted'>Changes reach the running server within a few seconds. Settings other than users live in "
             "<code>config.toml</code> and need a restart.</p>")
-    return page(ctx, "Users", "users", _box("Users", table + note) + _box("Add a user", add), flash, error)
+    shown = _new_key_box(new_key, address) if new_key else ""
+    return page(ctx, "Users", "users", shown + _box("Users", table + note) + _box("Add a user", add), flash, error)
