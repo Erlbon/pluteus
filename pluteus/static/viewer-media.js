@@ -78,10 +78,13 @@
       if (icon) icon.className = "pl-icon " + (playing ? "pl-i-pause" : "pl-i-play");
       playButton.setAttribute("aria-label", playing ? "Pause" : "Play");
     };
+    /* the gold part of a slider's track: --p is the share of the way to the handle */
+    function fill(input) { input.style.setProperty("--p", (100 * (input.value - input.min) / (input.max - input.min || 1)) + "%"); }
     var tick = function () {
       if (curEl) curEl.textContent = clock(media.currentTime);
       if (durEl) durEl.textContent = clock(media.duration);
       if (!dragging && isFinite(media.duration) && media.duration > 0) scrub.value = Math.round(1000 * media.currentTime / media.duration);
+      fill(scrub);
     };
     playButton.addEventListener("click", function () {
       if (media.paused) { var p = media.play(); if (p && p.catch) p.catch(function () { say("Tap play to start", 4000); }); }
@@ -89,6 +92,7 @@
     });
     scrub.addEventListener("input", function () {
       dragging = true;
+      fill(scrub);
       if (isFinite(media.duration)) { var t = media.duration * scrub.value / 1000; if (curEl) curEl.textContent = clock(t); }
     });
     scrub.addEventListener("change", function () {
@@ -106,6 +110,7 @@
       try { var saved = parseFloat(localStorage.getItem("pluteus-media-volume")); if (saved >= 0 && saved <= 1) level = saved; } catch (e) { /* storage blocked */ }
       var showVolume = function () {
         volume.value = String(Math.round((media.muted ? 0 : media.volume) * 100));
+        fill(volume);
         var icon = muteButton.querySelector(".pl-icon");
         if (icon) icon.className = "pl-icon " + (media.muted || media.volume === 0 ? "pl-i-mute" : "pl-i-volume");
         muteButton.setAttribute("aria-label", media.muted ? "Unmute" : "Mute");

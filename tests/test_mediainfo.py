@@ -135,6 +135,14 @@ def test_the_music_player_has_a_volume_control_that_the_script_remembers(music):
     assert ".pl-vol { display: none; }" in css and "@media (min-width: 720px)" in css      # a phone has its own volume buttons
 
 
+def test_the_sliders_have_a_gold_track_and_handle_that_follows_the_value():
+    css = open(os.path.join(HERE, "..", "pluteus", "static", "base.css"), encoding="utf-8").read()
+    js = open(os.path.join(HERE, "..", "pluteus", "static", "viewer-media.js"), encoding="utf-8").read()
+    for needle in ("::-webkit-slider-runnable-track", "::-moz-range-progress", "::-webkit-slider-thumb", "::-moz-range-thumb"):
+        assert needle in css                                                            # Chrome and Firefox are both drawn by us
+    assert 'setProperty("--p"' in js and js.count("fill(scrub)") >= 2 and "fill(volume)" in js
+
+
 # ---- the transport row ----------------------------------------------------------------------------------------------------------------------
 def test_the_speed_is_written_along_the_play_button_and_the_row_has_no_text_labels(music):
     client, auth = make_client(music)

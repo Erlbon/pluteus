@@ -426,7 +426,18 @@ html[data-icons="aurora"] .pl-ico-upload  { color: light-dark(#1f7ae0, #7cc8ff);
 .pl-chips { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; margin-top: 6px; }
 .pl-chip { font-size: 12px; padding: 2px 10px; border-radius: 999px; border: 1px solid var(--pl-line); color: var(--pl-dim); }
 .pl-scrub { display: none; width: min(100%, 560px); align-items: center; gap: 10px; font-variant-numeric: tabular-nums; color: var(--pl-dim); font-size: 13px; }
-.pl-scrub input { flex: 1; accent-color: var(--pl-accent); height: 28px; min-width: 0; }
+.pl-scrub input[type=range] { -webkit-appearance: none; appearance: none; background: transparent; flex: 1; height: 28px; min-width: 0; margin: 0; padding: 0;
+  cursor: pointer; --p: 0%; }
+/* a thin gold track that fills up to a small round gold handle: the same in Chrome and Firefox (the script keeps --p at the handle) */
+.pl-scrub input[type=range]::-webkit-slider-runnable-track { height: 4px; border-radius: 2px; background: linear-gradient(to right, var(--pl-accent) var(--p), var(--pl-line) var(--p)); }
+.pl-scrub input[type=range]::-moz-range-track { height: 4px; border-radius: 2px; background: var(--pl-line); }
+.pl-scrub input[type=range]::-moz-range-progress { height: 4px; border-radius: 2px; background: var(--pl-accent); }
+.pl-scrub input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 14px; height: 14px; margin-top: -5px; border-radius: 50%;
+  background: var(--pl-accent); border: 2px solid var(--pl-bg); box-shadow: 0 0 0 1px var(--pl-accent); }
+.pl-scrub input[type=range]::-moz-range-thumb { width: 10px; height: 10px; border-radius: 50%; background: var(--pl-accent); border: 2px solid var(--pl-bg); box-shadow: 0 0 0 1px var(--pl-accent); }
+.pl-scrub input[type=range]:hover::-webkit-slider-thumb { transform: scale(1.15); }
+.pl-scrub input[type=range]:focus-visible { outline: none; }
+.pl-scrub input[type=range]:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 1px var(--pl-accent), 0 0 0 4px color-mix(in srgb, var(--pl-accent) 35%, transparent); }
 .pl-transport { display: none; align-items: center; gap: 14px; justify-content: center; }
 .pl-js .pl-scrub { display: flex; }
 /* volume: a speaker and a short slider at the end of the position bar; on wide screens only (a phone has its own volume buttons) */
