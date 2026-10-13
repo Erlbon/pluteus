@@ -1,5 +1,6 @@
 """Tags, cover art and lyrics of audio files: the reader, the /cover route, the player page and the folder listing."""
 import os
+import time
 import shutil
 
 import pytest
@@ -279,3 +280,16 @@ def test_the_listing_shows_a_folder_jpg_that_was_added_after_the_first_visit(mus
     (music / "Album" / "folder.jpg").write_bytes(JPEG)
     page = client.get(url, headers={**auth, **HTML}).text                      # the same server, no restart, straight away
     assert "pl-folder-cover" in page
+
+
+def test_a_quiet_folder_is_remembered_and_a_busy_one_is_not(tmp_path, monkeypatch):
+    folder = tmp_path / "old"
+    folder.mkdir()
+    (folder / "cover.jpg").write_bytes(JPEG)
+    old = (time.time() - 3600)
+    os.utime(str(folder), (old, old))                                           # untouched for an hour
+    assert mediainfo.folder_cover(str(folder)).endswith("cover.jpg")
+    assert str(folder) in mediainfo._folder_cache                                # trusted and remembered
+    busy = tmp_path / "busy"
+    busy.mkdir()
+    assert mediainfo.folder_cover(str(busy)) == "" and str(busy) not in mediainfo._folder_cache   # just made: never remembered

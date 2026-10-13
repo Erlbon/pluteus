@@ -135,6 +135,8 @@ def folder_cover(directory: str) -> str:
                 break
         if found:
             break
+    if stamp is None or time.time_ns() - stamp < 2_000_000_000:
+        return found                      # changed in the last two seconds: the time stamp is too coarse to trust yet, look again next time
     with _folder_lock:
         if len(_folder_cache) > 2000:
             _folder_cache.clear()
