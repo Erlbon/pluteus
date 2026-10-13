@@ -221,6 +221,15 @@
     applyRate();
     say("Speed " + getLabel(speedButton), 1200);
   }
+  /* the readout in the middle is a switch: normal -> 1.25 -> 1.5 -> 2 -> normal (the - and + beside it fine-tune) */
+  var QUICK = [1, 1.25, 1.5, 2];
+  if (speedButton) speedButton.addEventListener("click", function () {
+    var i = QUICK.indexOf(rate);
+    rate = QUICK[(i + 1) % QUICK.length];                            // from any other speed the first click goes to the next quick one
+    try { localStorage.setItem("pluteus-media-rate", String(rate)); } catch (e) { /* storage blocked */ }
+    applyRate();
+    say("Speed " + getLabel(speedButton), 1200);
+  });
   if (slower) slower.addEventListener("click", function () { stepRate(-1); });
   if (faster) faster.addEventListener("click", function () { stepRate(1); });
 

@@ -25,6 +25,8 @@
 .pl-i-fwd30      { -webkit-mask-image: url(../_/icons/fwd30.svg);      mask-image: url(../_/icons/fwd30.svg); }
 .pl-i-speed      { -webkit-mask-image: url(../_/icons/speed.svg);      mask-image: url(../_/icons/speed.svg); }
 .pl-i-moon       { -webkit-mask-image: url(../_/icons/moon.svg);       mask-image: url(../_/icons/moon.svg); }
+.pl-i-rew        { -webkit-mask-image: url(../_/icons/rew.svg);        mask-image: url(../_/icons/rew.svg); }
+.pl-i-ff         { -webkit-mask-image: url(../_/icons/ff.svg);         mask-image: url(../_/icons/ff.svg); }
 .pl-i-play       { -webkit-mask-image: url(../_/icons/play.svg);       mask-image: url(../_/icons/play.svg); }
 .pl-i-pause      { -webkit-mask-image: url(../_/icons/pause.svg);      mask-image: url(../_/icons/pause.svg); }
 

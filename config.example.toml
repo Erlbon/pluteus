@@ -57,6 +57,12 @@ data_dir = 'D:\pluteus-data'
 # app, try share_target = false (and restart): it leaves the share entry out of the manifest.
 # share_target = true
 
+# MORE WAYS IN, all off until switched on (each needs an app key for the user: admin page, Users, Edit, Make a key):
+# subsonic = true            # Subsonic / OpenSubsonic API under /rest: music apps (Symfonium, Tempo, ...) and Android Auto through them
+# webdav = true              # read-only WebDAV under /dav: mount the library in Explorer, Finder, Android file managers, Kodi
+# kosync = true              # KOReader progress sync under /kosync
+# thumbnails = true          # cover thumbnails: cover links in the OPDS feeds and the cover view of folders (needs Pillow, installed with pluteus)
+
 # PERSONAL UPLOAD FOLDERS. Set uploads_dir and every user gets their own folder uploads_dir/<user name>, shown as the
 # top-level folder "uploads": upload, new folder, rename, delete. Nobody else sees it (not even other users with the
 # same roots) and it is never inside a library: you move files into the library yourself. Keep uploads_dir OUTSIDE

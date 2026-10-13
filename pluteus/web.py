@@ -533,6 +533,7 @@ def media_viewer_page(ctx: Ctx, title: str, *, kind: str, raw_url: str, mime: st
     viewer-media.js adds resume, auto-advance to the next file, the lyrics highlight and the lock-screen controls."""
     tags, synced, chapters = tags or {}, synced or [], chapters or []
     tag = "video" if kind == "video" else "audio"
+    audiobook = title.lower().endswith(".m4b")
     name = title.rsplit(".", 1)[0] if "." in title else title
     heading = tags.get("title") or name
     artist = tags.get("artist") or tags.get("albumartist") or ""
@@ -546,16 +547,27 @@ def media_viewer_page(ctx: Ctx, title: str, *, kind: str, raw_url: str, mime: st
         words = "<span class='pl-btn-text'>%s</span>" % text if text else ""
         return ("<button class='pl-btn %s' id='%s' type='button' aria-label='%s'>%s</button>"
                 % (extra, ident, escape(label), words + glyph if after else glyph + words))
-    skip_back = button("back30", "Back 30 seconds", "prev", "30 s")
-    skip_fwd = button("fwd30", "Forward 30 seconds", "next", "30 s", after=True)
+    skip_back = button("back30", "Back 30 seconds", "rew")                    # the old tape-deck double triangles, no text
+    skip_fwd = button("fwd30", "Forward 30 seconds", "ff")
     if extras:
-        speed = ("<span class='pl-speed-group'><button class='pl-btn pl-speed-step' id='speed-down' type='button' aria-label='Slower'>&minus;</button>"
-                 "<span class='pl-speed-val' id='speed' title='Playback speed'><span class='pl-icon pl-i-speed'></span>"
-                 "<span class='pl-btn-text'>1&times;</span></span>"
-                 "<button class='pl-btn pl-speed-step' id='speed-up' type='button' aria-label='Faster'>+</button></span>")
-        sleep = button("sleep", "Sleep timer: pause after a while", "moon", "Sleep")
+        speed_down = "<button class='pl-btn pl-speed-step' id='speed-down' type='button' aria-label='Slower'>&minus;</button>"
+        speed_up = "<button class='pl-btn pl-speed-step' id='speed-up' type='button' aria-label='Faster'>+</button>"
+        tip = "Tap to switch between normal, 1.25, 1.5 and 2 times"
+        # audio: the speed is written along the top edge of the play button (an arc; the tap area is a band along the arc)
+        speed_val = ("<button class='pl-speed-arc' id='speed' type='button' title='%s' aria-label='Playback speed'>"
+                     "<svg viewBox='0 0 100 50' aria-hidden='true'><path id='pl-arc' d='M 14 50 A 36 36 0 0 1 86 50' fill='none'/>"
+                     "<path class='hit' d='M 14 50 A 36 36 0 0 1 86 50'/>"
+                     "<text><textPath href='#pl-arc' startOffset='50%%' text-anchor='middle' class='pl-btn-text'>1&times;</textPath></text>"
+                     "</svg></button>" % tip)
+        # video: a plain gold chip between the skip buttons
+        speed_chip = ("<button class='pl-speed-val' id='speed' type='button' title='%s'>"
+                      "<span class='pl-btn-text'>1&times;</span></button>" % tip)
+        # sleep timer and bookmarks are for audiobooks (m4b), where you stop in the middle and fall asleep; not for a song
+        sleep = button("sleep", "Sleep timer: pause after a while", "moon", "Sleep") if audiobook else ""
     else:
-        speed = sleep = ""
+        speed_down = speed_up = speed_val = speed_chip = sleep = ""
+    if not audiobook:
+        bookmarks_url = ""
     def panel_button(panel: str, label: str) -> str:
         return ("<button class='pl-btn pl-panel-btn' id='%s-btn' data-panel='%s' type='button' aria-label='Show: %s' "
                 "aria-expanded='false'><span class='pl-btn-text'>%s</span></button>" % (panel, panel, label, label))
@@ -568,8 +580,8 @@ def media_viewer_page(ctx: Ctx, title: str, *, kind: str, raw_url: str, mime: st
     if kind == "video":
         stage = ("<div class='pl-media-box'>%s<video id='media' controls preload='metadata' playsinline src='%s'>"
                  "<p>Your browser cannot play this file; <a href='%s'>download it</a>.</p></video>"
-                 "<div class='pl-media-controls'>%s%s%s%s</div>%s<div class='pl-toast' id='status' hidden></div></div>"
-                 % (info, escape(raw_url), escape(download_url), skip_back, speed, sleep, skip_fwd, lyrics))
+                 "<div class='pl-media-controls'>%s%s%s%s%s</div><div class='pl-tools'>%s</div>%s<div class='pl-toast' id='status' hidden></div></div>"
+                 % (info, escape(raw_url), escape(download_url), speed_down, skip_back, speed_chip, skip_fwd, speed_up, sleep, lyrics))
     else:
         picture = ("<img class='pl-cover-img' src='%s' alt='Cover'>" % escape(cover_url) if cover_url
                    else "<div class='pl-cover-blank'>%s</div>" % ico("audio"))
@@ -579,10 +591,10 @@ def media_viewer_page(ctx: Ctx, title: str, *, kind: str, raw_url: str, mime: st
                  "<a href='%s'>download it</a>.</p></audio>"
                  "<div class='pl-scrub'><span id='cur'>0:00</span><input type='range' id='scrub' min='0' max='1000' value='0' "
                  "aria-label='Position'><span id='dur'>&ndash;:&ndash;&ndash;</span></div>"
-                 "<div class='pl-transport'>%s%s%s</div><div class='pl-media-controls'>%s%s%s</div>%s"
+                 "<div class='pl-transport'>%s%s<span class='pl-play-wrap'>%s%s</span>%s%s</div><div class='pl-tools'>%s%s</div>%s"
                  "<div class='pl-toast' id='status' hidden></div></div>"
-                 % (backdrop, picture, info, escape(raw_url), escape(download_url), skip_back,
-                    button("play", "Play", "play", extra="pl-play"), skip_fwd, speed, sleep, words_button, lyrics))
+                 % (backdrop, picture, info, escape(raw_url), escape(download_url), speed_down, skip_back, speed_val,
+                    button("play", "Play", "play", extra="pl-play"), skip_fwd, speed_up, sleep, words_button, lyrics))
     foot = ("%s<span style='flex:1'></span><span>%d / %d</span>%s"
             % (_nav_link("prev", "prev", "Previous file", prev_url), position, total,
                _nav_link("next", "next", "Next file", next_url)))

@@ -388,10 +388,27 @@ html[data-icons="aurora"] .pl-ico-upload  { color: light-dark(#1f7ae0, #7cc8ff);
   display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
 .pl-media-controls .pl-icon { width: 1.5em; height: 1.5em; vertical-align: 0; color: var(--pl-accent); }
 .pl-media-box { position: relative; }
-.pl-speed-group { display: inline-flex; align-items: center; gap: 4px; }
-.pl-media-controls .pl-speed-step { min-width: 46px; padding: 8px 12px; font-size: 22px; line-height: 1; }
-.pl-speed-val { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-width: 76px; font-size: 17px; font-variant-numeric: tabular-nums; }
-.pl-speed-val .pl-icon { width: 1.3em; height: 1.3em; color: var(--pl-accent); }
+/* the second row of the player: speed, sleep, lyrics, chapters, bookmarks. One height, one shape, quieter than the transport row. */
+.pl-tools { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; align-items: center; margin: 10px 0 2px; }
+.pl-tools .pl-btn { height: 40px; box-sizing: border-box; border-radius: 999px; font-size: 15px; }
+.pl-tools .pl-btn { display: inline-flex; align-items: center; gap: 6px; padding: 0 16px; min-width: 0; min-height: 0; }
+.pl-tools .pl-icon { width: 1.15em; height: 1.15em; color: var(--pl-accent); vertical-align: 0; }
+.pl-tools .pl-btn[aria-expanded="true"] { border-color: var(--pl-accent); color: var(--pl-accent); }
+/* - and +: round, gold, bold, outside the skip buttons */
+.pl-btn.pl-speed-step { width: 52px; min-width: 52px; height: 52px; min-height: 52px; padding: 0; border-radius: 50%; justify-content: center;
+  font-size: 38px; font-weight: 700; line-height: 1; color: var(--pl-accent); }
+/* the speed on video: a plain gold chip */
+.pl-speed-val { font: inherit; font-size: 17px; font-weight: 600; font-variant-numeric: tabular-nums; min-width: 64px; height: 36px; padding: 0 14px;
+  border: 1px solid var(--pl-line); border-radius: 999px; background: var(--pl-btn-bg); color: var(--pl-accent); cursor: pointer; }
+/* the speed on audio: written along the top of the play button, almost touching it. It takes no room in the row, so every
+   button stays on one centre line. The button itself ignores the pointer; only the band along the arc (.hit) takes taps. */
+.pl-play-wrap { position: relative; display: inline-flex; margin: 0 4px; }
+.pl-speed-arc { position: absolute; left: -18px; top: -18px; width: 100px; height: 50px; padding: 0; background: none; border: 0;
+  color: var(--pl-accent); pointer-events: none; overflow: visible; }
+.pl-speed-arc svg { width: 100%; height: 100%; overflow: visible; display: block; }
+.pl-speed-arc text { fill: currentColor; font-size: 17px; font-weight: 600; font-variant-numeric: tabular-nums; pointer-events: none; }
+.pl-speed-arc .hit { stroke: transparent; stroke-width: 22px; fill: none; pointer-events: stroke; cursor: pointer; }
+.pl-transport { margin-top: 26px; }
 
 /* ---- the player: cover, tags, scrubber, transport, lyrics ---- */
 .pl-mediaview .pl-media-stage { align-items: flex-start; padding-top: 8px; }
@@ -413,8 +430,8 @@ html[data-icons="aurora"] .pl-ico-upload  { color: light-dark(#1f7ae0, #7cc8ff);
 .pl-transport { display: none; align-items: center; gap: 14px; justify-content: center; }
 .pl-js .pl-scrub { display: flex; }
 .pl-js .pl-transport { display: flex; }
-.pl-transport .pl-btn { min-height: 48px; border-radius: 14px; display: inline-flex; align-items: center; gap: 6px; }
-.pl-transport .pl-icon { color: var(--pl-accent); width: 1.5em; height: 1.5em; vertical-align: 0; }
+.pl-transport .pl-btn { min-height: 52px; min-width: 72px; justify-content: center; border-radius: 14px; display: inline-flex; align-items: center; gap: 6px; }
+.pl-transport .pl-icon { color: var(--pl-accent); width: 32px; height: 32px; vertical-align: 0; }
 .pl-transport .pl-play { width: 64px; height: 64px; border-radius: 50%; justify-content: center; padding: 0;
   background: var(--pl-btn-primary-bg); border: var(--pl-btn-primary-border); }
 .pl-transport .pl-play .pl-icon { width: 36px; height: 36px; color: var(--pl-btn-primary-fg); }

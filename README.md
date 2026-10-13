@@ -5,7 +5,7 @@ OPDS app, download files, with per-user logins. Python, no Java, low memory, no 
 Built as a light replacement for Ubooquity, for people who keep their library as plain folders on disk
 (tested on about 10 TB of books and comics).
 
-**Status: 0.6.0, in daily use, young.** Named after the *pluteus*, the sloping shelf or bookcase of a
+**Status: 0.9.0, feature complete, in daily use, being tested on real devices before 1.0.** Named after the *pluteus*, the sloping shelf or bookcase of a
 medieval library. Pronounced "PLOO-tee-us".
 
 ## What you get
@@ -15,6 +15,11 @@ medieval library. Pronounced "PLOO-tee-us".
   and m4b audiobooks, video, text, Markdown, CSV and zip files.
 - **Per-user logins**, per-user folder access, `.adult`, `.private` and `.hidden` folder markers, and a personal
   **upload folder** per user (also from the Android share sheet).
+- **Music and audiobooks:** a player with cover, tags (title, artist, album, year, genre), lyrics (plain or timed `.lrc`), chapters, bookmarks,
+  speed and sleep timer, and the lock-screen controls of the phone.
+- **More ways in**, all read-only and all switched off until you turn them on: **Subsonic** for music apps (Android Auto through them),
+  **WebDAV** to mount the library as a drive, **KOReader** progress sync, **OPDS 2.0** next to OPDS 1.2, and optional cover thumbnails for the feeds.
+- **Per-user app keys** so no app has to store your real password, **favourites and "read next"** lists, and an optional **cover view** of folders.
 - **Safe to put on the internet** behind HTTPS: login lockouts that escalate, known devices, same-site checks, a
   read-only view of your libraries (pluteus never writes to them).
 - A **web admin page** on a separate, local-only port: status, locks, users.
@@ -22,8 +27,9 @@ medieval library. Pronounced "PLOO-tee-us".
 
 ## What it deliberately does not do
 
-No library database, no search across the whole library, no "recently added", no duplicate detection, no cover
-images, no online metadata lookups (it only reads the title, author and series already inside your EPUBs), no HEIC conversion, no accounts for sign-up. Anything that would need scanning the
+No library database, no search across the whole library (only a name match for Subsonic apps), no "recently added", no duplicate
+detection, no online metadata lookups (it only reads the tags already inside your files), no HEIC conversion, no accounts for sign-up.
+Cover thumbnails exist but are off until you switch them on, and are made from the files when someone asks, never in the background. Anything that would need scanning the
 tree is left out on purpose: that lightness is the point. It is not a replacement for Nextcloud, Calibre or Jellyfin.
 
 ## Why filesystem-first
@@ -207,6 +213,13 @@ comic page streaming. With `thumbnails = true` books carry **cover thumbnails** 
 | `/browse/{root}/{path}` | web: folder listing, paged |
 | `/opds`, `/opds/{root}/{path}` | OPDS 1.2 navigation / acquisition feeds, paged (`?page=N`) |
 | `/dl/{root}/{path}` | download, with `Range` support |
+| `/opds-shelves/favourite`, `/opds-shelves/next` | OPDS feeds of a user's favourites and read-next lists |
+| `/rest/{name}` | Subsonic / OpenSubsonic API (`subsonic = true`) |
+| `/dav/{root}/{path}` | read-only WebDAV (`webdav = true`) |
+| `/kosync/...` | KOReader progress sync (`kosync = true`) |
+| `/thumb/{root}/{path}?w=N` | cover thumbnail (`thumbnails = true`) |
+| `/cover/{root}/{path}` | the picture of a song or a folder (player, folder page) |
+| `/api/shelf/...`, `/api/bookmarks/...`, `/api/progress/...` | per-user JSON for the pages |
 | `/healthz` | unauthenticated, for Docker health checks |
 
 ## Reader apps (tested)
@@ -314,7 +327,7 @@ The pictures are small JPEGs made on the first view (Pillow) and cached.
 .\.venv\Scripts\python -m pytest
 ```
 
-The tests (about 260) build a fake library in pytest's `tmp_path`: login and sessions, throttling, per-user
+The tests (about 650) build a fake library in pytest's `tmp_path`: login and sessions, throttling, per-user
 roots, natural order and paging, sorting, display names, exclusions, the adult marker, path traversal (including
 Windows short names), Range downloads, the readers, the viewers, and a folder whose name ends in a dot. A
 read-only smoke test against the real libraries over SMB showed feed times of 10-40 ms, including a 476-file folder.
@@ -338,12 +351,13 @@ Nothing is indexed, so a folder costs the same however big the library is.
 
 ## Not yet (planned)
 
-1. Reader-app compatibility pass on real devices (KOReader, an iOS app, Android comic apps with page streaming);
-   PocketBook is the only one tried so far.
+1. A compatibility pass on real devices before 1.0: Subsonic apps and Android Auto, WebDAV in Explorer / Finder / Android, PocketBook
+   covers, KOReader progress sync, OPDS 2.0 page streaming, an iOS app. Until then these are tested against their specifications and with
+   test clients only; PocketBook's OPDS login is the only one tried on a real device.
 2. "Share to pluteus": on one real phone (Chrome 154, Android 16, a dynamic-DNS address behind Caddy with a valid certificate) Chrome refused to
    install the app ("This app cannot be installed"), even for a bare-bones manifest, while other sites installed fine. Cause unknown, so the
    Share-menu entry is unproven. A home-screen shortcut and uploads from the page itself work.
-3. No covers by design (not wanted).
+3. Left out on purpose: global search, a "new" shelf (both need an index), transcoding, a docked mini-player, Subsonic playlists.
 
 ## Icon
 

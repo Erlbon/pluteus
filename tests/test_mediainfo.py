@@ -123,6 +123,24 @@ def test_the_folder_listing_shows_file_names_not_tags(music):
     assert "Spark På Leggen" not in page and "Kaizers Orchestra" not in page
 
 
+# ---- the transport row ----------------------------------------------------------------------------------------------------------------------
+def test_the_speed_is_written_along_the_play_button_and_the_row_has_no_text_labels(music):
+    client, auth = make_client(music)
+    page = client.get("/view/music/Album/spark.mp3", headers={**auth, **HTML}).text
+    assert "pl-speed-arc" in page and "<textPath" in page and "id='speed-down'" in page and "id='speed-up'" in page
+    assert page.index("id='speed-down'") < page.index("id='back30'") < page.index("id='play'") < page.index("id='fwd30'") < page.index("id='speed-up'")
+    assert ">30 s<" not in page                                                   # the skip buttons are icons only (the label is for screen readers)
+
+
+def test_sleep_and_bookmarks_are_for_audiobooks_only(music):
+    shutil.copy(CHAPTERS, music / "Album" / "book.m4b")
+    client, auth = make_client(music)
+    book = client.get("/view/music/Album/book.m4b", headers={**auth, **HTML}).text
+    song = client.get("/view/music/Album/spark.mp3", headers={**auth, **HTML}).text
+    assert "id='sleep'" in book and "id='bookmarks-btn'" in book
+    assert "id='sleep'" not in song and "id='bookmarks-btn'" not in song
+
+
 # ---- the player script keeps the listener's place --------------------------------------------------------------------------------------------
 def test_the_autoplay_flag_is_taken_off_the_address_and_keys_are_left_alone_in_fields():
     js = open(os.path.join(HERE, "..", "pluteus", "static", "viewer-media.js"), encoding="utf-8").read()
@@ -222,8 +240,9 @@ def test_an_mp3_audiobook_page_lists_its_chapters(music):
 def test_speed_has_minus_and_plus_and_skips_have_arrows(music):
     client, auth = make_client(music)
     page = client.get("/view/music/Album/spark.mp3", headers={**auth, **HTML}).text
-    assert "id='speed-down'" in page and "id='speed-up'" in page and "id='sleep'" in page
-    assert "pl-i-prev" in page and "pl-i-next" in page and "pl-i-back30" not in page
+    assert "id='speed-down'" in page and "id='speed-up'" in page and "id='speed'" in page
+    assert "id='sleep'" not in page and "id='bookmarks-btn'" not in page                    # a song: no sleep timer, no bookmarks
+    assert "pl-i-rew" in page and "pl-i-ff" in page and "pl-i-back30" not in page
 
 
 def test_the_speed_and_sleep_row_can_be_switched_off_in_settings(music):
