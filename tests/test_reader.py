@@ -242,7 +242,7 @@ def test_the_epub_reader_turns_pages_with_the_mouse_wheel():
     js = open(os.path.join(os.path.dirname(__file__), "..", "pluteus", "static", "reader-epub.js"), encoding="utf-8").read()
     assert 'document.addEventListener("wheel", onWheel, { passive: false })' in js
     assert 'contents.document.addEventListener("wheel", onWheel' in js                    # also over the book page itself
-    assert 'settings.flow !== "paginated" || e.ctrlKey' in js                              # the scrolling view and Ctrl+wheel are left alone
+    assert 'e.ctrlKey || !rendition.manager' in js and 'settings.flow !== "paginated"' in js   # Ctrl+wheel is left alone; the scrolling layout is handled apart
     assert "wheelLock = now + 350" in js                                                   # one page per gesture
 
 
