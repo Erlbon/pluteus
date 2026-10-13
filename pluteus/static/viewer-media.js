@@ -10,6 +10,13 @@
   if (!root || !media) return;
   var data = root.dataset;
   var progressUrl = data.progress, prevUrl = data.prev || "", nextUrl = data.next || "";
+  /* ?autoplay=1 only means "this page was reached by auto-advance". Read it, then take it off the address: a reload, a restored
+     tab or a bookmark of this page must resume where the listener stopped, not start from 0 and overwrite the saved position. */
+  var autoplay = /[?&]autoplay=1/.test(location.search);
+  if (autoplay && window.history && history.replaceState) {
+    var kept = location.search.replace(/^\?/, "").split("&").filter(function (p) { return p && p !== "autoplay=1"; });
+    try { history.replaceState(null, "", location.pathname + (kept.length ? "?" + kept.join("&") : "") + location.hash); } catch (e) { /* ignore */ }
+  }
   var statusEl = document.getElementById("status");
   var statusTimer = null;
   var timer = null, lastSent = -1;
@@ -41,7 +48,7 @@
     .then(function (saved) {
       var m = saved && typeof saved.locator === "string" && /^t:(\d+(?:\.\d+)?)$/.exec(saved.locator);
       var at = m ? parseFloat(m[1]) : 0;
-      if (at > 3 && !/[?&]autoplay=1/.test(location.search)) {      // a file started by auto-advance begins at 0
+      if (at > 3 && !autoplay) {      // a file started by auto-advance begins at 0
         var seek = function () { try { media.currentTime = at; } catch (e) { /* not seekable yet */ } };
         if (media.readyState >= 1) seek(); else media.addEventListener("loadedmetadata", seek, { once: true });
       }
@@ -92,7 +99,9 @@
     ["timeupdate", "loadedmetadata", "durationchange"].forEach(function (n) { media.addEventListener(n, tick); });
     paint(); tick();
     document.addEventListener("keydown", function (e) {
-      if (e.target && /^(INPUT|TEXTAREA|SELECT|BUTTON)$/.test(e.target.tagName) && e.key === " ") return;
+      if (e.altKey || e.ctrlKey || e.metaKey) return;                    // Alt+Arrow is the browser's Back / Forward
+      if (e.target && /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)) return;      // the scrubber and fields keep their own keys
+      if (e.target && e.target.tagName === "BUTTON" && e.key === " ") return;
       if (e.key === " ") { e.preventDefault(); playButton.click(); }
       else if (e.key === "ArrowLeft") jump(-10);
       else if (e.key === "ArrowRight") jump(10);
@@ -254,7 +263,7 @@
     if (STEPS[step] === -1) { step = 0; sleepLabel(); say("Sleep timer: stopped at the end of the file", 4000); return; }
     if (nextUrl) location.replace(withAutoplay(nextUrl));
   });
-  if (/[?&]autoplay=1/.test(location.search)) {
+  if (autoplay) {
     var started = media.play();
     if (started && started.catch) started.catch(function () { say("Tap play to continue", 6000); });
   }

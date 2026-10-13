@@ -96,6 +96,14 @@ def test_bad_requests_and_hidden_things_are_refused(client):
     assert client.post("/api/shelf/favourite/lib/Series%20One/a.pdf").status_code == 401
 
 
+def test_a_long_shelf_stops_at_sixty_usable_entries(client, tmp_path):
+    for i in range(70):
+        (tmp_path / "lib" / ("n%02d.pdf" % i)).write_bytes(b"%PDF")
+        add(client, "favourite", "n%02d.pdf" % i)
+    page = home(client)
+    assert page.count("/view/lib/n") == 60
+
+
 def test_each_user_has_their_own_shelves(client):
     add(client, "favourite", "Series%20One/a.pdf")
     assert "Favourites" not in home(client, basic("bob", "pw"))

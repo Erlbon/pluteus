@@ -123,6 +123,14 @@ def test_the_folder_listing_shows_file_names_not_tags(music):
     assert "Spark På Leggen" not in page and "Kaizers Orchestra" not in page
 
 
+# ---- the player script keeps the listener's place --------------------------------------------------------------------------------------------
+def test_the_autoplay_flag_is_taken_off_the_address_and_keys_are_left_alone_in_fields():
+    js = open(os.path.join(HERE, "..", "pluteus", "static", "viewer-media.js"), encoding="utf-8").read()
+    assert "history.replaceState" in js and js.count("autoplay=1") >= 3
+    assert "/[?&]autoplay=1/.test(location.search)" in js and js.count("test(location.search)") == 1          # read once, used as a variable
+    assert "e.altKey || e.ctrlKey || e.metaKey" in js and "INPUT|TEXTAREA|SELECT" in js
+
+
 # ---- chapters and bookmarks ---------------------------------------------------------------------------------------------------------------
 CHAPTERS = os.path.join(HERE, "data", "chapters.m4b")
 

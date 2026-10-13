@@ -161,6 +161,8 @@ revoking it stops every app using the old one at once.
 
 ## Music apps (Subsonic API)
 
+**Where the keys live:** an app key is kept in clear text in `state.sqlite3` (the token logins of Subsonic and KOReader cannot work from a hash), and so also in the daily copies in `backups/`. It is never shown again after it is made, never written to the log, and can only read. Protect `data_dir` like a password file, and revoke a key from the admin page if a backup leaves your hands.
+
 Switch on `subsonic = true` in `[server]` and music apps that speak the **Subsonic / OpenSubsonic** API (Symfonium, Tempo, Substreamer,
 DSub, Ultrasonic ...) can browse and play the audio files, **Android Auto through such an app included**. Read-only, over the same
 folders and rights as the web site (`roots`, `.private`, `.hidden`, `.adult`).

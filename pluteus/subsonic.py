@@ -19,6 +19,7 @@ import json
 import os
 import random
 import re
+import threading
 import time
 from types import SimpleNamespace
 from xml.sax.saxutils import escape, quoteattr
@@ -29,13 +30,14 @@ from starlette.responses import FileResponse, PlainTextResponse, Response
 from . import __version__, kinds, mediainfo
 from .auth import verify_password
 from .bodies import read_limited
-from .fs import NotFound, PathError
+from .fs import NotFound, PathError, clamp_time
 
 API_VERSION = "1.16.1"
 SEP = "\x1f"
 MAX_ALBUMS = 3000
 _XML_BAD = re.compile("[\x00-\x08\x0b\x0c\x0e-\x1f]")
 _ALBUM_CACHE_SECONDS = 120
+UNKNOWN_LISTS = {"starred", "highest", "frequent", "recent", "byYear", "byGenre"}
 
 
 class ApiError(Exception):
@@ -47,10 +49,13 @@ class ApiError(Exception):
 # ---- ids: a file or folder is named by its root and path, never by a number we would have to keep ---------------------------
 def make_id(root: str, parts=()) -> str:
     raw = SEP.join((root, *parts)).encode("utf-8")
-    return base64.urlsafe_b64encode(raw).decode("ascii").rstrip("=")
+    return "p" + base64.urlsafe_b64encode(raw).decode("ascii").rstrip("=")      # the letter: never mistaken for a music folder number
 
 
 def read_id(value: str):
+    if not value.startswith("p"):
+        raise ApiError(70, "The requested data was not found.")
+    value = value[1:]
     try:
         raw = base64.urlsafe_b64decode(value + "=" * (-len(value) % 4)).decode("utf-8")
     except (ValueError, UnicodeDecodeError):
@@ -117,6 +122,7 @@ class Subsonic:
         self.cfg, self.lib, self.state, self.auth, self.meta, self.throttle = cfg, lib, state, auth, meta, throttle
         self._pw_ok: dict = {}
         self._albums: dict = {}
+        self._albums_lock = threading.Lock()
         self.handlers = {
             "ping": self.ping, "getlicense": self.license, "getopensubsonicextensions": self.extensions,
             "getmusicfolders": self.music_folders, "getindexes": self.indexes, "getmusicdirectory": self.music_directory,
@@ -303,9 +309,10 @@ class Subsonic:
     def _album_item(self, root: str, entry, songs: int | None = None) -> dict:
         parts = entry.parts
         ident = make_id(root, parts)
+        created = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(clamp_time(getattr(entry, "mtime", 0) or 0)))
         return {"id": ident, "name": self._name(root, parts), "title": self._name(root, parts), "isDir": True,
                 "artist": self.lib.display_name(parts[0]) if len(parts) > 1 else "", "artistId": make_id(root, parts[:1]) if len(parts) > 1 else None,
-                "parent": make_id(root, parts[:-1]), "coverArt": ident, "songCount": songs}
+                "parent": make_id(root, parts[:-1]), "coverArt": ident, "songCount": songs or 0, "duration": 0, "created": created}
 
     def _grouped(self, items: list) -> list:
         """[{"name": letter, "artist": [...]}] for the index lists, in alphabetical order."""
@@ -315,43 +322,55 @@ class Subsonic:
         return [{"name": k, "artist": sorted(v, key=lambda a: a["name"].lower())} for k, v in sorted(groups.items())]
 
     def _top_folders(self, user, wanted: str = "") -> list:
+        counts: dict = {}
+        for root, entry in self._all_albums(user):                    # how many albums each artist folder holds
+            counts[(root, entry.parts[0])] = counts.get((root, entry.parts[0]), 0) + 1
         out = []
         for r in self._roots(user, wanted):
             try:
                 dirs, _ = self._list(user, r.name, ())
             except (NotFound, OSError):
                 continue
-            out += [{"id": make_id(r.name, d.parts), "name": self.lib.display_name(d.name), "coverArt": make_id(r.name, d.parts)} for d in dirs]
+            out += [{"id": make_id(r.name, d.parts), "name": self.lib.display_name(d.name), "coverArt": make_id(r.name, d.parts),
+                     "albumCount": counts.get((r.name, d.parts[0]), 0)} for d in dirs]
         return out
 
     def _all_albums(self, user) -> list:
         """[(root, entry)] of every album folder (the folders inside the top folders; a top folder with songs and no folders
         inside counts as an album itself). Kept for two minutes."""
         hit = self._albums.get(user.name)
-        now = time.monotonic()
-        if hit and hit[0] > now:
+        if hit and hit[0] > time.monotonic():
             return hit[1]
-        found = []
-        for r in self._roots(user):
-            try:
-                top, _ = self._list(user, r.name, ())
-            except (NotFound, OSError):
-                continue
-            for artist in top:
+        with self._albums_lock:                                      # several apps ask at once: one scan, the others wait for it
+            hit = self._albums.get(user.name)
+            now = time.monotonic()
+            if hit and hit[0] > now:
+                return hit[1]
+            found, full = [], False
+            for r in self._roots(user):
+                if full:
+                    break
                 try:
-                    sub = self.lib.list_dir(user, r.name, artist.parts, True, False)
+                    top, _ = self._list(user, r.name, ())
                 except (NotFound, OSError):
                     continue
-                albums = [e for e in sub if e.is_dir]
-                if albums:
-                    found += [(r.name, e) for e in albums]
-                elif any(kinds.kind_of(e.name) == "audio" for e in sub if not e.is_dir):
-                    found.append((r.name, artist))
-                if len(found) >= MAX_ALBUMS:
-                    break
-        self._albums = {k: v for k, v in self._albums.items() if v[0] > now}
-        self._albums[user.name] = (now + _ALBUM_CACHE_SECONDS, found)
-        return found
+                for artist in top:
+                    try:
+                        sub = self.lib.list_dir(user, r.name, artist.parts, True, True)      # with dates: read once, kept with the list
+                    except (NotFound, OSError):
+                        continue
+                    albums = [e for e in sub if e.is_dir]
+                    if albums:
+                        found += [(r.name, e) for e in albums]
+                    elif any(kinds.kind_of(e.name) == "audio" for e in sub if not e.is_dir):
+                        found.append((r.name, artist))
+                    if len(found) >= MAX_ALBUMS:
+                        found, full = found[:MAX_ALBUMS], True
+                        break
+            fresh = {k: v for k, v in self._albums.items() if v[0] > now}         # a new dict: readers never see one half changed
+            fresh[user.name] = (time.monotonic() + _ALBUM_CACHE_SECONDS, found)
+            self._albums = fresh
+            return found
 
     # ---- endpoints -------------------------------------------------------------------------------------------------------
     def ping(self, user, p):
@@ -367,10 +386,19 @@ class Subsonic:
         return {"scanStatus": {"scanning": False, "count": 0}}
 
     def music_folders(self, user, p):
-        return {"musicFolders": {"musicFolder": [{"id": make_id(r.name), "name": r.name} for r in self._roots(user)]}}
+        return {"musicFolders": {"musicFolder": [{"id": i, "name": r.name} for i, r in enumerate(self._roots(user), 1)]}}
+
+    def _folder_root(self, user, value: str) -> str:
+        """The library a music folder id (1, 2, ... in the order of getMusicFolders) or a folder id belongs to."""
+        if value.isdigit():
+            roots = self._roots(user)
+            if 1 <= int(value) <= len(roots):
+                return roots[int(value) - 1].name
+            raise ApiError(70, "The requested data was not found.")
+        return read_id(value)[0]
 
     def indexes(self, user, p):
-        wanted = read_id(p["musicFolderId"])[0] if p.get("musicFolderId") else ""
+        wanted = self._folder_root(user, p["musicFolderId"]) if p.get("musicFolderId") else ""
         artists = self._top_folders(user, wanted)
         files = []
         for r in self._roots(user, wanted):
@@ -385,7 +413,7 @@ class Subsonic:
     def music_directory(self, user, p):
         if not p.get("id"):
             raise ApiError(10, "Required parameter is missing.")
-        root, parts = read_id(p["id"])
+        root, parts = (self._folder_root(user, p["id"]), ()) if p["id"].isdigit() else read_id(p["id"])
         if not self.lib.has_root(user, root):
             raise ApiError(70, "The requested data was not found.")
         dirs, songs = self._list(user, root, parts)
@@ -431,16 +459,13 @@ class Subsonic:
         return {"song": self._song(root, entry, self.meta.song_tags(entry))}
 
     def _sorted_albums(self, user, kind: str) -> list:
+        if kind in UNKNOWN_LISTS:                                    # no play counts, stars, years or genres are kept: an honest empty list
+            return []
         albums = list(self._all_albums(user))
         if kind == "random":
             random.shuffle(albums)
-        elif kind in ("newest", "recent"):
-            def when(item):
-                try:
-                    return os.path.getmtime(item[1].src or "")
-                except OSError:
-                    return 0.0
-            albums.sort(key=when, reverse=True)
+        elif kind == "newest":
+            albums.sort(key=lambda item: item[1].mtime, reverse=True)
         elif kind == "alphabeticalByArtist":
             albums.sort(key=lambda a: (a[1].parts[0].lower() if len(a[1].parts) > 1 else "", a[1].name.lower()))
         else:
@@ -479,12 +504,26 @@ class Subsonic:
         random.shuffle(songs)
         return {"randomSongs": {"song": songs[:size]}}
 
+    @staticmethod
+    def _paged(p, name: str, items: list) -> list:
+        """items[offset:offset+count] for artistCount/artistOffset, albumCount/albumOffset, songCount/songOffset (default 20)."""
+        try:
+            count = max(0, min(500, int(p.get(name + "Count", "20"))))
+            offset = max(0, int(p.get(name + "Offset", "0")))
+        except ValueError:
+            count, offset = 20, 0
+        return items[offset:offset + count]
+
     def _search(self, user, p):
+        """(artists, albums, songs) matching the query. An EMPTY query means everything (artists and albums; songs come with
+        their albums): this is how Subsonic apps load the whole library."""
         query = re.sub(r"[\"*]", "", p.get("query", "")).strip().lower()
-        if not query:
-            return [], [], []
         artists = [a for a in self._top_folders(user) if query in a["name"].lower()]
         albums = [(r, e) for r, e in self._all_albums(user) if query in self._name(r, e.parts).lower()]
+        albums.sort(key=lambda item: self._name(item[0], item[1].parts).lower())
+        artists.sort(key=lambda a: a["name"].lower())
+        if not query:
+            return artists, albums, []
         songs = []
         for r, e in albums[:6]:
             try:
@@ -496,19 +535,21 @@ class Subsonic:
 
     def search3(self, user, p):
         artists, albums, songs = self._search(user, p)
-        return {"searchResult3": {"artist": artists[:20], "album": [self._album_item(r, e) for r, e in albums[:20]],
-                                  "song": songs[:50]}}
+        return {"searchResult3": {"artist": self._paged(p, "artist", artists),
+                                  "album": [self._album_item(r, e) for r, e in self._paged(p, "album", albums)],
+                                  "song": self._paged(p, "song", songs)}}
 
     def search2(self, user, p):
         artists, albums, songs = self._search(user, p)
-        return {"searchResult2": {"artist": artists[:20], "album": [self._album_item(r, e) for r, e in albums[:20]],
-                                  "song": songs[:50]}}
+        return {"searchResult2": {"artist": self._paged(p, "artist", artists),
+                                  "album": [self._album_item(r, e) for r, e in self._paged(p, "album", albums)],
+                                  "song": self._paged(p, "song", songs)}}
 
     def user_info(self, user, p):
         roles = {r: False for r in ("adminRole", "settingsRole", "uploadRole", "playlistRole", "coverArtRole", "commentRole",
                                     "podcastRole", "jukeboxRole", "shareRole", "videoConversionRole")}
         return {"user": {"username": user.name, "scrobblingEnabled": False, **roles, "downloadRole": True, "streamRole": True,
-                         "folder": [make_id(r.name) for r in self._roots(user)]}}
+                         "folder": list(range(1, len(self._roots(user)) + 1))}}
 
     def _file_response(self, user, p, attachment: bool):
         root, parts = read_id(p.get("id", ""))

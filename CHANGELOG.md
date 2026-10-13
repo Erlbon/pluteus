@@ -2,6 +2,25 @@
 
 Release notes are taken from the section of the tagged version (`## 0.5.0 ...`).
 
+## Unreleased (for 0.9.0) - review fixes
+Security and stability fixes from a two-part code review of 0.8.8. No new features.
+- **Secrets out of the log:** the access log no longer prints `p=`, `apiKey=`, `t=`, `s=` or `/join/TOKEN`; pluteus writes its own access line.
+- **Logins by key:** a wrong key or token counts against the address only and never locks a user name; a correct key gets through while
+  the name is locked for passwords; a stale key in a forgotten app can no longer lock its owner out of everything.
+- **App keys are read only for real:** they can no longer write reading progress or bookmarks. Keys of users who were removed are deleted.
+- **Request bodies** are read with a hard size limit (no buffering of whatever a client sends); odd characters in a token or key header
+  give an error instead of a crash; the token login takes the same time for unknown names.
+- **Thumbnails:** a picture is refused before it is decoded when it has more than 20 million pixels (a small file can hold a huge picture),
+  only a few fixed widths are made, and three at a time.
+- **Uploads:** a failed finish no longer leaves an empty file behind, and Windows retries a file that a virus scanner holds for a moment.
+- **Player:** a reload or a restored tab of an auto-advanced file resumes where you stopped (the `?autoplay=1` flag is taken off the
+  address); the arrow keys no longer fight the scrubber or the browser's Back.
+- **Subsonic:** an empty `search3` lists the library (artists and albums, paged) as apps expect; albums carry `songCount`, `duration` and
+  `created`, artists `albumCount`; music folder ids are whole numbers; lists that cannot be known (starred, by year ...) are empty; one album
+  scan at a time and the cap holds for several libraries. Folder and file ids changed (they now start with `p`): apps re-read the library.
+- **Favourites:** a long shelf costs no more than a short one (stops at 60 usable entries).
+- README: where the app keys are stored.
+
 ## 0.8.8 - 2026-10-13
 - **`thumbnails = true`** (in `[server]`, off by default) switches cover thumbnails on: the cover links in the OPDS feeds, the `/thumb`
   route and the web cover view with its switches. Left off, none of it exists and no thumbnail is ever made.

@@ -517,11 +517,13 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
                             "dismiss": urls.dismiss(r["root"], parts)})
         return out[:6]
 
-    def shelf_entries(user, shelf: str) -> list:
+    def shelf_entries(user, shelf: str, limit: int = 60) -> list:
         """[(row, parts, FileInfo or None)] of a shelf that this user can still open (moved, deleted or hidden ones are skipped,
-        not removed). None for a folder."""
+        not removed). None for a folder. Stops after `limit` usable entries: a long shelf costs no more than a short one."""
         out = []
         for row in state.shelf_list(user.name, shelf):
+            if len(out) >= limit:
+                break
             parts = tuple(row["path"].split("/"))
             if not lib.has_root(user, row["root"]):
                 continue

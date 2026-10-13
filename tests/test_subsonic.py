@@ -131,7 +131,7 @@ def test_a_huge_post_body_is_refused(lib):
 def test_folders_and_directory_browsing(lib):
     c = make(lib)
     folders = body(call(c, "getMusicFolders"))["musicFolders"]["musicFolder"]
-    assert folders == [{"id": subsonic.make_id("music"), "name": "music"}]
+    assert folders == [{"id": 1, "name": "music"}]                                     # the spec wants whole numbers
     top = body(call(c, "getMusicDirectory", id=folders[0]["id"]))["directory"]["child"]
     assert [x["title"] for x in top] == ["Kaizers", "Solo"] and all(x["isDir"] for x in top)
     album = body(call(c, "getMusicDirectory", id=subsonic.make_id("music", ("Kaizers", "Ompa"))))["directory"]
@@ -164,8 +164,11 @@ def test_search(lib):
     c = make(lib)
     found = body(call(c, "search3", query="omp"))["searchResult3"]
     assert [a["name"] for a in found["album"]] == ["Ompa"] and len(found["song"]) == 2
-    empty = body(call(c, "search3", query=""))["searchResult3"]
-    assert not (empty.get("artist") or empty.get("album") or empty.get("song"))
+    everything = body(call(c, "search3", query=""))["searchResult3"]                   # an empty query lists the library (app sync)
+    assert [a["name"] for a in everything["artist"]] == ["Kaizers", "Solo"]
+    assert [a["name"] for a in everything["album"]] == ["Ompa", "Solo"] and not everything.get("song")
+    page = body(call(c, "search3", query="", albumCount="1", albumOffset="1", artistCount="0"))["searchResult3"]
+    assert [a["name"] for a in page["album"]] == ["Solo"] and not page.get("artist")                   # counts and offsets are honoured
 
 
 def test_stream_download_and_range(lib):
@@ -223,3 +226,49 @@ def test_the_listing_shows_the_folder_picture(lib):
     r = c.get("/cover/music/Kaizers/Ompa", headers=login)
     assert r.status_code == 200 and r.content == JPEG
     assert "pl-folder-cover" not in c.get("/browse/music/Solo", headers={**login, "Accept": "text/html"}).text
+
+
+def test_albums_and_artists_carry_the_fields_clients_require(lib):
+    c = make(lib)
+    albums = body(call(c, "getAlbumList2", type="alphabeticalByName"))["albumList2"]["album"]
+    for a in albums:
+        assert a["songCount"] >= 0 and a["duration"] >= 0 and a["created"].endswith("Z") and a["id"].startswith("p")
+    artists = body(call(c, "getArtists"))["artists"]["index"]
+    assert [a["albumCount"] for g in artists for a in g["artist"]] == [1, 1]
+
+
+def test_lists_we_cannot_know_are_empty_not_the_whole_library(lib):
+    c = make(lib)
+    for kind in ("starred", "highest", "frequent", "recent", "byYear", "byGenre"):
+        assert not body(call(c, "getAlbumList2", type=kind))["albumList2"].get("album"), kind
+    assert [a["name"] for a in body(call(c, "getAlbumList2", type="newest"))["albumList2"]["album"]]       # newest still works
+
+
+def test_a_music_folder_number_opens_that_library(lib):
+    c = make(lib)
+    top = body(call(c, "getIndexes", musicFolderId="1"))["indexes"]["index"]
+    assert [a["name"] for g in top for a in g["artist"]] == ["Kaizers", "Solo"]
+    assert [x["title"] for x in body(call(c, "getMusicDirectory", id="1"))["directory"]["child"]] == ["Kaizers", "Solo"]
+    assert body(call(c, "getIndexes", musicFolderId="9"))["error"]["code"] == 70
+    assert body(call(c, "getUser", username="alice"))["user"]["folder"] == [1]
+
+
+def test_several_apps_asking_at_once_share_one_scan(lib):
+    import threading
+    c = make(lib)
+    api = [r for r in c.app.routes if getattr(r, "path", "") == "/rest/{name}"][0].endpoint.__self__
+    scans = []
+    real = api.lib.list_dir
+
+    def counting(*a, **k):
+        scans.append(1)
+        return real(*a, **k)
+    api.lib.list_dir = counting
+    try:
+        threads = [threading.Thread(target=lambda: c.get("/rest/getAlbumList2", params={"u": "alice", "p": KEY, "type": "random", "f": "json"}))
+                   for _ in range(5)]
+        [t.start() for t in threads]
+        [t.join() for t in threads]
+    finally:
+        api.lib.list_dir = real
+    assert 0 < len(scans) <= 4                                                          # not five full scans (the album walk lists 2 artists)
