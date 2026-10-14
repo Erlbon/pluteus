@@ -39,7 +39,11 @@ def layout(title: str, body: str, ctx: Ctx, *, head: str = "", scripts: tuple = 
             # to the admin page (an administrator on the local network only) and Sign out on the right.
             nav = "<nav class='pl-admin-nav'><a class='pl-admin-tab' href='%s'>Settings</a></nav>" % escape(u.settings())
             # a new tab: the admin page is another site (its own port), so opening it here would stop a playing song
-            admin = ("<a href='%s' target='_blank' rel='noopener'>Admin</a>" % escape(ctx.admin_link)) if ctx.admin_link else ""
+            # hidden until adminlink.js has found the admin page reachable from this browser: from the public address it is not,
+            # and a link that opens an empty page looks silly
+            admin = ("<a href='%s' target='_blank' rel='noopener' hidden data-admin>Admin</a>" % escape(ctx.admin_link)) if ctx.admin_link else ""
+            if admin:
+                scripts = scripts + (u.static("adminlink.js"),)
             who = (admin + "<form method='post' action='%s'><button class='pl-btn' type='submit'>Sign out<span class='pl-who'> (%s)</span></button></form>"
                    % (escape(u.logout()), escape(ctx.user)))
         chrome = ("<header class='pl-bar'><a class='pl-brand' href='%s'>Pluteus</a> <span class='pl-muted pl-ver'>%s</span>%s"

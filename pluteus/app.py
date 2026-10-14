@@ -118,6 +118,17 @@ class AccessLog:
             access_log.info('%s - "%s %s" %s', client[0] if client else "-", scope.get("method", "-"), _logged_target(scope), status[0])
 
 
+def csp_for_page() -> str:
+    """The content policy of a page. An administrator who is shown the Admin link also lets the page ask that one address whether it
+    is reachable (adminlink.js); nothing else may be fetched from another origin."""
+    link = current_admin_link.get()
+    if link:
+        parts = urlsplit(link)
+        if parts.scheme in ("http", "https") and parts.netloc:
+            return CSP.replace("connect-src 'self';", "connect-src 'self' %s://%s;" % (parts.scheme, parts.netloc), 1)
+    return CSP
+
+
 class SecurityHeaders:
     """Adds the same hardening headers to every response without buffering it (downloads stream)."""
 
@@ -135,7 +146,7 @@ class SecurityHeaders:
                 headers.setdefault("Referrer-Policy", "same-origin")
                 headers.setdefault("X-Frame-Options", "SAMEORIGIN")
                 if headers.get("content-type", "").startswith("text/html"):
-                    headers.setdefault("Content-Security-Policy", CSP)
+                    headers.setdefault("Content-Security-Policy", csp_for_page())
             await send(message)
 
         await self.app(scope, receive, wrapped)
