@@ -69,6 +69,35 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 self.wfile.write(b"a" * 16 + bytes([len(block) // 16]) + block + b"b" * 5000)
             except OSError:
                 pass
+        elif self.path.startswith("/hls/"):              # a small HLS channel: a master playlist, a media playlist, segments and a key
+            name = self.path[5:].split("?")[0]
+            port = self.server.server_address[1]
+            if name == "master.m3u8":
+                body = (b"#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=800000\nlow/index.m3u8\n#EXT-X-STREAM-INF:BANDWIDTH=2000000\n"
+                        b"http://relay.test:%d/hls/hi/index.m3u8\n" % port)
+                kind = "application/vnd.apple.mpegurl"
+            elif name.endswith("index.m3u8"):
+                body = (b"#EXTM3U\n#EXT-X-TARGETDURATION:4\n#EXT-X-KEY:METHOD=AES-128,URI=\"../key.bin\"\n#EXT-X-MAP:URI=\"init.mp4\"\n"
+                        b"#EXTINF:4,\nseg1.ts\n#EXTINF:4,\nseg2.ts\n#EXTINF:4,\nhttp://127.0.0.1:1/private.ts\n")
+                kind = "text/plain"                      # the type is not trusted: the content decides
+            elif name.endswith(".ts"):
+                body, kind = (b"\x47" + b"\x00" * 187) * 3, "application/octet-stream"
+            elif name.endswith("init.mp4"):
+                body, kind = b"\x00\x00\x00\x18ftypiso5" + b"\x00" * 50, "video/mp4"
+            elif name == "key.bin":
+                body, kind = bytes(range(16)), "application/octet-stream"
+            elif name == "notlist.m3u8":
+                body, kind = b"<html>login</html>", "text/html"
+            else:
+                body, kind = b"", ""
+            if not body:
+                self.send_response(404)
+                self.end_headers()
+                return
+            self.send_response(200)
+            self.send_header("Content-Type", kind)
+            self.end_headers()
+            self.wfile.write(body)
         elif self.path == "/slow":                       # a stream that stays open for a while (about 1.5 seconds), then ends
             self.send_response(200)
             self.send_header("Content-Type", "audio/ogg")
@@ -245,3 +274,106 @@ def test_now_playing_is_off_with_the_relay_and_for_other_files(cfg, tmp_path, st
     me, folder = signed_in(cfg, tmp_path)
     put(folder, "a.m3u", station + "/icy")
     assert me.get("/relay/uploads/Radio/a.m3u?i=0&now=1").status_code == 404
+
+
+# ---- HLS: TV channels through the server -------------------------------------------------------------------------------------------
+def token_of(line: str) -> str:
+    return line.rsplit("/relay-piece/", 1)[1].split('"')[0]
+
+
+def pieces(text: str) -> list:
+    return [token_of(line) for line in text.splitlines() if "/relay-piece/" in line]
+
+
+def test_the_playlist_is_rewritten_so_that_every_piece_goes_through_the_server(cfg, tmp_path, station):
+    me, folder = signed_in(cfg, tmp_path, relay=True)
+    put(folder, "tv.m3u", station + "/hls/master.m3u8")
+    r = me.get("/relay/uploads/Radio/tv.m3u?i=0&hls=1")
+    assert r.status_code == 200 and r.headers["content-type"] == "application/vnd.apple.mpegurl" and r.headers["cache-control"] == "no-store"
+    assert "relay.test" not in r.text and "127.0.0.1" not in r.text and r.text.startswith("#EXTM3U")           # no address of the source is shown
+    low, high = pieces(r.text)
+    assert relay.verify(low, "alice")[0] == station + "/hls/low/index.m3u8"                                   # relative addresses resolved
+    assert relay.verify(high, "alice")[0] == station + "/hls/hi/index.m3u8"
+
+
+def test_variant_playlists_segments_keys_and_maps_come_through_with_their_own_type(cfg, tmp_path, station):
+    me, folder = signed_in(cfg, tmp_path, relay=True)
+    put(folder, "tv.m3u", station + "/hls/master.m3u8")
+    low = pieces(me.get("/relay/uploads/Radio/tv.m3u?i=0&hls=1").text)[0]
+    media = me.get("/relay-piece/" + low)
+    assert media.status_code == 200 and media.headers["content-type"] == "application/vnd.apple.mpegurl"       # text/plain upstream: the content decides
+    assert "relay.test" not in media.text and media.text.count("/relay-piece/") == 5
+    key, init, seg1, seg2, private = [token_of(line) for line in media.text.splitlines() if "/relay-piece/" in line]
+    assert relay.verify(key, "alice")[0] == station + "/hls/key.bin"                                          # "../key.bin" resolved against the playlist
+    got = me.get("/relay-piece/" + seg1)
+    assert got.status_code == 200 and got.headers["content-type"] == "video/mp2t" and len(got.content) == 564
+    assert me.get("/relay-piece/" + seg2).headers["content-type"] == "video/mp2t"
+    assert me.get("/relay-piece/" + init).headers["content-type"] == "video/mp4"
+    assert me.get("/relay-piece/" + key).content == bytes(range(16)) and me.get("/relay-piece/" + key).headers["content-type"] == "application/octet-stream"
+    assert me.get("/relay-piece/" + private).status_code == 502                                               # an address in the private network is never fetched
+
+
+def test_a_client_cannot_name_an_address_of_its_own(cfg, tmp_path, station):
+    me, folder = signed_in(cfg, tmp_path, relay=True)
+    put(folder, "tv.m3u", station + "/hls/master.m3u8")
+    token = pieces(me.get("/relay/uploads/Radio/tv.m3u?i=0&hls=1").text)[0]
+    assert relay.verify(token, "bob") is None                                                                 # another user's token is worthless
+    flipped = token[:-3] + ("AAA" if not token.endswith("AAA") else "BBB")
+    expired = relay.sign(station + "/hls/key.bin", "alice", "k", now=1000)
+    forged = relay.sign(station + "/hls/key.bin", "alice", "k") + "x"
+    for bad in (flipped, expired, forged, "http://127.0.0.1/secret", "x.y", "", "a" * 3000):
+        assert me.get("/relay-piece/" + bad).status_code == 404, bad[:30]
+    assert me.get("/relay/uploads/Radio/tv.m3u?i=0&hls=1&url=http://127.0.0.1:1/x").status_code == 200       # an address in the request is ignored
+    anon = TestClient(me.app, follow_redirects=False)
+    assert anon.get("/relay-piece/" + token).status_code in (401, 303)
+
+
+def test_what_is_not_an_hls_playlist_is_refused_with_a_reason(cfg, tmp_path, station):
+    me, folder = signed_in(cfg, tmp_path, relay=True)
+    put(folder, "tv.m3u", station + "/hls/notlist.m3u8", station + "/hls/missing.m3u8", station + "/stream")
+    answers = [me.get("/relay/uploads/Radio/tv.m3u?i=%d&hls=1" % i) for i in range(3)]
+    assert [a.status_code for a in answers] == [415, 502, 415] and "not an HLS playlist" in answers[0].text and "404" in answers[1].text
+
+
+def test_an_hls_channel_holds_a_lease_that_counts_against_the_stream_limit(cfg, tmp_path, station):
+    me, folder = signed_in(cfg, tmp_path, relay=True, relay_streams_user=1)
+    put(folder, "tv.m3u", station + "/hls/master.m3u8", station + "/hls/master.m3u8?second")
+    assert me.get("/relay/uploads/Radio/tv.m3u?i=0&hls=1").status_code == 200
+    assert me.get("/relay/uploads/Radio/tv.m3u?i=0&hls=1").status_code == 200                                 # the same channel again: the lease is renewed
+    other = me.get("/relay/uploads/Radio/tv.m3u?i=1&hls=1")                                                   # a second channel: over the limit
+    assert other.status_code == 429 and "Too many" in other.text
+
+
+def test_leases_lapse_and_pieces_are_limited():
+    lim = relay.Limiter(per_user=1, total=2)
+    assert lim.lease("a", "k1", ttl=0.05) and lim.lease("a", "k1", ttl=0.05) and not lim.lease("a", "k2")      # renewing is not a second stream
+    time.sleep(0.12)
+    assert lim.lease("a", "k2")                                                                                 # the first one lapsed
+    assert lim.lease("b", "k3") and not lim.lease("c", "k4")                                                    # two in all
+    for _ in range(8):
+        assert lim.acquire_piece("a")
+    assert not lim.acquire_piece("a") and lim.acquire_piece("b")
+    lim.release_piece("a")
+    assert lim.acquire_piece("a")
+
+
+def test_rewriting_and_sniffing():
+    seen = []
+    out = relay.rewrite_playlist('#EXTM3U\n#EXT-X-KEY:METHOD=AES-128,URI="k.bin",IV=0x1\n#EXT-X-KEY:METHOD=SAMPLE-AES,URI="data:text/plain;base64,AAAA"\n'
+                                 '#EXTINF:4,\nseg.ts\n\nhttps://cdn.example.org/abs.ts?t=1\n', "https://tv.example.org/live/index.m3u8",
+                                 lambda target: (seen.append(target), "/P/%d" % len(seen))[1])
+    assert seen == ["https://tv.example.org/live/k.bin", "https://tv.example.org/live/seg.ts", "https://cdn.example.org/abs.ts?t=1"]
+    assert 'URI="/P/1",IV=0x1' in out and 'URI="data:text/plain;base64,AAAA"' in out and "\n/P/2\n" in out and out.endswith("/P/3\n")
+    assert relay.piece_type(b"\x47" + b"\x00" * 187 + b"\x47", "x") == "video/mp2t" and relay.piece_type(b"\x00\x00\x00\x20ftyp", "x") == "video/mp4"
+    assert relay.piece_type(b"ID3\x04", "x") == "audio/aac" and relay.piece_type(b"WEBVTT\n", "x") == "text/vtt" and relay.piece_type(b"<html>", "x") == "application/octet-stream"
+    assert relay.is_playlist(b"\xef\xbb\xbf#EXTM3U\n") and not relay.is_playlist(b"<html>#EXTM3U")
+
+
+def test_the_tv_page_offers_each_channel_its_playlist_through_the_server(cfg, tmp_path, station):
+    me, folder = signed_in(cfg, tmp_path, relay=True)
+    put(folder, "tv.m3u", station + "/hls/master.m3u8", station + "/hls/master.m3u8?b")
+    page = me.get("/view/uploads/Radio/tv.m3u", headers=HTML).text
+    assert "data-relay='/relay/uploads/Radio/tv.m3u?i=0&amp;hls=1'" in page and "data-relay='/relay/uploads/Radio/tv.m3u?i=1&amp;hls=1'" in page
+    plain, folder2 = signed_in(cfg, tmp_path / "plain")
+    put(folder2, "tv.m3u", station + "/hls/master.m3u8")
+    assert "data-relay=''" in plain.get("/view/uploads/Radio/tv.m3u", headers=HTML).text

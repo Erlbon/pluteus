@@ -683,15 +683,17 @@ def shell_page(ctx: Ctx, start_url: str) -> str:
 
 
 def iptv_page(ctx: Ctx, title: str, *, stations: list, download_url: str, text_url: str, back_url: str, page_url: str = "",
-              logo_url: str = "") -> str:
+              logo_url: str = "", relay_urls: list | None = None) -> str:
     """A live channel (or several) from a station file: the picture and sound play in a video element; HLS goes through the vendored
     hls.js (iptv.js) where the browser cannot play it itself. The addresses are written by the owner of the library."""
     name = title.rsplit(".", 1)[0] if "." in title else title
     first_name, first_url = stations[0]
     heading = first_name or name
+    relays = relay_urls or []                                   # each channel's playlist through the server, when the relay is on
     listing = ("<div class='pl-stations' id='stations'>%s</div>"
-               % "".join("<button type='button' class='pl-station%s' data-url='%s' data-name='%s'>%s</button>"
-                         % (" pl-now" if i == 0 else "", escape(url), escape(label or name), escape(label or "%s %d" % (name, i + 1)))
+               % "".join("<button type='button' class='pl-station%s' data-url='%s' data-name='%s' data-relay='%s'>%s</button>"
+                         % (" pl-now" if i == 0 else "", escape(url), escape(label or name), escape(relays[i] if i < len(relays) else ""),
+                            escape(label or "%s %d" % (name, i + 1)))
                          for i, (label, url) in enumerate(stations))) if len(stations) > 1 else ""
     # the same pieces as the movie player: a row under the picture (here the LIVE badge in place of the position bar, then the volume
     # and full screen) and the big round play button; without the script the video keeps the browser's own controls
@@ -703,10 +705,10 @@ def iptv_page(ctx: Ctx, title: str, *, stations: list, download_url: str, text_u
                  "<span class='pl-icon pl-i-play'></span></button></span></div>")
     logo = "<img class='pl-tv-logo' src='%s' alt=''>" % escape(logo_url) if logo_url else ""
     stage = ("<div class='pl-media-box pl-player pl-videobox pl-iptv'><div class='pl-track pl-tv-head'>%s<h1 class='pl-track-title' id='now'>%s</h1></div>"
-             "<div class='pl-videowrap'><video id='tv' controls playsinline data-url='%s' data-page='%s' data-logo='%s'%s></video></div>%s%s%s"
+             "<div class='pl-videowrap'><video id='tv' controls playsinline data-url='%s' data-page='%s' data-logo='%s' data-relay='%s'%s></video></div>%s%s%s"
              "<div class='pl-toast' id='status' hidden></div></div>"
-             % (logo, escape(heading), escape(first_url), escape(page_url), escape(logo_url), " data-keep-sound='1'" if ctx.tv_sound else "",
-                live_row, transport, listing))
+             % (logo, escape(heading), escape(first_url), escape(page_url), escape(logo_url), escape(relays[0] if relays else ""),
+                " data-keep-sound='1'" if ctx.tv_sound else "", live_row, transport, listing))
     tools = _download_link(download_url) + _reader_scheme()
     foot = "<a href='%s'>Show as text</a>" % escape(text_url)
     scripts = (ctx.urls.static("vendor/hls.min.js"), ctx.urls.static("iptv.js"))

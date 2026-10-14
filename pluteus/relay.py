@@ -10,8 +10,13 @@ which also ends a stream that stalls, and the reply must be an audio stream. The
 and in total. This reuses the address guard of pluteus/fetchimage.py."""
 from __future__ import annotations
 
+import base64
+import hashlib
+import hmac
 import http.client
+import json
 import re
+import secrets
 import threading
 import time
 from urllib.parse import urljoin, urlsplit
@@ -38,6 +43,8 @@ class Limiter:
     def __init__(self, per_user: int, total: int):
         self.per_user, self.total = per_user, total
         self._open: dict = {}
+        self._leases: dict = {}
+        self._pieces: dict = {}
         self._lock = threading.Lock()
 
     def acquire(self, user: str) -> bool:
@@ -59,6 +66,44 @@ class Limiter:
         with self._lock:
             return dict(self._open)
 
+    # an HLS stream is many short requests, so it holds a lease that every playlist refresh renews and that lapses when the player leaves
+    def lease(self, user: str, key: str, ttl: float = 45.0) -> bool:
+        now = time.monotonic()
+        with self._lock:
+            leases = {k: v for k, v in getattr(self, "_leases", {}).items() if v > now}
+            held = [k for k in leases if k[0] == user]
+            if (user, key) not in leases and (len(held) + self._open.get(user, 0) >= self.per_user
+                                              or len(leases) + sum(self._open.values()) >= self.total):
+                self._leases = leases
+                return False
+            leases[(user, key)] = now + ttl
+            self._leases = leases
+            return True
+
+    def drop_lease(self, user: str, key: str) -> None:
+        """A playlist that could not be fetched does not keep its place."""
+        with self._lock:
+            self._leases.pop((user, key), None)
+
+    def acquire_piece(self, user: str, per_user: int = 8) -> bool:
+        with self._lock:
+            pieces = getattr(self, "_pieces", {})
+            if pieces.get(user, 0) >= per_user or sum(pieces.values()) >= 8 * self.total:
+                return False
+            pieces[user] = pieces.get(user, 0) + 1
+            self._pieces = pieces
+            return True
+
+    def release_piece(self, user: str) -> None:
+        with self._lock:
+            pieces = getattr(self, "_pieces", {})
+            left = pieces.get(user, 0) - 1
+            if left > 0:
+                pieces[user] = left
+            else:
+                pieces.pop(user, None)
+            self._pieces = pieces
+
 
 def _split(url: str):
     parts = urlsplit(url)
@@ -73,9 +118,10 @@ def _split(url: str):
     return parts.scheme, parts.hostname, port, (parts.path or "/") + ("?" + parts.query if parts.query else "")
 
 
-def open_stream(url: str, extra: dict | None = None):
+def open_stream(url: str, extra: dict | None = None, accept=AUDIO):
     """(connection, response, content type) for the stream, after the checks. The caller closes the connection. Raises Refused.
-    `extra`: more request headers (the now-playing look-up asks for Icy-MetaData)."""
+    `extra`: more request headers (the now-playing look-up asks for Icy-MetaData). `accept`: the content types allowed (audio by default;
+    None for the pieces of an HLS stream, which are checked by what they contain). `connection.final_url` is the address after redirects."""
     for _ in range(4):
         scheme, host, port, path = _split(url)
         try:
@@ -99,9 +145,12 @@ def open_stream(url: str, extra: dict | None = None):
                 connection.close()
                 raise Refused("The stream's server answered %d." % response.status)
             kind = (response.getheader("Content-Type") or "").split(";")[0].strip().lower()
+            connection.final_url = url
+            if accept is None:
+                return connection, response, kind
             if kind in ("", "application/octet-stream", "binary/octet-stream"):
                 kind = FALLBACK_TYPE                      # Shoutcast and old Icecast servers often send no type
-            if not kind.startswith(AUDIO):
+            if not kind.startswith(accept):
                 connection.close()
                 raise Refused("That is not an audio stream (%s)." % (kind or "unknown type"), 415)
             return connection, response, kind
@@ -204,3 +253,96 @@ def now_playing(url: str, station_name: str = "") -> dict:
             _cache.clear()
         _cache[url] = (time.monotonic(), result)
     return result
+
+
+# ---- HLS (TV channels): the playlist is rewritten so that every piece goes through the server --------------------------------------------
+_KEY = secrets.token_bytes(32)          # signs the tokens below; new at every start (a running player just asks for its playlist again)
+TOKEN_SECONDS = 3600
+MAX_PLAYLIST = 1_000_000
+MAX_PIECE = 30_000_000
+_URI_ATTRIBUTE = re.compile(r'URI="([^"]*)"')
+
+
+def _b64(data: bytes) -> str:
+    return base64.urlsafe_b64encode(data).decode("ascii").rstrip("=")
+
+
+def _unb64(text: str) -> bytes:
+    return base64.urlsafe_b64decode(text + "=" * (-len(text) % 4))
+
+
+def sign(url: str, user: str, lease: str, now: float | None = None) -> str:
+    """A token that names `url` for this user and no other: only the server can make one, so a page can only fetch what the server
+    offered it in a playlist it fetched itself. It lapses after an hour."""
+    payload = json.dumps({"u": url, "n": user, "k": lease, "e": int((now or time.time()) + TOKEN_SECONDS)}, separators=(",", ":")).encode("utf-8")
+    body = _b64(payload)
+    return body + "." + _b64(hmac.new(_KEY, body.encode("ascii"), hashlib.sha256).digest()[:18])
+
+
+def verify(token: str, user: str, now: float | None = None):
+    """(url, lease key) for a token made by sign() for this user and still valid, else None."""
+    try:
+        body, _, signature = token.partition(".")
+        good = _b64(hmac.new(_KEY, body.encode("ascii"), hashlib.sha256).digest()[:18])
+        if not hmac.compare_digest(signature, good):
+            return None
+        data = json.loads(_unb64(body).decode("utf-8"))
+        if data.get("n") != user or int(data.get("e", 0)) < (now or time.time()):
+            return None
+        return str(data["u"]), str(data.get("k", ""))
+    except (ValueError, KeyError, TypeError, UnicodeError):
+        return None
+
+
+def rewrite_playlist(text: str, base_url: str, point) -> str:
+    """The HLS playlist with each address (a line of its own, or URI="..." in a tag: key, map, media, variant) replaced by point(address),
+    resolved against the playlist's own address. Anything that is not a plain http(s) address is left as it is."""
+    def target(ref: str) -> str:
+        full = urljoin(base_url, ref.strip())
+        return point(full) if urlsplit(full).scheme in ("http", "https") else ref
+    out = []
+    for line in text.replace("\r\n", "\n").split("\n"):
+        stripped = line.strip()
+        if not stripped:
+            out.append(line)
+        elif stripped.startswith("#"):
+            out.append(_URI_ATTRIBUTE.sub(lambda m: 'URI="%s"' % target(m.group(1)), line) if "URI=" in line else line)
+        else:
+            out.append(target(stripped))
+    return "\n".join(out)
+
+
+def fetch_body(url: str, cap: int):
+    """(bytes, content type, final address) of a small reply (a playlist or one piece of a stream), after the checks; Refused if it is
+    larger than `cap` bytes."""
+    connection, response, kind = open_stream(url, accept=None)
+    try:
+        data = bytearray()
+        while len(data) <= cap:
+            chunk = response.read1(CHUNK)
+            if not chunk:
+                return bytes(data), kind, connection.final_url
+            data += chunk
+        raise Refused("A piece of the stream is too large.")
+    except (OSError, http.client.HTTPException):
+        raise Refused("The stream's server stopped answering.")
+    finally:
+        connection.close()
+
+
+def is_playlist(data: bytes) -> bool:
+    return data[:1024].lstrip(b"\xef\xbb\xbf \r\n\t").startswith(b"#EXTM3U")
+
+
+def piece_type(data: bytes, url: str) -> str:
+    """The type of a piece of a stream, decided by what it contains (never taken from the source): transport stream, fragmented mp4,
+    AAC, WebVTT; anything else is an opaque download."""
+    if data[:1] == b"\x47" and (len(data) < 189 or data[188:189] == b"\x47"):
+        return "video/mp2t"
+    if data[4:8] in (b"ftyp", b"styp", b"moof", b"moov", b"sidx"):
+        return "video/mp4"
+    if data[:3] == b"ID3" or data[:2] in (b"\xff\xf1", b"\xff\xf9"):
+        return "audio/aac"
+    if data[:6] == b"WEBVTT":
+        return "text/vtt"
+    return "application/octet-stream"

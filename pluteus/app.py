@@ -949,8 +949,8 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
         page = web.iptv_page if radio.looks_like_tv(head[0], stations) else web.radio_page
         extra = {"page_url": urls.view(root, parts)} if page is web.iptv_page else {}
         extra["logo_url"] = urls.cover(root, parts) if radio.find_logo(info.path) else ""
-        if page is web.radio_page and cfg.relay and lib.uploads_enabled(user):       # the player may fall back to the server for a stream it cannot play
-            extra["relay_urls"] = [urls.relay(root, parts, i) for i in range(len(stations))]
+        if cfg.relay and lib.uploads_enabled(user):          # the player may fall back to the server for a stream it cannot play
+            extra["relay_urls"] = [urls.relay(root, parts, i) + ("&hls=1" if page is web.iptv_page else "") for i in range(len(stations))]
         html = page(ctx_for(user), info.name, stations=stations, download_url=urls.download(root, parts),
                     text_url=urls.view(root, parts) + "?as=text", back_url=urls.browse(root, parts[:-1]), **extra)
         return html, (IPTV_CSP if page is web.iptv_page else RADIO_CSP)
@@ -1052,6 +1052,49 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
 
     relay_limits = relay.Limiter(cfg.relay_streams_user, cfg.relay_streams_total)
 
+    async def hls_playlist(user, lease: str, address: str) -> Response:
+        """The HLS playlist at `address` with every address in it replaced by a signed token that only this user can use (see relay.sign).
+        Each fetch of a playlist renews the stream's lease, which counts against the stream limits."""
+        if not relay_limits.lease(user.name, lease):
+            return PlainTextResponse("Too many streams are open through the server right now. Close one and try again.", 429,
+                                     headers={"Retry-After": "10"})
+        try:
+            data, _, final = await run_in_threadpool(relay.fetch_body, address, relay.MAX_PLAYLIST)
+        except relay.Refused as e:
+            relay_limits.drop_lease(user.name, lease)
+            return PlainTextResponse(e.message, e.status)
+        if not relay.is_playlist(data):
+            relay_limits.drop_lease(user.name, lease)
+            return PlainTextResponse("That is not an HLS playlist.", 415)
+        text = relay.rewrite_playlist(data.decode("utf-8", "replace"), final, lambda target: urls.relay_piece(relay.sign(target, user.name, lease)))
+        return Response(text, media_type="application/vnd.apple.mpegurl", headers={"Cache-Control": "no-store", "X-Content-Type-Options": "nosniff"})
+
+    @guarded("media")
+    async def relay_piece(request: Request, user):
+        """One address from a playlist the server rewrote: a variant playlist, a segment, a key. Only a token made by the server for this
+        user (and still valid) names it; a request cannot name an address of its own."""
+        if not cfg.relay or not lib.uploads_enabled(user):
+            raise NotFound("the relay is off")
+        found = relay.verify(request.path_params["token"], user.name)
+        if found is None:
+            raise NotFound("that piece is no longer offered")
+        address, lease = found
+        if not relay_limits.acquire_piece(user.name):
+            return PlainTextResponse("Too many pieces at once.", 429, headers={"Retry-After": "2"})
+        try:
+            data, _, final = await run_in_threadpool(relay.fetch_body, address, relay.MAX_PIECE)
+            if relay.is_playlist(data):                         # a variant (media) playlist: rewritten again, and it renews the lease
+                if lease and not relay_limits.lease(user.name, lease):
+                    return PlainTextResponse("Too many streams are open through the server right now.", 429, headers={"Retry-After": "10"})
+                text = relay.rewrite_playlist(data.decode("utf-8", "replace"), final,
+                                              lambda target: urls.relay_piece(relay.sign(target, user.name, lease)))
+                return Response(text, media_type="application/vnd.apple.mpegurl", headers={"Cache-Control": "no-store", "X-Content-Type-Options": "nosniff"})
+            return Response(data, media_type=relay.piece_type(data, final), headers={"Cache-Control": "no-store", "X-Content-Type-Options": "nosniff"})
+        except relay.Refused as e:
+            return PlainTextResponse(e.message, e.status)
+        finally:
+            relay_limits.release_piece(user.name)
+
     @guarded("media")
     async def relay_stream(request: Request, user):
         """A radio station of a station file, played through the server: the page names the file and the number of the station (never an
@@ -1073,6 +1116,8 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
         if request.query_params.get("now") == "1":           # what the station is playing now (its ICY title); the audio is not carried
             playing = await run_in_threadpool(relay.now_playing, stations[number][1], stations[number][0])
             return JSONResponse(playing, headers={"Cache-Control": "no-store"})
+        if request.query_params.get("hls") == "1":           # a TV channel: its playlist, rewritten so every piece comes through the server
+            return await hls_playlist(user, "%s/%s#%d" % (root, "/".join(parts), number), stations[number][1])
         if not relay_limits.acquire(user.name):
             return PlainTextResponse("Too many streams are open through the server right now. Close one and try again.", 429,
                                      headers={"Retry-After": "10"})
@@ -1602,6 +1647,7 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
         Route("/subs/{root}/{path:path}", subs),
         Route("/shell", shell),
         Route("/relay/{root}/{path:path}", relay_stream),
+        Route("/relay-piece/{token}", relay_piece),
         Route("/stations/{kind}", stations_page),
         Route("/api/stations", stations_save, methods=["POST"]),
         Route("/api/stations/missing", stations_missing),

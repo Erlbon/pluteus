@@ -71,10 +71,15 @@
         if (window.Hls && window.Hls.isSupported()) {
           hls = new window.Hls({ enableWorker: false, lowLatencyMode: false });
           hls.on(window.Hls.Events.MANIFEST_PARSED, function () { hls.autoLevelCapping = 0; go(); });
-          hls.on(window.Hls.Events.ERROR, function (e, d) { if (d && d.fatal) { releaseHls(); failedLive(item); } });
-          hls.loadSource(item.url);
+          hls.on(window.Hls.Events.ERROR, function (e, d) {
+            if (!d || !d.fatal) return;
+            releaseHls();
+            if (item.relay && !item.viaRelay) { item.viaRelay = true; show(); load(item); return; }      // once through the server
+            failedLive(item);
+          });
+          hls.loadSource(item.viaRelay && item.relay ? item.relay : item.url);
           hls.attachMedia(audio);
-        } else { audio.src = item.url; go(); }           // a browser that plays HLS itself
+        } else { audio.src = item.viaRelay && item.relay ? item.relay : item.url; go(); }           // a browser that plays HLS itself
       }, function () { failedLive(item); });
     } else {
       // a plain http stream on this secure page cannot play directly: through the server when it offers that (the relay)
@@ -166,7 +171,7 @@
     keepTv: function (item) {
       if (!item || typeof item.url !== "string") return;
       window.plShell.playQueue([{ title: item.title, url: item.url, folder: item.folder || "Live TV", live: true, tv: true, page: item.page || "",
-                                  logo: item.logo || "", linkText: "Picture" }], 0);
+                                  logo: item.logo || "", linkText: "Picture", relay: item.relay || "", viaRelay: !!item.viaRelay }], 0);
     },
     /* a song that was playing in the page being left carries on here, from where it was (a short gap while the file is opened again) */
     takeOver: function (items, start, at) {

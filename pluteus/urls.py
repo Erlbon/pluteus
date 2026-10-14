@@ -52,6 +52,10 @@ class Urls:
         """Station number `index` of a station file, played through the server (the relay)."""
         return "%s?i=%d" % (self._build("relay", root, parts), index)
 
+    def relay_piece(self, token: str) -> str:
+        """One piece (playlist, segment, key) of a relayed HLS stream, named by a token only the server can make."""
+        return "%s/relay-piece/%s" % (self.base, token)
+
     def stations(self, kind: str) -> str:
         """The page that finds radio stations (kind radio) or TV channels (kind tv) and saves them into the upload folder."""
         return "%s/stations/%s" % (self.base, kind)
