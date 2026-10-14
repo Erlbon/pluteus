@@ -176,9 +176,22 @@ and a few notebook conveniences.
 5. **Wiki links** `[[Page name]]`: resolved by file name inside the library (the same folder first, then upwards, then the whole folder tree
    below the top of the library, limited), no index. A name that is not found is shown as plain text.
 6. **Front matter** (`---` block with `title:` and `tags:`): read for the page title and hidden from the page.
+7. **Edit in the browser** (owner: must be in round 1): an Edit button on a rendered `.md` (and `.txt`) page opens a text area with a Preview and
+   Save. A new note can be created from a folder page ("Add a note": `artist.md`, `author.md`, `about.md`, `README.md`). Safe by construction:
+   the same same-site checks as every other write; the file is written atomically; if the file changed on disk since it was opened the save
+   is refused with a clear message (no silent overwrite); a size limit; only `.md`, `.markdown` and `.txt` files; never a file name outside
+   the folder. **Where editing is allowed is an open decision (see below).**
 
-**Round 2 (medium):** **edit in the browser** for `.md` and `.txt` files in a user's own upload folder (an Edit button, a text area, Save; library
-files stay read-only; the same same-site checks as every other write).
+**Decided by the owner, 2026-10-14: where the notes live and can be edited (option C, both).** Notes about a band belong next to its music, but
+libraries are read-only by design (in Docker usually mounted `:ro`). So:
+- **Step 1, the overlay (no mount change):** a note edited or added on a folder page is written to the user's own upload folder, at
+  `uploads/<user>/Notes/<root>/<path of the folder>/artist.md` (or `author.md`, `about.md`, `README.md`), and shown on that folder for that
+  user. Libraries stay read-only; these notes are personal. A note in the library itself is shown too; where both exist the user's own overlay
+  note wins for that user.
+- **Step 2, the library opt-in (shared notes beside the files):** a `notes = "edit"` line on a root in the config and a new per-user right
+  "notes" (admin page); only the note file names above can be written there, nothing else; needs that library mounted read-write. Notes written
+  there are seen by everyone who sees the folder.
+- The overlay folder is an ordinary part of the user's upload folder (visible, downloadable, backed up with it) and follows the same space limit.
 
 **Later, if wanted:** coloured code blocks (a small bundled script), read-only Jupyter notebooks (`.ipynb`: cells and outputs shown, nothing run).
 
