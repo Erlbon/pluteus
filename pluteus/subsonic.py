@@ -18,6 +18,7 @@ import hashlib
 import hmac
 import json
 import os
+from urllib.parse import urlencode
 import random
 import re
 import threading
@@ -150,6 +151,7 @@ class Subsonic:
         self._albums: dict = {}
         self._albums_lock = threading.Lock()
         self._radio: dict = {}
+        self.relay_station = None             # set by the app when the relay is on: async (user, root, parts, number) -> Response
         self.handlers = {
             "ping": self.ping, "getlicense": self.license, "getopensubsonicextensions": self.extensions,
             "getmusicfolders": self.music_folders, "getindexes": self.indexes, "getmusicdirectory": self.music_directory,
@@ -185,11 +187,17 @@ class Subsonic:
             params.update(dict(pairs))
             ids += [v for k, v in pairs if k in ("id", "albumId", "artistId")]
         params["_ids"] = ids
+        proxied = self.cfg.trust_proxy
+        scheme = (request.headers.get("x-forwarded-proto", "") if proxied else "").split(",")[0].strip() or request.url.scheme
+        host = (request.headers.get("x-forwarded-host", "") if proxied else "").split(",")[0].strip() or request.headers.get("host", "")
+        params["_origin"] = ("%s://%s%s" % (scheme, host, self.cfg.base_path)) if host else ""
         fmt = "json" if params.get("f") == "json" else "xml"
         name = request.path_params["name"].lower()
         name = name[:-5] if name.endswith(".view") else name
         try:
             user = await self.authenticate(request, params)
+            if name == "stream" and self.relay_station is not None and (target := self._station_target(params.get("id", ""))):
+                return await self.relay_station(user, *target)
             if name in self.handlers:
                 result = await run_in_threadpool(self.handlers[name], user, params)
                 if isinstance(result, Response):
@@ -452,17 +460,39 @@ class Subsonic:
                     except (NotFound, PathError, OSError):
                         continue
                     stem = os.path.splitext(entry.name)[0]
-                    stations = radio.read_file(path)
-                    for n, (name, url) in enumerate(stations):
+                    stations = radio.read_file_streams(path)
+                    for n, (name, url, stored) in enumerate(stations):
                         label = name or (stem if len(stations) == 1 else "%s %d" % (stem, n + 1))
                         found.append({"id": make_id(r.name, entry.parts) + ("" if len(stations) == 1 else ".%d" % n),
-                                      "name": label, "streamUrl": url})
+                                      "name": label, "streamUrl": url,
+                                      "_relay": bool(stored) or url.lower().startswith("http:")})      # these play through the server when it offers that
         found = found[:radio.MAX_STATIONS]
         self._radio = {**{k: v for k, v in self._radio.items() if v[0] > time.monotonic()}, user.name: (time.monotonic() + _ALBUM_CACHE_SECONDS, found)}
         return found
 
     def radio_stations(self, user, p):
-        return {"internetRadioStations": {"internetRadioStation": self._stations(user)}}
+        origin = p.get("_origin", "") if self.relay_station is not None else ""
+        login = {k: p[k] for k in ("apiKey",) if p.get(k)} or {k: p[k] for k in ("u", "t", "s") if p.get(k)}
+        usable = bool(origin) and (("apiKey" in login) or all(k in login for k in ("u", "t", "s")))     # a plain `p` password is never copied into an address
+        out = []
+        for station in self._stations(user):
+            item = {k: v for k, v in station.items() if k != "_relay"}
+            if usable and station.get("_relay"):                # through the server: the same app login, no address of the station's own
+                item["streamUrl"] = "%s/rest/stream?%s" % (origin, urlencode({"id": station["id"], **login, "c": "pluteus", "v": "1.16.1"}))
+            out.append(item)
+        return {"internetRadioStations": {"internetRadioStation": out}}
+
+    def _station_target(self, value: str):
+        """(root, parts, number) when `value` is the id of a station (a station file, with .N for the Nth station of a file), else None."""
+        base, _, tail = value.rpartition(".")
+        number = 0
+        if base and tail.isdigit():
+            value, number = base, int(tail)
+        try:
+            root, parts = read_id(value)
+        except ApiError:
+            return None
+        return (root, parts, number) if parts and radio.is_radio_file(parts[-1]) else None
 
     # ---- artist information: the note about the artist folder (artist.md / artist.txt / about.md), no online look-up ----------
     _BIOGRAPHY_FILES = ("artist.md", "artist.txt", "about.md")

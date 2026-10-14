@@ -81,7 +81,7 @@ public. See "Out of scope".
 | R3 (done in 0.9.8) | **HLS relay** for TV channels: playlist rewriting, segments and keys through the relay, CORS and mixed content solved; the picker can offer the http and CORS-blocked channels again | large | Biggest part: token expiry, redirects, many small requests. |
 | R4 (done in 0.9.8) | **Credentials and headers:** the encrypted per-user store, entries in a "my streams" page under Settings, station files that refer to an entry by name, `Referer` / `User-Agent` / basic auth / bearer token | large | SECURITY.md gets a full section. |
 | R5 (done in 0.9.8) | **Admin view and quotas:** running relays, per-user and total caps, Stop (a daily byte ceiling was left out: totals are shown instead) | medium | Stop ends audio streams; HLS channels are listed only. |
-| R6 | Subsonic radio list with relay addresses for http stations | small | |
+| R6 (done in 0.9.8) | Subsonic radio list with relay addresses for http stations | small | The app's key or token is echoed into the address; a plain `p` password is not. |
 
 ### How we will know it works (acceptance)
 

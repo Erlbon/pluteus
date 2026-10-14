@@ -1198,11 +1198,15 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
         if request.query_params.get("hls") == "1":           # a TV channel: its playlist, rewritten so every piece comes through the server
             return await hls_playlist(user, "%s/%s#%d" % (root, "/".join(parts), number), stations[number][1],
                                        stations[number][2], entry)
+        return await relay_audio(user, "%s/%s#%d" % (root, "/".join(parts), number), stations[number][1], entry)
+
+    async def relay_audio(user, label: str, url: str, entry):
+        """Pass a station's audio on (the relay's one audio path: the web player and the Subsonic stream both come here)."""
         if not relay_limits.acquire(user.name):
             return PlainTextResponse("Too many streams are open through the server right now. Close one and try again.", 429,
                                      headers={"Retry-After": "10"})
         try:
-            connection, response, kind = await run_in_threadpool(relay.open_stream, stations[number][1], None, relay.AUDIO, entry)
+            connection, response, kind = await run_in_threadpool(relay.open_stream, url, None, relay.AUDIO, entry)
         except relay.Refused as e:
             relay_limits.release(user.name)
             return PlainTextResponse(e.message, e.status)
@@ -1210,7 +1214,7 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
             relay_limits.release(user.name)
             raise
 
-        handle = relay_limits.register(user.name, "%s/%s#%d" % (root, "/".join(parts), number), "radio")
+        handle = relay_limits.register(user.name, label, "radio")
 
         async def pump():
             try:
@@ -1791,6 +1795,20 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
         from .subsonic import Subsonic
         api = Subsonic(cfg, lib, state, auth, meta, Throttle())
         routes.append(Route("/rest/{name}", api.handle, methods=["GET", "POST"]))
+        if cfg.relay:
+            async def subsonic_station(user, root, parts, number):
+                """A Subsonic app playing a station of the radio list that needs the relay (plain http, or a stored login)."""
+                if not lib.uploads_enabled(user):
+                    return PlainTextResponse("The relay is not available to this user.", 404)
+                info = await run_in_threadpool(lib.file_info, user, root, parts, True)
+                stations = await run_in_threadpool(radio.read_file_streams, info.path)
+                if not 0 <= number < len(stations):
+                    return PlainTextResponse("No such station.", 404)
+                entry, problem = stored_stream(user.name, stations[number][2])
+                if stations[number][2] and entry is None:
+                    return PlainTextResponse(problem, 409)
+                return await relay_audio(user, "%s/%s#%d" % (root, "/".join(parts), number), stations[number][1], entry)
+            api.relay_station = subsonic_station
     if cfg.kosync:
         from .kosync import KoSync
         routes.append(Route("/kosync/{route:path}", KoSync(auth, state, Throttle()).handle, methods=["GET", "PUT", "POST"]))
