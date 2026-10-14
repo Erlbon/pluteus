@@ -91,6 +91,9 @@ class Config:
     thumbnails: bool = False       # cover thumbnails (/thumb): in the OPDS feeds and the web cover view. Off until switched on
     kosync: bool = False           # KOReader progress sync under /kosync
     subsonic: bool = False       # answer the Subsonic / OpenSubsonic API under /rest (music apps, Android Auto through them)
+    relay: bool = False            # the stream relay under /relay: radio stations a browser cannot play directly (plain http on an https site, no CORS) go through the server
+    relay_streams_user: int = 2    # most streams one user may have open through the relay at once
+    relay_streams_total: int = 6   # most streams open through the relay at once, all users together
     update_check: bool = False     # the admin page asks GitHub once a day for a newer version and security advisories (opt-in)
     update_repo: str = "Erlbon/pluteus"   # owner/name of the repository to ask
     site_port: int = 0             # port of the main site as seen from the LAN when it differs from `port` (Docker: 8100); 0 = port
@@ -103,7 +106,7 @@ class Config:
 # [[roots]] by mistake would silently do nothing. Every table's keys are therefore checked.
 _SERVER_KEYS = {"host", "port", "page_size", "base_path", "realm", "auth_cache_seconds", "anonymous_user",
                 "session_days", "cookie_secure", "trust_proxy", "allowed_hosts", "opds_pse", "show_all_files", "text_view_kb",
-                "admin_port", "admin_host", "site_port", "update_check", "update_repo", "share_target", "join_token", "join_user", "admin_url", "library_bases", "subsonic", "webdav", "kosync", "thumbnails"}
+                "admin_port", "admin_host", "site_port", "update_check", "update_repo", "share_target", "join_token", "join_user", "admin_url", "library_bases", "subsonic", "webdav", "kosync", "thumbnails", "relay", "relay_streams_user", "relay_streams_total"}
 _GLOBAL_KEYS = {"exclude", "extensions", "display_strip", "adult_marker", "private_marker", "hidden_marker", "metadata", "cache_dir",
                 "data_dir", "themes_dir", "theme", "uploads_dir", "upload_max_mb", "upload_quota_mb"}
 _ROOT_KEYS = {"name", "path"}
@@ -262,6 +265,8 @@ def parse_config(data: dict, check_roots: bool = True) -> Config:
         text_view_kb=max(16, int(server.get("text_view_kb", 1024))),
         admin_port=admin_port, admin_host=str(server.get("admin_host", "127.0.0.1")),
         site_port=_in_range(server, "site_port", 0, 0, 65535),
+        relay=bool(server.get("relay", False)), relay_streams_user=_in_range(server, "relay_streams_user", 2, 1, 50),
+        relay_streams_total=_in_range(server, "relay_streams_total", 6, 1, 500),
         library_bases=tuple(str(b) for b in server.get("library_bases", ())), admin_url=_admin_url(server.get("admin_url", "")), join_token=str(server.get("join_token", "")), join_user=str(server.get("join_user", "")),
         share_target=bool(server.get("share_target", True)), subsonic=bool(server.get("subsonic", False)), webdav=bool(server.get("webdav", False)), kosync=bool(server.get("kosync", False)), thumbnails=bool(server.get("thumbnails", False)), update_check=bool(server.get("update_check", False)), update_repo=_repo_name(server.get("update_repo", "Erlbon/pluteus")),
         host=str(server.get("host", "127.0.0.1")), port=_in_range(server, "port", 8080, 1, 65535),

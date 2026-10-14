@@ -19,8 +19,9 @@
   function items() {
     var logo = root.dataset.logo || "";                       // the picture next to the station file (a file with several stations: all share it)
     var back = location.pathname + location.search;           // the player bar links back to this page
-    var list = stations.length ? stations.map(function (b) { return { title: b.dataset.name, url: b.dataset.url, folder: "Live radio", live: true, logo: logo, page: back, linkText: "Station" }; })
-                               : [{ title: name, url: url, folder: "Live radio", live: true, logo: logo, page: back, linkText: "Station" }];
+    var relays = (root.dataset.relay || "").split("|");       // the address of each station through the server (empty when the relay is off)
+    var list = stations.length ? stations.map(function (b, i) { return { title: b.dataset.name, url: b.dataset.url, folder: "Live radio", live: true, logo: logo, page: back, linkText: "Station", relay: relays[i] || "" }; })
+                               : [{ title: name, url: url, folder: "Live radio", live: true, logo: logo, page: back, linkText: "Station", relay: relays[0] || "" }];
     return list;
   }
   function shellPlaying() { return !!shell && shell.isPlaying() && shell.currentUrl() === url; }
@@ -43,8 +44,9 @@
     if (icon) icon.className = "pl-icon " + (playing || (wanted && !audio.error) ? "pl-i-pause" : "pl-i-play");
     play.setAttribute("aria-label", wanted ? "Stop" : "Play");
   }
+  function relayFor() { return (root.dataset.relay || "").split("|")[current] || ""; }
   function start() {
-    if (location.protocol === "https:" && /^http:/i.test(url)) {
+    if (location.protocol === "https:" && /^http:/i.test(url) && !relayFor()) {
       wanted = false; paint();
       say("This station is on plain http and the browser blocks it on this secure page. Open the site over http on the local network, or use a station with an https address.", 12000);
       return;
@@ -52,7 +54,7 @@
     say("");
     wanted = true;
     if (shell) { shell.playQueue(items(), current); paint(); return; }
-    audio.src = url;
+    audio.src = (location.protocol === "https:" && /^http:/i.test(url) && relayFor()) ? relayFor() : url;       // outside the shell too: http on https goes through the server
     var p = audio.play();
     if (p && p.catch) p.catch(function (e) {
       if (e && e.name === "NotAllowedError") { wanted = false; paint(); say("Tap play to start", 4000); }   // anything else is the error event's job

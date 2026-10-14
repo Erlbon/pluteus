@@ -179,6 +179,9 @@ def create_admin_app(main_app) -> Starlette:
             {"name": "KOReader sync", "on": cfg.kosync, "setting": "kosync = true", "address": base + "/kosync", "keys": have},
             {"name": "Cover thumbnails (feeds, cover view)", "on": cfg.thumbnails, "setting": "thumbnails = true", "address": "", "keys": ""},
             {"name": "Uploads", "on": bool(cfg.uploads_dir), "setting": "uploads_dir = ...", "address": "per-user folders", "keys": ""},
+            {"name": "Stream relay (radio over the server)", "on": cfg.relay, "setting": "relay = true",
+             "address": base + "/relay (%d per user, %d in all)" % (cfg.relay_streams_user, cfg.relay_streams_total) if cfg.relay else "",
+             "keys": "users with an upload folder"},
         ]
         return {
             "services": services,

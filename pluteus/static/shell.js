@@ -30,7 +30,7 @@
     if (!item) return;
     strip.hidden = false;
     document.body.classList.add("pl-shell-playing");
-    titleEl.textContent = item.title + (item.folder ? " – " + item.folder : "");
+    titleEl.textContent = item.title + (item.folder ? " – " + item.folder : "") + (item.viaRelay ? " · via the server" : "");
     posEl.textContent = item.live ? "live" : (index + 1) + " / " + queue.length;
     logoEl.hidden = !item.logo;                           // a station or channel with a logo: it shows at the left of the title
     if (item.logo) logoEl.src = item.logo;
@@ -72,7 +72,9 @@
         } else { audio.src = item.url; go(); }           // a browser that plays HLS itself
       }, function () { failedLive(item); });
     } else {
-      audio.src = item.url;
+      // a plain http stream on this secure page cannot play directly: through the server when it offers that (the relay)
+      if (item.relay && !item.viaRelay && location.protocol === "https:" && /^http:/i.test(item.url)) item.viaRelay = true;
+      audio.src = item.viaRelay && item.relay ? item.relay : item.url;
       go();
     }
   }
@@ -99,6 +101,9 @@
   audio.addEventListener("error", function () {         // a file that will not play: on to the next (not forever); a live stream just stops
     var item = queue[index];                             // an error left over from a source that was just replaced is gone (audio.error is reset)
     if (!item || !audio.error || !audio.getAttribute("src")) { paint(); return; }
+    if (live() && item.relay && !item.viaRelay) {        // the direct stream failed (no CORS, refused): try it once through the server
+      item.viaRelay = true; show(); load(item); paint(); return;
+    }
     if (live()) { titleEl.textContent = queue[index].title + " – the stream did not start"; paint(); return; }
     if (++failures > 5) { paint(); return; }
     if (index + 1 < queue.length) go(index + 1);

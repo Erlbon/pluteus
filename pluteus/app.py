@@ -32,7 +32,7 @@ from starlette.responses import (FileResponse, HTMLResponse, JSONResponse, Plain
                                  RedirectResponse, Response, StreamingResponse)
 from starlette.routing import Route
 
-from . import cbz, kinds, markdown, mediainfo, opds, opds2, radio, stationsave, subtitles, tabular, thumbs, textview, uploads, web, ziputil
+from . import cbz, kinds, markdown, mediainfo, opds, opds2, radio, relay, stationsave, subtitles, tabular, thumbs, textview, uploads, web, ziputil
 from .auth import Authenticator
 from .bodies import read_limited
 from .cbz import CbzError
@@ -949,6 +949,8 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
         page = web.iptv_page if radio.looks_like_tv(head[0], stations) else web.radio_page
         extra = {"page_url": urls.view(root, parts)} if page is web.iptv_page else {}
         extra["logo_url"] = urls.cover(root, parts) if radio.find_logo(info.path) else ""
+        if page is web.radio_page and cfg.relay and lib.uploads_enabled(user):       # the player may fall back to the server for a stream it cannot play
+            extra["relay_urls"] = [urls.relay(root, parts, i) for i in range(len(stations))]
         html = page(ctx_for(user), info.name, stations=stations, download_url=urls.download(root, parts),
                     text_url=urls.view(root, parts) + "?as=text", back_url=urls.browse(root, parts[:-1]), **extra)
         return html, (IPTV_CSP if page is web.iptv_page else RADIO_CSP)
@@ -1047,6 +1049,53 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
             text = text.replace(key, escape_attr(value))
         csp = IPTV_CSP if kind == "tv" else RADIO_CSP.replace("connect-src 'self';", "connect-src 'self' https://*.api.radio-browser.info;", 1)
         return HTMLResponse(text, headers={"Content-Security-Policy": csp})
+
+    relay_limits = relay.Limiter(cfg.relay_streams_user, cfg.relay_streams_total)
+
+    @guarded("media")
+    async def relay_stream(request: Request, user):
+        """A radio station of a station file, played through the server: the page names the file and the number of the station (never an
+        address), the server fetches that station's address with the guard in pluteus/relay.py and passes the audio on."""
+        if not cfg.relay or not lib.uploads_enabled(user):
+            raise NotFound("the relay is off")
+        root = request.path_params["root"]
+        parts = _parts(request.path_params["path"])
+        info = await run_in_threadpool(lib.file_info, user, root, parts, cfg.show_all_files)
+        if not radio.is_radio_file(info.name):
+            raise NotFound("not a station file")
+        try:
+            number = int(request.query_params.get("i", "0"))
+        except ValueError:
+            raise NotFound("no such station")
+        stations = await run_in_threadpool(radio.read_file, info.path)
+        if not 0 <= number < len(stations):
+            raise NotFound("no such station")
+        if not relay_limits.acquire(user.name):
+            return PlainTextResponse("Too many streams are open through the server right now. Close one and try again.", 429,
+                                     headers={"Retry-After": "10"})
+        try:
+            connection, response, kind = await run_in_threadpool(relay.open_stream, stations[number][1])
+        except relay.Refused as e:
+            relay_limits.release(user.name)
+            return PlainTextResponse(e.message, e.status)
+        except BaseException:
+            relay_limits.release(user.name)
+            raise
+
+        async def pump():
+            try:
+                while True:
+                    chunk = await run_in_threadpool(relay.read_chunk, response)
+                    if not chunk:
+                        break
+                    yield chunk
+            finally:                                         # the listener left, the stream ended or stalled: nothing stays open
+                try:
+                    connection.close()
+                except Exception:                            # noqa: BLE001
+                    pass
+                relay_limits.release(user.name)
+        return StreamingResponse(pump(), media_type=kind, headers={"Cache-Control": "no-store", "X-Content-Type-Options": "nosniff"})
 
     @guarded("web")
     async def stations_missing(request: Request, user):
@@ -1549,6 +1598,7 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
         Route("/cover/{root}/{path:path}", cover),
         Route("/subs/{root}/{path:path}", subs),
         Route("/shell", shell),
+        Route("/relay/{root}/{path:path}", relay_stream),
         Route("/stations/{kind}", stations_page),
         Route("/api/stations", stations_save, methods=["POST"]),
         Route("/api/stations/missing", stations_missing),

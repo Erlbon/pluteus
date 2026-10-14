@@ -48,6 +48,10 @@ class Urls:
     def cover(self, root: str, parts) -> str:
         return self._build("cover", root, parts)
 
+    def relay(self, root: str, parts, index: int) -> str:
+        """Station number `index` of a station file, played through the server (the relay)."""
+        return "%s?i=%d" % (self._build("relay", root, parts), index)
+
     def stations(self, kind: str) -> str:
         """The page that finds radio stations (kind radio) or TV channels (kind tv) and saves them into the upload folder."""
         return "%s/stations/%s" % (self.base, kind)

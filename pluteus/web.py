@@ -714,7 +714,8 @@ def iptv_page(ctx: Ctx, title: str, *, stations: list, download_url: str, text_u
                    stage_class="pl-media-stage", scripts=scripts)
 
 
-def radio_page(ctx: Ctx, title: str, *, stations: list, download_url: str, text_url: str, back_url: str, logo_url: str = "") -> str:
+def radio_page(ctx: Ctx, title: str, *, stations: list, download_url: str, text_url: str, back_url: str, logo_url: str = "",
+               relay_urls: list | None = None) -> str:
     """The radio player for a station file: the stations are written by the owner of the library, the browser plays the stream
     itself (an <audio> element; the page's CSP allows media from anywhere, see app.RADIO_CSP). radio.js does the rest."""
     name = title.rsplit(".", 1)[0] if "." in title else title
@@ -740,7 +741,8 @@ def radio_page(ctx: Ctx, title: str, *, stations: list, download_url: str, text_
     foot = "<a href='%s'>Show as text</a>" % escape(text_url)
     return _viewer(ctx, title, back_url, tools=tools, stage=stage, foot=foot, classes="pl-mediaview pl-audio",
                    stage_class="pl-media-stage",
-                   data=(("title", heading), ("artwork", logo_url or ctx.urls.static("icon/icon-512.png")), ("logo", logo_url)),
+                   data=(("title", heading), ("artwork", logo_url or ctx.urls.static("icon/icon-512.png")), ("logo", logo_url),
+                         ("relay", "|".join(relay_urls or []))),               # one address per station, when the relay is on
                    scripts=(ctx.urls.static("radio.js"),))
 
 
