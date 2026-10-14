@@ -6,6 +6,8 @@ promised for a date; each item is decided by the owner when it starts.
 
 ## 1. The stream relay
 
+**Version plan (owner, 2026-10-14):** 0.9.7 is the logos release; **0.9.8 is the relay**; **0.9.9 is reserved for the last check point before 1.0.0.**
+
 **One sentence:** the server fetches a stream on the browser's behalf and passes it on, so streams that a web page cannot reach directly can be
 played, and the server can read things a browser hides.
 

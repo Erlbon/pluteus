@@ -2,7 +2,7 @@
 
 Release notes are taken from the section of the tagged version (`## 0.5.0 ...`).
 
-## Unreleased (for 0.9.7)
+## 0.9.7 - 2026-10-14
 - **Tidier station folders:** the picture beside a station file (`NRK P3.png` next to `NRK P3.m3u`) is no longer listed as a file of its own, in `Radio`, `IPTV` or any folder; it is the station's cover. A picture with no station file of that name still shows. In the upload folder, renaming or deleting a station file takes its picture along, so nothing is left behind that you could no longer see or remove.
 - **Radio and IPTV on the home page:** once you have saved a station or a channel, **Radio** and **IPTV** appear in the Browse list next to your libraries and open the folders inside your upload folder (nothing is shown until the folder exists, and not to users without an upload folder). The files stay where they are.
 - **Fetch missing logos:** the radio and TV picker pages have a "Logos for stations you already saved" button. It asks the server which station files in your `Radio` or `IPTV` folder have no picture beside them, takes the logo address from the file's `tvg-logo` attribute or finds it in the directory by the stream address (radio-browser for radio, the iptv-org catalogue for TV), and the server fetches each one through the guarded fetch (40 per request) and saves it beside the file, naming it in a `.m3u` that did not. Files already with a picture are left alone, and files the directory does not know stay as they are (drop a picture next to them by hand).
