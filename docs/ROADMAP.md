@@ -130,6 +130,19 @@ for the new quota, after or next to the relay.
   3. **Type:** `.m4b` audiobooks are never included.
   Not chosen for now (kept as later options, nothing built): a genre skip list (Audiobook, Podcast, Speech, Sound Effects ...) and a
   `shuffle = false` switch per library in the config.
+- **Audiences (decided by the owner, 2026-10-14): keep adults' and children's content out of each other's mixes.** pluteus already has the
+  adult half: a folder with the adult marker (`.adult`, name configurable) and everything below it is invisible to users without the "adult"
+  right, so a mix built from the folders a user may see never contains it. New:
+  1. **A kids marker** (`.kids`, name configurable like the other markers): the folder stays visible to everyone but is left out of Shuffle and
+     Random mix (and the Subsonic random songs) for users who are not marked as children.
+  2. **A "child" user flag** on the admin page (and in `config.toml`): for such a user the mix draws only from kids-marked folders and ordinary
+     unmarked ones, never from adult ones (already enforced by the adult right). Browsing is unchanged.
+  3. **Streams:** a station or channel carries its audience inside its own file, as an attribute on the `#EXTINF` line
+     (`pluteus-audience="kids"`), or by the folder it sits in (a `.kids` marker in e.g. `Radio/Kids`). The pickers set it automatically: TV
+     channels in the iptv-org category "kids" and radio stations with the radio-browser tags "kids" or "children" are saved as kids. Adult
+     channels (`is_nsfw`) are never offered by the TV picker, so none end up in the files.
+  4. The same rules apply to the Random mix, the Shuffle button and the Subsonic random calls, and are covered by tests (an adult folder never in
+     a child's mix, a kids folder never in an adult's mix, a mixed queue, streams with and without the attribute).
 - **Limits to state in the documentation:** subtitles and saved position belong to a video's own page and do not carry over into the panel; a
   video the browser cannot decode (some MKV) is skipped with a note.
 - **Size:** about 20 to 25 minutes (server pick: medium, Shuffle button: small, the panel: medium, tests and real-signal checks: medium).
