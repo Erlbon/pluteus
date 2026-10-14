@@ -2,6 +2,9 @@
 
 Release notes are taken from the section of the tagged version (`## 0.5.0 ...`).
 
+## Unreleased
+- **Fixed: tapping the speed text above the play button changed the speed.** The speed written along the top of the play button is now only a readout; the - and + beside the play button change it. A thumb reaching for play (or the title above it) can no longer switch the speed by accident.
+
 ## 0.9.8 - 2026-10-14
 - **The TV picker and the relay.** With `relay = true` the TV picker leaves "https only" off by default (a saved plain-http channel plays through the server), says so, and "Test ticked" marks a channel that a secure page cannot test, or that a server refuses to show to a web page, as "via the server?" instead of "fails" (the relay does not need that permission).
 - **Subsonic resume from the web player.** When no app has saved a queue (or the web player was used after it), `getPlayQueue` answers with the unfinished song you opened last in the web player, the rest of its folder after it, and the saved position. Nothing extra is stored.

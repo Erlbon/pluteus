@@ -589,12 +589,12 @@ def media_viewer_page(ctx: Ctx, title: str, *, kind: str, raw_url: str, mime: st
         speed_down = "<button class='pl-btn pl-speed-step' id='speed-down' type='button' aria-label='Slower'>&minus;</button>"
         speed_up = "<button class='pl-btn pl-speed-step' id='speed-up' type='button' aria-label='Faster'>+</button>"
         tip = "Tap to switch between normal, 1.25, 1.5 and 2 times"
-        # audio: the speed is written along the top edge of the play button (an arc; the tap area is a band along the arc)
-        speed_val = ("<button class='pl-speed-arc' id='speed' type='button' title='%s' aria-label='Playback speed'>"
+        # audio: the speed is written along the top edge of the play button. It is only a readout (the - and + beside the play button
+        # change it): tapping the text does nothing, so a thumb reaching for play or the title above it cannot change the speed by accident
+        speed_val = ("<span class='pl-speed-arc' id='speed' role='img' aria-label='Playback speed'>"
                      "<svg viewBox='0 0 100 50' aria-hidden='true'><path id='pl-arc' d='M 14 50 A 36 36 0 0 1 86 50' fill='none'/>"
-                     "<path class='hit' d='M 14 50 A 36 36 0 0 1 86 50'/>"
                      "<text><textPath href='#pl-arc' startOffset='50%%' text-anchor='middle' class='pl-btn-text'>1&times;</textPath></text>"
-                     "</svg></button>" % tip)
+                     "</svg></span>")
         # video: a plain gold chip between the skip buttons
         speed_chip = ("<button class='pl-speed-val' id='speed' type='button' title='%s'>"
                       "<span class='pl-btn-text'>1&times;</span></button>" % tip)

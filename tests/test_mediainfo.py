@@ -176,6 +176,8 @@ def test_the_speed_is_written_along_the_play_button_and_the_row_has_no_text_labe
     assert "pl-speed-arc" in page and "<textPath" in page and "id='speed-down'" in page and "id='speed-up'" in page
     assert page.index("id='speed-down'") < page.index("id='back30'") < page.index("id='play'") < page.index("id='fwd30'") < page.index("id='speed-up'")
     assert ">30 s<" not in page                                                   # the skip buttons are icons only (the label is for screen readers)
+    assert "<button class='pl-speed-arc'" not in page and "class='hit'" not in page             # the speed text is a readout: tapping it changes nothing
+    assert "pl-speed-arc .hit" not in client.get("/static/base.css").text
 
 
 def test_sleep_and_bookmarks_are_for_audiobooks_only(music):
