@@ -31,7 +31,7 @@ from starlette.responses import (FileResponse, HTMLResponse, JSONResponse, Plain
                                  RedirectResponse, Response, StreamingResponse)
 from starlette.routing import Route
 
-from . import cbz, kinds, markdown, mediainfo, opds, opds2, tabular, thumbs, textview, uploads, web, ziputil
+from . import cbz, kinds, markdown, mediainfo, opds, opds2, subtitles, tabular, thumbs, textview, uploads, web, ziputil
 from .auth import Authenticator
 from .bodies import read_limited
 from .cbz import CbzError
@@ -860,13 +860,14 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
                 lyrics = mediainfo.parse_lrc(tags["lyrics"])
             has_cover = bool(tags.get("has_cover")) or (kind == "audio" and bool(mediainfo.folder_cover(os.path.dirname(info.path))))
             chapters = mediainfo.read_chapters(info.path)
+            tracks = [(urls.subs(root, parts, i), label) for i, (_, label) in enumerate(subtitles.find(info.path))] if kind == "video" else []
             return web.media_viewer_page(
                 ctx, info.name, kind=kind, raw_url=urls.raw(root, parts), mime=kinds.INLINE_MIME[kinds.extension(info.name)],
                 download_url=download, back_url=back, progress_url=urls.api("progress", root, parts),
                 prev_url=prev_url, next_url=next_url, position=position, total=total,
                 album=lib.display_name(parts[-2]) if len(parts) > 1 else root,
                 tags=tags, cover_url=urls.cover(root, parts) if has_cover else "", synced=lyrics, chapters=chapters,
-                bookmarks_url=urls.api("bookmarks", root, parts), extras=ctx.extras)
+                bookmarks_url=urls.api("bookmarks", root, parts), extras=ctx.extras, subtitles=tracks)
         if not as_text and kind == "pdf":
             return web.pdf_viewer_page(ctx, info.name, raw_url=urls.raw(root, parts), download_url=download, back_url=back,
                                        progress_url=urls.api("progress", root, parts))
@@ -907,6 +908,26 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
         if ext in kinds.SANDBOXED:
             headers["Content-Security-Policy"] = "sandbox; default-src 'none'; style-src 'unsafe-inline'"
         return FileResponse(info.path, media_type=mime, headers=headers)       # no filename: displayed, not downloaded
+
+    @guarded("media")
+    async def subs(request: Request, user):
+        """Subtitle number i of a video (a .srt or .vtt next to it), as WebVTT. Chosen by number, never by a name."""
+        root = request.path_params["root"]
+        parts = _parts(request.path_params["path"])
+        info = await run_in_threadpool(lib.file_info, user, root, parts, cfg.show_all_files)
+        if kinds.kind_of(info.name) != "video":
+            raise NotFound("not a video")
+        try:
+            index = int(request.query_params.get("i", "0"))
+        except ValueError:
+            raise NotFound("no such subtitle")
+        found = await run_in_threadpool(subtitles.find, info.path)
+        if not 0 <= index < len(found):
+            raise NotFound("no such subtitle")
+        text = await run_in_threadpool(subtitles.to_vtt, found[index][0])
+        headers = {"X-Content-Type-Options": "nosniff", "Cache-Control": "private, max-age=300",
+                   "Content-Security-Policy": "sandbox; default-src 'none'"}
+        return Response(text, media_type="text/vtt; charset=utf-8", headers=headers)
 
     @guarded("media")
     async def cover(request: Request, user):
@@ -1288,6 +1309,7 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
         Route("/view/{root}/{path:path}", view),
         Route("/raw/{root}/{path:path}", raw),
         Route("/cover/{root}/{path:path}", cover),
+        Route("/subs/{root}/{path:path}", subs),
         Route("/zip/{root}/{path:path}", zip_entry),
         Route("/cbz/{root}/{path:path}", cbz_page),
         Route("/thumb/{root}/{path:path}", thumb),

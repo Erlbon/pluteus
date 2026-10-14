@@ -48,6 +48,10 @@ class Urls:
     def cover(self, root: str, parts) -> str:
         return self._build("cover", root, parts)
 
+    def subs(self, root: str, parts, index: int) -> str:
+        """Subtitle number `index` of a video, as WebVTT."""
+        return "%s?i=%d" % (self._build("subs", root, parts), index)
+
     def api(self, kind: str, root: str, parts) -> str:
         return self.base + "/api/" + kind + "/" + "/".join(quote(s, safe="") for s in (root, *parts))
 

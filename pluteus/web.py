@@ -527,7 +527,7 @@ def _clock(seconds: float) -> str:
 def media_viewer_page(ctx: Ctx, title: str, *, kind: str, raw_url: str, mime: str, download_url: str, back_url: str,
                       progress_url: str, prev_url, next_url, position: int, total: int, album: str = "",
                       tags: dict | None = None, cover_url: str = "", synced: list | None = None, chapters: list | None = None,
-                      bookmarks_url: str = "", extras: bool = True) -> str:
+                      bookmarks_url: str = "", extras: bool = True, subtitles: list | None = None) -> str:
     """The audio/video viewer. Audio gets a cover, the tags (title, artist, album, year, genre, track), a scrubber, big transport
     buttons and lyrics; video keeps the browser's own controls under the same information. Tags are untrusted text: escaped.
     viewer-media.js adds resume, auto-advance to the next file, the lyrics highlight and the lock-screen controls."""
@@ -580,17 +580,21 @@ def media_viewer_page(ctx: Ctx, title: str, *, kind: str, raw_url: str, mime: st
     # the position bar, volume and (for a movie) full screen, and the row of big buttons: the same for music and movies
     fullscreen = ("<button type='button' id='fs' class='pl-vol-btn pl-fs-btn' aria-label='Full screen'><span class='pl-icon pl-i-fullscreen'></span></button>"
                   if kind == "video" else "")
+    subtitles = subtitles or []
+    captions = ("<button type='button' id='cc' class='pl-vol-btn pl-cc-btn' aria-label='Subtitles' aria-pressed='false'>CC</button>"
+                if subtitles and kind == "video" else "")
     scrub_row = ("<div class='pl-scrub'><span id='cur'>0:00</span><input type='range' id='scrub' min='0' max='1000' value='0' "
                  "aria-label='Position'><span id='dur'>&ndash;:&ndash;&ndash;</span>"
                  "<span class='pl-vol'><button type='button' id='mute' class='pl-vol-btn' aria-label='Mute'><span class='pl-icon pl-i-volume'></span></button>"
-                 "<input type='range' id='volume' min='0' max='100' value='100' aria-label='Volume'></span>%s</div>" % fullscreen)
+                 "<input type='range' id='volume' min='0' max='100' value='100' aria-label='Volume'></span>%s%s</div>" % (captions, fullscreen))
+    tracks = "".join("<track kind='subtitles' src='%s' label='%s'>" % (escape(url), escape(label)) for url, label in subtitles) if kind == "video" else ""
     transport_row = ("<div class='pl-transport'>%s%s<span class='pl-play-wrap'>%s%s</span>%s%s</div>"
                      % (speed_down, skip_back, speed_val, button("play", "Play", "play", extra="pl-play"), skip_fwd, speed_up))
     if kind == "video":
-        stage = ("<div class='pl-media-box pl-player pl-videobox'>%s<div class='pl-videowrap'><video id='media' controls preload='metadata' playsinline src='%s'>"
+        stage = ("<div class='pl-media-box pl-player pl-videobox'>%s<div class='pl-videowrap'><video id='media' controls preload='metadata' playsinline src='%s'>%s"
                  "<p>Your browser cannot play this file; <a href='%s'>download it</a>.</p></video></div>%s%s<div class='pl-tools'>%s</div>%s"
                  "<div class='pl-toast' id='status' hidden></div></div>"
-                 % (info, escape(raw_url), escape(download_url), scrub_row, transport_row, words_button + sleep, lyrics))
+                 % (info, escape(raw_url), tracks, escape(download_url), scrub_row, transport_row, words_button + sleep, lyrics))
     else:
         picture = ("<img class='pl-cover-img' src='%s' alt='Cover'>" % escape(cover_url) if cover_url
                    else "<div class='pl-cover-blank'>%s</div>" % ico("audio"))
