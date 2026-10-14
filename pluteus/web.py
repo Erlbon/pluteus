@@ -38,7 +38,8 @@ def layout(title: str, body: str, ctx: Ctx, *, head: str = "", scripts: tuple = 
             # Laid out like the admin page's bar: brand, version and the page links on the left; contrast button, the link
             # to the admin page (an administrator on the local network only) and Sign out on the right.
             nav = "<nav class='pl-admin-nav'><a class='pl-admin-tab' href='%s'>Settings</a></nav>" % escape(u.settings())
-            admin = "<a href='%s'>Admin</a>" % escape(ctx.admin_link) if ctx.admin_link else ""
+            # a new tab: the admin page is another site (its own port), so opening it here would stop a playing song
+            admin = ("<a href='%s' target='_blank' rel='noopener'>Admin</a>" % escape(ctx.admin_link)) if ctx.admin_link else ""
             who = (admin + "<form method='post' action='%s'><button class='pl-btn' type='submit'>Sign out<span class='pl-who'> (%s)</span></button></form>"
                    % (escape(u.logout()), escape(ctx.user)))
         chrome = ("<header class='pl-bar'><a class='pl-brand' href='%s'>Pluteus</a> <span class='pl-muted pl-ver'>%s</span>%s"

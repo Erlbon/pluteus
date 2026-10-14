@@ -338,7 +338,7 @@ def test_main_site_links_to_the_admin_page_only_for_an_admin_on_the_local_networ
     _, app, _ = admin
     lan = TestClient(app, client=("192.168.1.5", 50000), follow_redirects=False)
     site = {"host": "192.168.1.99:8100", **BOSS}
-    assert "href='http://192.168.1.99:8101/'>Admin<" in lan.get("/", headers=site).text
+    assert "href='http://192.168.1.99:8101/' target='_blank' rel='noopener'>Admin<" in lan.get("/", headers=site).text       # a new tab: keeps the player going
     assert "Admin<" not in lan.get("/", headers=dict(site, **{"x-forwarded-for": "8.8.8.8"})).text       # through Caddy
     assert "Admin<" not in lan.get("/", headers=dict(site, **{"x-forwarded-proto": "https"})).text
     outside = TestClient(app, client=("8.8.8.8", 50000), follow_redirects=False)
@@ -397,7 +397,7 @@ def test_admin_url_shows_the_admin_link_to_administrators_even_behind_a_proxy(tm
     app = create_app(cfg, config_path=str(path), reload_interval=0.0)
     proxied = TestClient(app, client=("203.0.113.9", 50000), follow_redirects=False)      # arrives through a reverse proxy
     behind = {"host": "pluteus.lan:8443", "x-forwarded-for": "10.0.0.5", "x-forwarded-proto": "https", **BOSS}
-    assert "href='http://pluteus.lan:8101/'>Admin<" in proxied.get("/", headers=behind).text
+    assert "href='http://pluteus.lan:8101/' target='_blank' rel='noopener'>Admin<" in proxied.get("/", headers=behind).text
     # without admin_url the same request gets no link (the default: nothing about the admin page behind a proxy)
     path.write_text(path.read_text().replace('admin_url = "http://pluteus.lan:8101/"\n', ""))
     plain = TestClient(create_app(load_config(str(path)), config_path=str(path), reload_interval=0.0), client=("203.0.113.9", 50000))
