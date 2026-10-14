@@ -181,7 +181,9 @@ folders and rights as the web site (`roots`, `.private`, `.hidden`, `.adult`).
 - **How folders are read:** `Artist/Album/songs`. The first level is the artist, the second the album; tags (title, track, year, genre)
   come from the files, cached. Cover art is the picture inside the file, else `folder.jpg` / `cover.jpg` in the folder. A folder's own `folder.jpg` / `cover.jpg` / `front.jpg` is also shown at the top right of its page in the web UI, and a file added or removed there is noticed on the next refresh.
 - **Supported:** ping, folders, indexes and directories, artists / artist / album / song, album lists, random songs, a simple search,
-  cover art (sent at its original size), stream and download (Range works; no transcoding). Playlists, starring, scrobbling and the like are
+  cover art (sent at its original size), stream and download (Range works; no transcoding). **Stars** are your **Favourites**: starring a song or
+  folder in an app puts it on the same shelf as the heart in the web pages (and the other way round), and the app shows the heart on starred items.
+  **Lyrics** (OpenSubsonic `getLyricsBySongId`): timed lines from a `.lrc` file or the tag, else the plain text. Playlists, scrobbling and the like are
   answered with empty results.
 
 ## WebDAV (mount the library as a drive)

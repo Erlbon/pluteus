@@ -4,7 +4,8 @@ browse and play the audio files of the library.
 Turned on with `subsonic = true` in [server]. The API lives under /rest/NAME(.view). What is supported: ping, folders,
 folder browsing (getIndexes / getMusicDirectory), the tag-style browsing most apps use (getArtists / getArtist / getAlbum,
 read as Artist folder / Album folder / songs), album lists, a simple search, cover art, stream and download. Everything else
-that an app may ask for at start-up (playlists, starred, genres, ...) is answered with an empty result.
+that an app may ask for at start-up (playlists, genres, ...) is answered with an empty result. Stars are the user's
+Favourites shelf (star, unstar, getStarred2, and `starred` on the items), and lyrics come as OpenSubsonic songLyrics.
 
 Login: every user may have ONE app key (made on the admin page). It works as an OpenSubsonic API key (`apiKey`), as the
 password in the salted-token login (`u`, `t`, `s`) and as the legacy `p` password. The real password is also accepted as `p`.
@@ -114,6 +115,11 @@ def render(body: dict, fmt: str) -> Response:
     return Response(xml, media_type="text/xml", headers={"Cache-Control": "no-store"})
 
 
+def _now_iso() -> str:
+    """A timestamp for `starred`: the Favourites shelf keeps no star time a client could use, and apps only look for the field."""
+    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+
+
 def _letter(name: str) -> str:
     first = name[:1].upper()
     return first if first.isalpha() else "#"
@@ -133,28 +139,33 @@ class Subsonic:
             "getalbumlist": self.album_list, "getalbumlist2": self.album_list2, "getrandomsongs": self.random_songs,
             "search2": self.search2, "search3": self.search3, "getcoverart": self.cover_art, "stream": self.stream,
             "download": self.download, "getuser": self.user_info, "getscanstatus": self.scan_status,
-            "startscan": self.scan_status,
+            "startscan": self.scan_status, "star": self.star, "unstar": self.unstar, "getstarred": self.starred,
+            "getstarred2": self.starred2, "getlyricsbysongid": self.lyrics_by_id,
         }
         self.empty = {
-            "getplaylists": "playlists", "getstarred": "starred", "getstarred2": "starred2", "getgenres": "genres",
+            "getplaylists": "playlists", "getlyrics": "lyrics", "getgenres": "genres",
             "getnowplaying": "nowPlaying", "getartistinfo": "artistInfo", "getartistinfo2": "artistInfo2",
             "getalbuminfo": "albumInfo", "getalbuminfo2": "albumInfo", "gettopsongs": "topSongs",
             "getsimilarsongs": "similarSongs", "getsimilarsongs2": "similarSongs2", "getpodcasts": "podcasts",
             "getinternetradiostations": "internetRadioStations", "getbookmarks": "bookmarks", "getshares": "shares",
             "getplayqueue": "playQueue", "getsongsbygenre": "songsByGenre", "getvideos": "videos",
         }
-        self.nothing = {"scrobble", "star", "unstar", "setrating", "updatenowplaying", "savebookmark", "deletebookmark",
+        self.nothing = {"scrobble", "setrating", "updatenowplaying", "savebookmark", "deletebookmark",
                         "saveplayqueue"}
 
     # ---- entry point ---------------------------------------------------------------------------------------------------
     async def handle(self, request) -> Response:
         params = dict(request.query_params)
+        ids = [v for k, v in request.query_params.multi_items() if k in ("id", "albumId", "artistId")]       # star sends several
         if request.method == "POST":
             raw = await read_limited(request, 16384)
             if raw is None:
                 return render(envelope(error=ApiError(0, "The request is too large.")), "json" if params.get("f") == "json" else "xml")
             from urllib.parse import parse_qsl
-            params.update(dict(parse_qsl(raw.decode("utf-8", "replace"), keep_blank_values=True)))
+            pairs = parse_qsl(raw.decode("utf-8", "replace"), keep_blank_values=True)
+            params.update(dict(pairs))
+            ids += [v for k, v in pairs if k in ("id", "albumId", "artistId")]
+        params["_ids"] = ids
         fmt = "json" if params.get("f") == "json" else "xml"
         name = request.path_params["name"].lower()
         name = name[:-5] if name.endswith(".view") else name
@@ -298,11 +309,21 @@ class Subsonic:
             "albumId": make_id(root, parts[:-1]), "artistId": make_id(root, parts[:1]) if len(parts) > 2 else None,
         }
 
-    def _songs(self, root: str, entries) -> list:
+    def _songs(self, root: str, entries, user=None) -> list:
         tags = self.meta.song_tags_many(entries)
         out = [self._song(root, e, t) for e, t in zip(entries, tags)]
         out.sort(key=lambda s: (s.get("discNumber") or 0, s.get("track") or 9999))
+        if user is not None:
+            self._mark_stars(user, root, out)
         return out
+
+    def _mark_stars(self, user, root: str, items: list) -> None:
+        """Items that are on the user's Favourites shelf carry `starred`, so the heart shows in the app."""
+        paths = [i["path"] for i in items if i.get("path")]
+        flags = self.state.shelf_flags(user.name, root, paths) if paths else {}
+        for item in items:
+            if "favourite" in flags.get(item.get("path"), ()):
+                item["starred"] = _now_iso()
 
     def _dir_item(self, root: str, entry) -> dict:
         ident = make_id(root, entry.parts)
@@ -383,7 +404,92 @@ class Subsonic:
         return {"license": {"valid": True, "email": "", "licenseExpires": "2099-01-01T00:00:00.000Z"}}
 
     def extensions(self, user, p):
-        return {"openSubsonicExtensions": [{"name": "apiKeyAuthentication", "versions": [1]}]}
+        return {"openSubsonicExtensions": [{"name": "apiKeyAuthentication", "versions": [1]}, {"name": "songLyrics", "versions": [1]}]}
+
+    # ---- stars: the user's Favourites shelf, the same list as the heart in the web pages ------------------------------------
+    def _is_dir(self, user, root: str, parts) -> bool:
+        try:
+            self.lib.file_info(user, root, parts, True)
+            return False
+        except NotFound:
+            self.lib.folder_path(user, root, parts)                   # raises NotFound when it is neither
+            return True
+
+    def _star(self, user, p, on: bool):
+        if getattr(user, "read_only", False):                        # a read-only user changes nothing, not even this list
+            return {}
+        for ident in p.get("_ids", [])[:200]:
+            try:
+                root, parts = read_id(ident)
+            except ApiError:
+                continue                                              # a music folder number or junk
+            if not parts or not self.lib.has_root(user, root):
+                continue
+            path = "/".join(parts)
+            if not on:
+                self.state.shelf_remove(user.name, "favourite", root, path)
+                continue
+            try:
+                self.state.shelf_add(user.name, "favourite", root, path, self._is_dir(user, root, parts))
+            except (NotFound, PathError, OSError):
+                continue
+        return {}
+
+    def star(self, user, p):
+        return self._star(user, p, True)
+
+    def unstar(self, user, p):
+        return self._star(user, p, False)
+
+    def _starred(self, user) -> dict:
+        songs, albums = [], []
+        for row in self.state.shelf_list(user.name, "favourite")[:100]:          # newest first
+            root, parts = row["root"], tuple(row["path"].split("/"))
+            if not self.lib.has_root(user, root):
+                continue
+            try:
+                if row["is_dir"]:
+                    self.lib.folder_path(user, root, parts)
+                    item = self._album_item(root, SimpleNamespace(parts=parts, mtime=0))
+                    item["starred"] = _now_iso()
+                    albums.append(item)
+                else:
+                    info = self.lib.file_info(user, root, parts, True)
+                    if kinds.kind_of(info.name) != "audio":
+                        continue
+                    entry = SimpleNamespace(parts=parts, name=info.name, path=info.path, size=info.size, mtime=info.mtime)
+                    item = self._song(root, entry, self.meta.song_tags(entry))
+                    item["starred"] = _now_iso()
+                    songs.append(item)
+            except (NotFound, PathError, OSError):
+                continue
+        return {"artist": [], "album": albums, "song": songs}
+
+    def starred(self, user, p):
+        return {"starred": self._starred(user)}
+
+    def starred2(self, user, p):
+        return {"starred2": self._starred(user)}
+
+    # ---- lyrics (OpenSubsonic songLyrics): timed lines from a .lrc file or the tag, else the plain text ---------------------
+    def lyrics_by_id(self, user, p):
+        root, parts = read_id(p.get("id", ""))
+        info = self.lib.file_info(user, root, parts, True)
+        if kinds.kind_of(info.name) != "audio":
+            raise ApiError(70, "The requested data was not found.")
+        tags = mediainfo.read_info(info.path)
+        timed = mediainfo.find_lrc(info.path)
+        if not timed and len(mediainfo.parse_lrc(tags.get("lyrics", ""))) >= 3:
+            timed = mediainfo.parse_lrc(tags["lyrics"])
+        if timed:
+            lines = [{"start": int(round(seconds * 1000)), "value": words} for seconds, words in timed]
+        elif tags.get("lyrics"):
+            lines = [{"value": line} for line in tags["lyrics"].split("\n")]
+        else:
+            return {"lyricsList": {}}
+        entry = {"displayArtist": tags.get("artist") or tags.get("albumartist") or "", "displayTitle": tags.get("title") or os.path.splitext(info.name)[0],
+                 "lang": "xxx", "synced": bool(timed), "line": lines}
+        return {"lyricsList": {"structuredLyrics": [entry]}}
 
     def scan_status(self, user, p):
         return {"scanStatus": {"scanning": False, "count": 0}}
@@ -420,7 +526,7 @@ class Subsonic:
         if not self.lib.has_root(user, root):
             raise ApiError(70, "The requested data was not found.")
         dirs, songs = self._list(user, root, parts)
-        children = [self._dir_item(root, d) for d in dirs] + self._songs(root, songs)
+        children = [self._dir_item(root, d) for d in dirs] + self._songs(root, songs, user)
         return {"directory": {"id": p["id"], "parent": make_id(root, parts[:-1]) if parts else None,
                               "name": self._name(root, parts), "child": children}}
 
@@ -445,8 +551,9 @@ class Subsonic:
     def album(self, user, p):
         root, parts = read_id(p.get("id", ""))
         _, songs = self._list(user, root, parts)
-        listed = self._songs(root, songs)
-        return {"album": {"id": p["id"], "name": self._name(root, parts), "title": self._name(root, parts),
+        listed = self._songs(root, songs, user)
+        starred = {"starred": _now_iso()} if parts and "favourite" in self.state.shelf_flags(user.name, root, ["/".join(parts)]).get("/".join(parts), ()) else {}
+        return {"album": {**starred, "id": p["id"], "name": self._name(root, parts), "title": self._name(root, parts),
                           "artist": self.lib.display_name(parts[0]) if len(parts) > 1 else "",
                           "artistId": make_id(root, parts[:1]) if len(parts) > 1 else None, "coverArt": p["id"],
                           "songCount": len(listed), "duration": sum(s.get("duration") or 0 for s in listed),
@@ -460,7 +567,9 @@ class Subsonic:
         if kinds.kind_of(info.name) != "audio":
             raise ApiError(70, "The requested data was not found.")
         entry = SimpleNamespace(parts=parts, name=info.name, path=info.path, size=info.size, mtime=info.mtime)
-        return {"song": self._song(root, entry, self.meta.song_tags(entry))}
+        item = self._song(root, entry, self.meta.song_tags(entry))
+        self._mark_stars(user, root, [item])
+        return {"song": item}
 
     def _sorted_albums(self, user, kind: str) -> list:
         if kind in UNKNOWN_LISTS:                                    # no play counts, stars, years or genres are kept: an honest empty list
