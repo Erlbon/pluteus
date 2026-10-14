@@ -249,3 +249,32 @@ def test_the_logo_calls_need_a_signed_in_user_with_an_upload_folder(up, cfg, tmp
     off = TestClient(plain, follow_redirects=False)
     off.post("/login", content="username=alice&password=pw-alice", headers={"content-type": "application/x-www-form-urlencoded", **ORIGIN})
     assert off.get("/api/stations/missing?kind=radio").status_code == 404
+
+
+# ---- the picture is a companion, not a second item ---------------------------------------------------------------------------------
+def test_a_stations_picture_is_not_listed_as_a_file_but_a_lonely_picture_is(up):
+    me, app, folder = up
+    for name, line in (("Radio", "https://example.org/r"), ("IPTV", "https://example.org/t.m3u8")):
+        d = folder / "alice" / name
+        d.mkdir(parents=True, exist_ok=True)
+        (d / ("Station " + name + ".m3u")).write_text(line + "\n", encoding="utf-8")
+        (d / ("Station " + name + ".png")).write_bytes(png_bytes((16, 16)))
+        (d / "Lonely.png").write_bytes(png_bytes((16, 16)))
+    for name in ("Radio", "IPTV"):
+        page = me.get("/browse/uploads/" + name, headers=HTML).text
+        assert "Station %s.m3u" % name in page and "Station%%20%s.png" % name not in page and "Station %s.png" % name not in page
+        assert "Lonely.png" in page and "2 items" in page                                       # the count follows the listing
+
+
+def test_renaming_or_deleting_a_station_file_takes_its_picture_along(up):
+    me, app, folder = up
+    d = folder / "alice" / "Radio"
+    d.mkdir(parents=True)
+    (d / "Old.m3u").write_text("https://example.org/o\n", encoding="utf-8")
+    (d / "Old.png").write_bytes(png_bytes((16, 16)))
+    form = {**ORIGIN, "content-type": "application/x-www-form-urlencoded"}
+    r = me.post("/files/rename/uploads/Radio/Old.m3u", content="name=New.m3u", headers=form)
+    assert r.status_code == 303
+    assert (d / "New.m3u").exists() and (d / "New.png").exists() and not (d / "Old.png").exists()
+    r = me.post("/files/delete/uploads/Radio/New.m3u", content="", headers=form)
+    assert r.status_code == 303 and not (d / "New.m3u").exists() and not (d / "New.png").exists()

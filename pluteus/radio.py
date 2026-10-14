@@ -38,6 +38,17 @@ def find_logo(path: str) -> str:
     return ""
 
 
+def hide_logos(entries: list) -> list:
+    """A folder listing without the pictures that belong to station files (NRK P3.png beside NRK P3.m3u): they are shown as the station's
+    cover, not as files of their own. A picture with no station file of that name stays in the listing."""
+    stems = {os.path.splitext(e.name)[0].lower() for e in entries if not e.is_dir and is_radio_file(e.name)}
+    if not stems:
+        return entries
+    extensions = {ext for ext, _ in LOGO_TYPES}
+    return [e for e in entries
+            if e.is_dir or os.path.splitext(e.name)[1].lower() not in extensions or os.path.splitext(e.name)[0].lower() not in stems]
+
+
 def read_logo(path: str):
     """(bytes, mime) of the picture next to a station file, or None. The type is stated here, never taken from the file."""
     found = find_logo(path)

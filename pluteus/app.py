@@ -644,6 +644,7 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
         # Size and date of every file are only read when the sort needs them; otherwise only for the page that is shown
         # (one system call per file: about 0.7 ms each across a Docker bind mount, so 900 files would cost 0.6 s).
         entries = await run_in_threadpool(lib.list_dir, user, root, parts, cfg.show_all_files, sort in ("size", "date"))
+        entries = radio.hide_logos(entries)                      # a station's picture is its cover, not a second item in the list
         if sort != "name" or desc:
             entries = sort_entries(entries, sort, desc)
         shown, page, pages = opds.paginate(entries, _page_number(request), cfg.page_size)
@@ -765,10 +766,31 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
                 await run_in_threadpool(uploads.make_folder, folder, form.get("name", ""), lib.is_hidden_name)
                 return RedirectResponse(flash_url(parts, ok="folder"), 303)
             folder, name = await run_in_threadpool(lib.upload_entry, user, parts)
+
+            def sidecar() -> str:                                # the picture that goes with a station file (hidden in the listing)
+                return radio.find_logo(os.path.join(folder, name)) if radio.is_radio_file(name) else ""
+
+            def rename_both() -> None:
+                picture = sidecar()
+                new = uploads.rename_entry(folder, name, form.get("name", ""), lib.is_hidden_name)
+                if picture:
+                    try:
+                        os.replace(picture, os.path.join(folder, os.path.splitext(new)[0] + os.path.splitext(picture)[1]))
+                    except OSError:
+                        pass
+
+            def delete_both() -> None:
+                picture = sidecar()
+                uploads.delete_entry(folder, name)
+                if picture:
+                    try:
+                        os.remove(picture)
+                    except OSError:
+                        pass
             if op == "rename":
-                await run_in_threadpool(uploads.rename_entry, folder, name, form.get("name", ""), lib.is_hidden_name)
+                await run_in_threadpool(rename_both)
                 return RedirectResponse(flash_url(parts[:-1], ok="renamed"), 303)
-            await run_in_threadpool(uploads.delete_entry, folder, name)
+            await run_in_threadpool(delete_both)
             return RedirectResponse(flash_url(parts[:-1], ok="deleted"), 303)
         except uploads.UploadError as e:
             return RedirectResponse(flash_url(parts if op == "mkdir" else parts[:-1], bad=e.code), 303)
