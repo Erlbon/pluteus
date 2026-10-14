@@ -193,6 +193,20 @@ libraries are read-only by design (in Docker usually mounted `:ro`). So:
   there are seen by everyone who sees the folder.
 - The overlay folder is an ordinary part of the user's upload folder (visible, downloadable, backed up with it) and follows the same space limit.
 
+**Round 3: filling the notes in without typing them all (owner, 2026-10-14: "not necessarily within pluteus itself").** pluteus never looks
+things up online, on purpose; the filling happens around it:
+1. **Read the de-facto standards that other tools already fill in (inside pluteus, small):** `artist.nfo` and `album.nfo` (Kodi, Plex, Jellyfin,
+   Lidarr and MusicBrainz Picard write them: biography, genres, years), Calibre's `metadata.opf` (book description), the description inside an EPUB,
+   the `ComicInfo.xml` summary inside a CBZ (cbzredactor writes it). Shown as the folder's "about" text when there is no note of our own. Order on
+   a folder page: the user's own `artist.md` first (overlay, then the library's), then an `.nfo` or `.opf` or ComicInfo summary, then nothing.
+2. **A separate filler tool, outside the server** (in the Redactor family, same conventions: progress dialogs, a yes/no review page, never a
+   spreadsheet): scans a library for folders without notes, fetches from open sources (MusicBrainz and Wikipedia for bands, Open Library, Wikipedia and
+   the local ISFDB database for authors) and writes a **draft** `artist.md` or `author.md` with `status: draft` in its front matter, for the owner
+   to review and then publish. It can also set the audience (kids) where the sources say so. Nothing unreviewed looks final.
+3. **A one-page description of the note format** (`docs/notes-format.md`): plain YAML front matter (title, years, genres, links, audience, status)
+   at the top of a Markdown file, compatible with Obsidian and Jekyll, so other tools can write it without any pluteus code. A document, not a
+   project.
+
 **Later, if wanted:** coloured code blocks (a small bundled script), read-only Jupyter notebooks (`.ipynb`: cells and outputs shown, nothing run).
 
 **Not planned because it needs an index (decided against):** full-text search, backlinks, tag pages. A file-name search inside a folder is possible.
