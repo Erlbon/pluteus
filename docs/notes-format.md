@@ -12,6 +12,8 @@ a line of pluteus code.
 | `README.md`, `index.md` | in any folder | at the bottom, like on GitHub |
 | `artist.nfo`, `album.nfo`, `metadata.opf` | in the folder | only when the folder has no note of the names above: the biography, review or description inside is shown as plain paragraphs |
 
+When a folder has no note of the names above and no `.nfo` or `.opf`, but holds exactly one `.epub` or `.cbz`, the description written inside that book (the EPUB's `dc:description`, the CBZ's `ComicInfo.xml` Summary) is shown instead.
+
 Other `.md`, `.markdown` and `.txt` files are ordinary documents: they open as a page, but they are not "the note of a folder".
 
 A note a user wrote through the browser is kept in that user's own upload folder (`Notes/<library>/<folder path>/artist.md`) and wins over the

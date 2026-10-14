@@ -3,6 +3,7 @@
 Release notes are taken from the section of the tagged version (`## 0.5.0 ...`).
 
 ## Unreleased (for 0.9.8)
+- **Notes: the readers link to the note, and a single book's own description.** The EPUB and comic readers get an **About** link in their bar when the book's folder (or one of the three above it) has a note. A folder with no note that holds exactly one EPUB or CBZ shows the description written inside it (the EPUB's `dc:description`, the CBZ's `ComicInfo.xml` Summary).
 - **The player bar joins the pluteus bar on wide screens.** From 1000 pixels wide the player's buttons and title sit in the same row as the pluteus bar (one bar instead of two); on a phone it stays a strip under the bar, as before.
 - **TV mode.** For a browser on a TV: larger text and buttons, a clear focus ring, the remote's arrow keys move between buttons and links (Enter presses, Back goes back), and the bar and the page below it hand the focus to each other. Settings has "Turn on for this device" and "Turn off" (kept in that browser only; `?tv=1` or `?tv=0` on any address does the same). The readers and viewers keep their own arrow keys.
 - **Subsonic: recently played and resume.** `getAlbumList2` / `getAlbumList` with `type=recent` lists the albums of the audio files you have a saved position in (nothing new is logged), and `savePlayQueue` / `getPlayQueue` keep one saved queue per user so another device can pick up where you stopped (an empty save clears it; it is deleted with the user).

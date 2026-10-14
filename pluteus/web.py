@@ -389,8 +389,13 @@ def _icon_button(ident: str, icon: str, label: str, extra: str = "") -> str:
             "<span class='pl-icon pl-i-%s'></span></button>" % (extra, ident, escape(label), escape(label), icon))
 
 
+def _about_link(url: str) -> str:
+    """The reader bar's link to the note about the author or series (the folder page that shows it); nothing when there is none."""
+    return ("<a class='pl-reader-btn' id='about' href='%s' title='About the author or series' aria-label='About'>About</a>" % escape(url)) if url else ""
+
+
 def epub_reader_page(ctx: Ctx, title: str, subtitle: str, *, book_url: str, progress_url: str, back_url: str,
-                     content_css_url: str, key: str) -> str:
+                     content_css_url: str, key: str, about_url: str = "") -> str:
     """The EPUB reader shell. The page is styled by the theme; epub.js and reader-epub.js do the rest."""
     u = ctx.urls
     data = " ".join("data-%s='%s'" % (k, escape(v)) for k, v in (
@@ -421,7 +426,7 @@ def epub_reader_page(ctx: Ctx, title: str, subtitle: str, *, book_url: str, prog
         "<span id='pct'>&ndash;</span>%s</footer></div>"
         % (data, escape(back_url),
            _icon_button("toc-btn", "menu", "Contents"), escape(subtitle), escape(title),
-           "<button class='pl-reader-btn pl-scheme' type='button' title='Toggle dark / light' aria-label='Toggle dark / light'>"
+           _about_link(about_url) + "<button class='pl-reader-btn pl-scheme' type='button' title='Toggle dark / light' aria-label='Toggle dark / light'>"
            "<span class='pl-icon pl-i-contrast'></span></button>",
            _icon_button("settings-btn", "settings", "Reading settings"),
            _icon_button("fs-btn", "fullscreen", "Full screen"),
@@ -432,7 +437,7 @@ def epub_reader_page(ctx: Ctx, title: str, subtitle: str, *, book_url: str, prog
 
 
 def comic_reader_page(ctx: Ctx, title: str, *, pages_url: str, count: int, progress_url: str, back_url: str,
-                      key: str) -> str:
+                      key: str, about_url: str = "") -> str:
     """The single-page comic reader shell; reader-comic.js fetches the pages one by one."""
     data = " ".join("data-%s='%s'" % (k, escape(str(v))) for k, v in (
         ("pages", pages_url), ("count", count), ("progress", progress_url), ("key", key)))
@@ -449,7 +454,7 @@ def comic_reader_page(ctx: Ctx, title: str, *, pages_url: str, count: int, progr
         "<footer class='pl-reader-foot'>%s<div class='pl-progress' id='seek' title='Jump to a page'><i id='bar'></i></div>"
         "<span id='pct'>&ndash;</span>%s</footer></div>"
         % (data, escape(back_url), escape(title), escape(title),
-           "<button class='pl-reader-btn pl-scheme' type='button' title='Toggle dark / light' aria-label='Toggle dark / light'>"
+           _about_link(about_url) + "<button class='pl-reader-btn pl-scheme' type='button' title='Toggle dark / light' aria-label='Toggle dark / light'>"
            "<span class='pl-icon pl-i-contrast'></span></button>",
            _icon_button("fit-btn", "fit", "Zoom: fit page, fit width, 150%, 200%, 300% (keys + - 0 F)"),
            _icon_button("fs-btn", "fullscreen", "Full screen"),

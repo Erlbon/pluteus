@@ -46,3 +46,31 @@ def test_subsonic_uses_the_nfo_biography_when_there_is_no_note(lib):
     c = make(lib)
     text = body(call(c, "getArtistInfo2", id=subsonic.make_id("music", ("Kaizers",))))["artistInfo2"]["biography"]
     assert text.startswith("A band from Stavanger.") and "<" not in text
+
+
+def test_a_folder_with_one_book_shows_the_description_written_inside_it(lib):
+    import zipfile
+    from epub_factory import CONTAINER
+    opf = ("<?xml version='1.0'?><package xmlns='http://www.idpf.org/2007/opf'><metadata xmlns:dc='http://purl.org/dc/elements/1.1/'>"
+           "<dc:title>T</dc:title><dc:description>&lt;p&gt;A tale of ships.&lt;/p&gt;</dc:description></metadata></package>")
+    book = lib / "Solo" / "Tale.epub"
+    with zipfile.ZipFile(book, "w") as z:
+        z.writestr("META-INF/container.xml", CONTAINER % "OEBPS/content.opf")
+        z.writestr("OEBPS/content.opf", opf)
+    assert aboutfiles.from_book(str(book), "Tale.epub") == "A tale of ships."
+    c = make(lib)
+    assert "A tale of ships." in c.get("/browse/music/Solo", headers={**AUTH, **HTML}).text
+    (lib / "Solo" / "Second.epub").write_bytes(b"not a zip")                                          # two books: nobody's description is the folder's
+    assert "A tale of ships." not in c.get("/browse/music/Solo", headers={**AUTH, **HTML}).text
+
+
+def test_a_comic_summary_and_bad_archives(tmp_path):
+    import zipfile
+    cbz = tmp_path / "Issue 1.cbz"
+    with zipfile.ZipFile(cbz, "w") as z:
+        z.writestr("001.jpg", b"x")
+        z.writestr("comicinfo.xml", "<ComicInfo><Series>S</Series><Summary>The hero wakes.</Summary></ComicInfo>")
+    assert aboutfiles.from_book(str(cbz), "Issue 1.cbz") == "The hero wakes."
+    bad = tmp_path / "bad.epub"
+    bad.write_bytes(b"PK not really")
+    assert aboutfiles.from_book(str(bad), "bad.epub") == "" and aboutfiles.from_book(str(tmp_path / "nope.epub"), "nope.epub") == ""

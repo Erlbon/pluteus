@@ -124,3 +124,14 @@ def test_wiki_links_work_in_a_folders_note_too(lib):
     (lib / "Kaizers" / "history.md").write_text("x", encoding="utf-8")
     html = page(make(lib))
     assert "href='/view/music/Kaizers/history.md'" in html and "[[" not in html and ">nothing<" not in html and "nothing" in html
+
+
+def test_the_reader_links_to_the_authors_note(cfg, library):
+    from starlette.testclient import TestClient
+    from pluteus.app import create_app
+    c = TestClient(create_app(cfg))
+    url = "/read/books/Good%20Author/Real%20Book.epub"
+    assert "id='about'" not in c.get(url, headers={**AUTH, **HTML}).text
+    (library / "books" / "Good Author" / "author.md").write_text("Wrote the saga.\n", encoding="utf-8")
+    text = c.get(url, headers={**AUTH, **HTML}).text
+    assert "id='about'" in text and "href='/browse/books/Good%20Author'" in text

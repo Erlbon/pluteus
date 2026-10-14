@@ -690,6 +690,16 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
                 if text:
                     top = aboutfiles.as_html(text)
                     break
+        if not top:                                                  # a folder that holds exactly one book: the description written inside it
+            books = [e for e in entries if not e.is_dir and e.name.lower().endswith((".epub", ".cbz"))]
+            if len(books) == 1:
+                try:
+                    info = lib.file_info(user, root, parts + (books[0].name,), cfg.show_all_files)
+                    text = aboutfiles.from_book(info.path, books[0].name)
+                except (NotFound, PathError, OSError):
+                    text = ""
+                if text:
+                    top = aboutfiles.as_html(text)
         bottom, bottom_name = one(NOTE_BOTTOM)
         return top, bottom, top_name, bottom_name
 
@@ -986,6 +996,28 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
         on Android offers 'Install app' (and then the Share target). Served from the site's own prefix so its scope is the site."""
         return Response(SERVICE_WORKER, media_type="text/javascript", headers=NO_CACHE)
 
+    def about_url(user, root: str, here: tuple, cache: dict | None = None) -> str:
+        """The folder page that tells about what is here: the nearest folder (this one, then up to three above it) that shows a note about
+        itself (a note of the user's own, or one in the library); '' when there is none. `cache` remembers folders already looked at."""
+        cache = {} if cache is None else cache
+
+        def note_here(level: tuple) -> bool:
+            if level not in cache:
+                got = False
+                if root != UPLOADS_ROOT and lib.uploads_enabled(user):
+                    got = any(notes.read(lib, user, root, level, n) for n in NOTE_TOP)
+                if not got:
+                    try:
+                        got = any(not e.is_dir and e.name.lower() in NOTE_TOP for e in lib.list_dir(user, root, level, True, False))
+                    except (NotFound, PathError, OSError):
+                        got = False
+                cache[level] = got
+            return cache[level]
+        for depth in range(len(here), max(len(here) - 4, -1), -1):
+            if note_here(here[:depth]):
+                return urls.browse(root, here[:depth])
+        return ""
+
     @guarded("web")
     async def read(request: Request, user):
         root = request.path_params["root"]
@@ -999,7 +1031,8 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
                 return PlainTextResponse("This comic cannot be opened (%s). You can still download it." % e, 422)
             return HTMLResponse(web.comic_reader_page(
                 ctx_for(user), os.path.splitext(info.name)[0], pages_url=urls.cbz(root, parts), count=len(pages),
-                progress_url=urls.api("progress", root, parts), back_url=urls.browse(root, parts[:-1]), key=key))
+                progress_url=urls.api("progress", root, parts), back_url=urls.browse(root, parts[:-1]), key=key,
+                about_url=await run_in_threadpool(about_url, user, root, parts[:-1])))
         if not info.name.lower().endswith(".epub"):
             return PlainTextResponse("There is no in-browser reader for this file type.", 404)
         book = await run_in_threadpool(meta.for_file, info)
@@ -1007,7 +1040,8 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
         return HTMLResponse(web.epub_reader_page(
             ctx_for(user), title, ", ".join(book.get("authors", ())),
             book_url=urls.download(root, parts), progress_url=urls.api("progress", root, parts),
-            back_url=urls.browse(root, parts[:-1]), content_css_url=urls.theme("_", "reader-content.css"), key=key))
+            back_url=urls.browse(root, parts[:-1]), content_css_url=urls.theme("_", "reader-content.css"), key=key,
+            about_url=await run_in_threadpool(about_url, user, root, parts[:-1])))
 
     # ---- the universal viewer: /view picks the viewer, /raw serves the few types that are safe inline ----------------
     def neighbours(user, root: str, parts: tuple, kind: str):
@@ -1500,26 +1534,8 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
 
         has_note: dict = {}
 
-        def note_here(level: tuple) -> bool:
-            """Whether this folder shows a note about itself (a note of the user's own, or one in the library)."""
-            if level not in has_note:
-                got = False
-                if root != UPLOADS_ROOT and lib.uploads_enabled(user):
-                    got = any(notes.read(lib, user, root, level, n) for n in NOTE_TOP)
-                if not got:
-                    try:
-                        got = any(not e.is_dir and e.name.lower() in NOTE_TOP for e in lib.list_dir(user, root, level, True, False))
-                    except (NotFound, PathError, OSError):
-                        got = False
-                has_note[level] = got
-            return has_note[level]
-
         def about_for(here: tuple) -> str:
-            """The page that tells about what is playing: the nearest folder (this one, then up to three above it) with a note."""
-            for depth in range(len(here), max(len(here) - 4, -1), -1):
-                if note_here(here[:depth]):
-                    return urls.browse(root, here[:depth])
-            return ""
+            return about_url(user, root, here, has_note)
 
         def build():
             found, visited = [], [0]

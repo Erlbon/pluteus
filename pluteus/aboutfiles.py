@@ -75,3 +75,44 @@ def as_html(text: str) -> str:
     """The summary as safe HTML paragraphs."""
     from html import escape
     return "".join("<p>%s</p>" % escape(p).replace("\n", "<br>") for p in text.split("\n\n") if p.strip())
+
+
+# ---- the description inside a single book file: an EPUB's package file, a CBZ's ComicInfo.xml ---------------------------------------
+def _member(zf, wanted: str):
+    """The bytes of an archive member by name (any letter case, at most MAX_BYTES), or None."""
+    for info in zf.infolist():
+        if info.filename.lower() == wanted.lower():
+            if info.file_size > MAX_BYTES:
+                return None
+            with zf.open(info) as f:
+                return f.read(MAX_BYTES + 1)
+    return None
+
+
+def from_book(path: str, name: str) -> str:
+    """The description or summary written inside an .epub (dc:description) or .cbz (ComicInfo.xml Summary) as plain paragraphs, or ''."""
+    import zipfile
+    from posixpath import normpath
+    from urllib.parse import unquote
+    lower = name.lower()
+    try:
+        with zipfile.ZipFile(path) as zf:
+            if lower.endswith(".epub"):
+                container = _safe_root(_member(zf, "META-INF/container.xml") or b"")
+                if container is None:
+                    return ""
+                rootfile = next((e for e in container.iter() if _local(e.tag) == "rootfile" and e.get("full-path")), None)
+                if rootfile is None:
+                    return ""
+                raw = _member(zf, normpath(unquote(rootfile.get("full-path"))))
+                return summary("metadata.opf", raw) if raw else ""
+            if lower.endswith(".cbz"):
+                raw = _member(zf, "ComicInfo.xml")
+                root = _safe_root(raw) if raw else None
+                if root is None:
+                    return ""
+                found = [t for tag, t in _children(root, "summary")]
+                return clean_text(found[0]) if found else ""
+    except (OSError, zipfile.BadZipFile, ValueError, KeyError, RuntimeError):
+        return ""
+    return ""
