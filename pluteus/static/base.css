@@ -319,6 +319,13 @@ a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible
 .pl-markdown img { max-width: 100%; height: auto; }
 .pl-markdown table { border-collapse: collapse; display: block; overflow-x: auto; }
 .pl-markdown th, .pl-markdown td { border: 1px solid var(--pl-line); padding: 4px 10px; }
+.pl-markdown .pl-anchor { margin-left: .3em; font-size: .75em; text-decoration: none; opacity: 0; }
+.pl-markdown :is(h1, h2, h3, h4, h5, h6):hover .pl-anchor, .pl-markdown .pl-anchor:focus { opacity: .6; }
+.pl-markdown .pl-toc { margin: 0 0 1.2em; padding: 8px 14px; border: 1px solid var(--pl-line); border-radius: 6px; font-size: .95em; }
+.pl-markdown .pl-toc ul { margin: .3em 0 0; padding: 0; list-style: none; }
+.pl-markdown .pl-toc-2 { margin-left: 1em; }
+.pl-markdown .pl-toc-3 { margin-left: 2em; }
+.pl-markdown a.pl-wiki { text-decoration-style: dotted; }
 .pl-md-noimage { opacity: .7; font-style: italic; }
 .pl-table-wrap { overflow: auto; height: 100%; }
 .pl-table { border-collapse: collapse; width: max-content; min-width: 100%; font-size: .95em; }

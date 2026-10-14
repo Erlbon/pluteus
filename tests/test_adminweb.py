@@ -222,6 +222,11 @@ def test_password_and_access_changes(admin):
     r = client.post("/users/access", content="name=alice&root=comics&upload=on", headers={**BOSS, **FORM})
     alice = read_users(path)["alice"]
     assert r.headers["location"] == "/users?ok=access" and alice.roots == ("comics",) and alice.upload and not alice.adult
+    assert not alice.notes
+    client.post("/users/access", content="name=alice&root=comics&upload=on&notes=on", headers={**BOSS, **FORM})
+    assert read_users(path)["alice"].notes and "May write shared notes" in client.get("/users", headers=BOSS).text
+    client.post("/users/access", content="name=alice&root=comics&upload=on", headers={**BOSS, **FORM})
+    assert not read_users(path)["alice"].notes                                                                  # unticked: the line goes again
 
 
 def test_the_last_admin_cannot_be_removed_or_demoted_and_you_cannot_remove_yourself(admin):

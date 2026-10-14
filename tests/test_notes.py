@@ -67,3 +67,53 @@ def test_plain_text_for_apps_drops_markdown_marks():
     assert subsonic.plain_text("# Title\n\n> quote with `code` and ~~gone~~\n\n1. one\n2) two\n![pic](a.png) text [link](http://x) end") == \
         "Title\n\nquote with code and gone\n\none\ntwo\ntext link end"
     assert len(subsonic.plain_text("word " * 5000)) <= 4000
+
+
+# ---- notebook conveniences: front matter, anchors and contents, wiki links ---------------------------------------------------------
+def test_front_matter_is_hidden_and_gives_the_page_title(lib):
+    (lib / "Kaizers" / "history.md").write_text("---\ntitle: The early years\ntags: [band, rock]\n---\n# Start\n\nText\n", encoding="utf-8")
+    c = make(lib)
+    html = c.get("/view/music/Kaizers/history.md", headers={**AUTH, **HTML}).text
+    assert "<title>The early years" in html and "tags:" not in html and "<h1 id='start'>Start" in html
+    (lib / "Kaizers" / "artist.md").write_text("---\ntitle: X\n---\nBand text\n", encoding="utf-8")        # a folder note hides it too
+    top = page(c)
+    assert "Band text" in top and "title: X" not in top
+
+
+def test_front_matter_that_is_not_clean_is_left_alone():
+    from pluteus import markdown
+    assert markdown.front_matter("---\nnot yaml at all\n---\nbody")[0] == {}
+    assert markdown.front_matter("---\ntitle: open\nbody without a closing line")[1].startswith("---")
+    meta, body = markdown.front_matter("---\ntitle: \"Quoted\"\ntags:\n  - one\n  - two\n---\nbody")
+    assert meta == {"title": "Quoted", "tags": ["one", "two"]} and body == "body"
+
+
+def test_long_documents_get_anchors_and_a_contents_list(lib):
+    (lib / "Kaizers" / "long.md").write_text("# A\n\n## B\n\n## B\n\n### C\n\n## D\n", encoding="utf-8")
+    (lib / "Kaizers" / "short.md").write_text("# A\n\n## B\n", encoding="utf-8")
+    c = make(lib)
+    long = c.get("/view/music/Kaizers/long.md", headers={**AUTH, **HTML}).text
+    assert "class='pl-toc'" in long and "href='#b-1'" in long and "id='b-1'" in long and "class='pl-anchor'" in long
+    assert "pl-toc'" not in c.get("/view/music/Kaizers/short.md", headers={**AUTH, **HTML}).text
+
+
+def test_wiki_links_find_files_by_name_and_unknown_ones_are_plain_text(lib):
+    (lib / "Kaizers" / "notes.md").write_text("See [[Ompa notes]] and [[Top page|the top]] and [[nothing here]] and [[Solo]].\n", encoding="utf-8")
+    (lib / "Kaizers" / "Ompa").mkdir(exist_ok=True)
+    (lib / "Kaizers" / "Ompa" / "Ompa notes.md").write_text("x", encoding="utf-8")                 # below this folder
+    (lib / "Top page.md").write_text("x", encoding="utf-8")                                         # above it
+    c = make(lib)
+    html = c.get("/view/music/Kaizers/notes.md", headers={**AUTH, **HTML}).text
+    assert "href='/view/music/Kaizers/Ompa/Ompa%20notes.md'" in html or "Ompa%20notes.md" in html
+    assert ">the top</a>" in html and "Top%20page.md" in html
+    assert "nothing here" in html and "href='/view/music/nothing" not in html and ">nothing here</a>" not in html
+    assert "/browse/music/Solo" in html                                                             # a folder of that name counts
+
+
+def test_the_player_queue_links_each_track_to_the_nearest_note(lib):
+    (lib / "Kaizers" / "artist.md").write_text("The band\n", encoding="utf-8")
+    c = make(lib)
+    items = c.get("/api/queue/music/Kaizers", headers=AUTH).json()["items"]
+    assert items and all(i["page"] == "/browse/music/Kaizers" and i["linkText"] == "About" for i in items)       # albums below inherit the artist's note
+    solo = c.get("/api/queue/music/Solo", headers=AUTH).json()["items"]
+    assert solo and "page" not in solo[0]

@@ -67,19 +67,7 @@ def _fetch_logos(entries: list) -> dict:
     return found
 
 
-def _write(folder: str, file_name: str, raw: bytes) -> None:
-    temp = os.path.join(folder, ".%s.tmp" % file_name)
-    path = os.path.join(folder, file_name)
-    try:
-        with open(longpath(temp), "wb") as f:
-            f.write(raw)
-        uploads._replace(longpath(temp), longpath(path))
-    except OSError:
-        try:
-            os.remove(longpath(temp))
-        except OSError:
-            pass
-        raise uploads.UploadError("write")
+_write = uploads.write_atomic
 
 
 def _folder(lib, user, parts: tuple, raw: str) -> tuple:

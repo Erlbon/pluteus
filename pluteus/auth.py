@@ -58,7 +58,7 @@ class Authenticator:
     @staticmethod
     def restricted(user):
         """The user as seen through an app key: no admin page, no uploads, and read_only (the request guard refuses writes)."""
-        return dataclasses.replace(user, admin=False, upload=False, read_only=True)
+        return dataclasses.replace(user, admin=False, upload=False, notes=False, read_only=True)
 
     def _view(self, name: str, via_key: bool):
         user = self.users.get(name)

@@ -189,7 +189,7 @@ UPLOAD_MESSAGES = {
     "write": "could not be written", "notempty": "the folder is not empty", "missing": "it no longer exists",
     "format": "the upload was not understood",
 }
-OK_MESSAGES = {"folder": "Folder created.", "renamed": "Renamed.", "deleted": "Deleted."}
+OK_MESSAGES = {"folder": "Folder created.", "renamed": "Renamed.", "deleted": "Deleted.", "note": "Note saved.", "noteremoved": "Note removed."}
 
 
 def flash_text(query: dict) -> str:
@@ -260,7 +260,7 @@ def _sort_bar(here: str, sort: str, desc: bool, view: str = "") -> str:
 def listing_page(root: str, parts: tuple, entries: list, page: int, pages: int, total: int, ctx: Ctx,
                  metas: dict | None = None, progress: dict | None = None,
                  sort: str = "name", desc: bool = False, writable: bool = False, flash: str = "", cover_url: str = "",
-                 view_asked: str = "", shelves: dict | None = None, note_top: str = "", note_bottom: str = "") -> str:
+                 view_asked: str = "", shelves: dict | None = None, note_top: str = "", note_bottom: str = "", note_links: dict | None = None) -> str:
     metas = metas or {}
     progress = progress or {}
     shelves = shelves or {}
@@ -325,21 +325,26 @@ def listing_page(root: str, parts: tuple, entries: list, page: int, pages: int, 
                " class='pl-sort-on'" if grid else "", escape(here + _query(sort, desc, 1, "grid")))) if (total > 1 and ctx.thumbs) else ""
     note = "<p class='pl-flash' role='status'>%s</p>" % escape(flash) if flash else ""
     forms = _upload_forms(urls, root, parts) if writable else ""
+    links = note_links or {}
     picture = ("<img class='pl-folder-cover' src='%s' alt='Cover of this folder' loading='lazy'>" % escape(cover_url)
                if cover_url else "")
     body = ("<main class='pl-main' data-queue='%s'><div class='pl-crumbs'>%s</div>%s<h1>%s</h1><div class='pl-muted'>%d items &middot; "
-            "<a href='%s'>OPDS</a></div>%s%s<ul class='%s'>%s</ul>%s</main>"
+            "<a href='%s'>OPDS</a>%s</div>%s%s<ul class='%s'>%s</ul>%s</main>"
             % (escape(urls.api("queue", root, parts)), " / ".join(crumbs), picture, escape(title), total, escape(urls.opds(root, parts)),
-               _note_box(note_top, "top") + note + forms, bar + pager, "pl-list pl-grid" if grid else "pl-list", "".join(tiles if grid else rows),
-               pager + _note_box(note_bottom, "bottom")))
+               (" &middot; <a href='%s'>Add a note</a>" % escape(links["add"])) if links.get("add") else "",
+               _note_box(note_top, "top", links.get("top", "")) + note + forms, bar + pager, "pl-list pl-grid" if grid else "pl-list", "".join(tiles if grid else rows),
+               pager + _note_box(note_bottom, "bottom", links.get("bottom", ""))))
     scripts = (((urls.static("uploads.js"),) if writable else ()) + ((urls.static("grid.js"),) if grid else ())
                + (urls.static("shelf.js"), urls.static("queue.js")))
     return layout(title, body, ctx, scripts=scripts)
 
 
-def _note_box(html: str, where: str) -> str:
+def _note_box(html: str, where: str, edit_url: str = "") -> str:
     """A folder's own note (rendered Markdown, already made safe by the renderer) at the top or the bottom of its page."""
-    return "<section class='pl-note pl-note-%s pl-markdown'>%s</section>" % (where, html) if html else ""
+    if not html:
+        return ""
+    edit = "<p class='pl-note-edit'><a href='%s'>Edit note</a></p>" % escape(edit_url) if edit_url else ""
+    return "<section class='pl-note pl-note-%s pl-markdown'>%s%s</section>" % (where, html, edit)
 
 
 COVER_KINDS = ("epub", "comic", "audio", "image")
@@ -789,6 +794,41 @@ def streams_page(ctx: Ctx, entries: list, key_note: str, message: str = "", erro
     return layout("My streams", body, ctx)
 
 
+def note_editor_page(ctx: Ctx, root: str, parts: tuple, *, name: str, names: tuple, text: str, versions: dict, in_place: bool, exists: bool,
+                     from_library: bool, preview_html: str = "", error: str = "", back_url: str = "", where_kind: str = "own",
+                     choices: tuple = ()) -> str:
+    """Edit (or start) a folder's note. `name` is empty for a new note, which then picks one of `names`."""
+    urls = ctx.urls
+    where = ("your upload folder" if in_place else "your own upload folder (under Notes), visible only to you; the library itself is not changed")
+    if where_kind == "library":
+        where = "the library itself, next to the files, for everybody who sees this folder"
+    picker = ""
+    if len(choices) > 1:                                     # both kinds are open to this user: they choose where the note goes
+        picker = ("<label class='pl-field'><span>Save it as</span><select name='where'>%s</select></label>"
+                  % "".join("<option value='%s'%s>%s</option>" % (k, " selected" if k == where_kind else "", escape(label)) for k, label in choices))
+    elif choices:
+        picker = "<input type='hidden' name='where' value='%s'>" % escape(choices[0][0])
+    chooser = ("<input type='hidden' name='name' value='%s'>" % escape(name)) if name else (
+        "<label class='pl-field'><span>Note name</span><select name='name'>%s</select></label>"
+        % "".join("<option>%s</option>" % escape(n) for n in names))
+    lead = ("<p class='pl-muted'>This starts from the note in the library. Saving keeps your own copy in %s.</p>" % where if from_library else
+            "<p class='pl-muted'>Saved in %s.</p>" % where)
+    err = ("<p class='pl-flash pl-error' role='alert'>%s</p>" % escape(error)) if error else ""
+    preview = ("<section class='pl-card'><h2>Preview</h2><div class='pl-markdown'>%s</div></section>" % preview_html) if preview_html else ""
+    remove = ("<button class='pl-btn pl-btn-danger' type='submit' name='action' value='remove' formnovalidate "
+              "data-confirm='Remove your note? The library is not touched.'>Remove</button>") if exists else ""
+    title = "Edit note" if name else "Add a note"
+    form = ("<form class='pl-card' method='post' action='%s' autocomplete='off'><input type='hidden' name='v_own' value='%s'><input type='hidden' name='v_library' value='%s'>%s%s"
+            "<label class='pl-field'><span>Text (Markdown)</span><textarea name='text' rows='18' maxlength='65536' spellcheck='true'>%s</textarea></label>"
+            "<p><button class='pl-btn pl-btn-primary' type='submit' name='action' value='save'>Save</button> "
+            "<button class='pl-btn' type='submit' name='action' value='preview'>Preview</button> %s "
+            "<a class='pl-btn' href='%s'>Cancel</a></p></form>"
+            % (escape(urls.note(root, parts)), escape(versions.get("own", "")), escape(versions.get("library", "")), picker, chooser, escape(text), remove, escape(back_url)))
+    body = ("<main class='pl-main'><h1>%s</h1><p class='pl-muted'>%s</p>%s%s%s%s</main>"
+            % (title, escape("/".join((root, *parts))), err, lead, preview, form))
+    return layout(title, body, ctx)
+
+
 def info_page(ctx: Ctx, title: str, *, rows: list, download_url: str, text_url: str, back_url: str, note: str = "") -> str:
     table = "".join("<tr><th>%s</th><td>%s</td></tr>" % (escape(k), escape(v)) for k, v in rows)
     stage = ("<div class='pl-info pl-card'><h1>%s</h1><table class='pl-info-table'>%s</table>%s"
@@ -812,9 +852,10 @@ def _cut_note(shown: int, size: int, truncated: bool, download_url: str) -> str:
 
 
 def markdown_page(ctx: Ctx, title: str, *, html: str, size: int, shown: int, truncated: bool, download_url: str,
-                  back_url: str, source_url: str) -> str:
+                  back_url: str, source_url: str, edit_url: str = "") -> str:
     """A Markdown file rendered as a page. `html` comes from markdown.render (raw HTML already escaped)."""
-    tools = _download_link(download_url) + _reader_scheme() + _source_button(source_url)
+    edit = ("<a class='pl-reader-btn' id='edit' href='%s' title='Edit this note' aria-label='Edit this note'>Edit</a>" % escape(edit_url)) if edit_url else ""
+    tools = edit + _download_link(download_url) + _reader_scheme() + _source_button(source_url)
     stage = "<article class='pl-markdown' id='doc'>%s</article>" % html
     foot = "<span>Markdown &middot; %s%s</span>" % (_size(size), _cut_note(shown, size, truncated, download_url))
     return _viewer(ctx, title, back_url, tools=tools, stage=stage, foot=foot, classes="pl-mdview", stage_class="pl-md-stage")

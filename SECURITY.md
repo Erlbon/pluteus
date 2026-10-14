@@ -26,6 +26,23 @@ most 10 seconds, and the downloaded bytes are never kept: they must open as a PN
 256 pixels is written beside the station file (SVG is not taken). A logo that fails costs only that logo. The same guard is meant for any later
 feature that fetches an address on the server's behalf.
 
+## Notes written from the browser
+
+Libraries are read-only by design, so a note edited or added on a folder page is a *personal copy* in the user's own upload folder
+(`Notes/<library>/<folder>/artist.md`), written by `pluteus/notes.py`: only the recognised note names (`artist.md`, `author.md`, `series.md`,
+`album.md`, `about.md`, `readme.md`) are accepted for a library folder, the folder must exist and be one the user may see, nothing outside the
+upload folder is touched, the text is at most 64 KB and has no NUL bytes, it counts against the space limit, the write is atomic (temporary hidden
+file, then rename), and a save that finds the file changed since the page was opened is refused instead of overwriting. The editor is a normal
+same-site POST (the usual cross-site checks), and never available to the shared anonymous login or to an app key. A note in the user's own
+upload folder is edited in place under the same limits (`.md`, `.markdown`, `.txt`).
+
+The only way pluteus writes into a library is the opt-in **shared note**: a root with `notes = "edit"` in the config *and* a user with `notes = true`
+(a column on the admin Users page). It writes the same recognised note names, into a folder inside that root which the user may see, atomically, with the
+same changed-file check; it refuses a symbolic link or a folder where a note file should be, and an existing note in another letter case is the file
+that is written (never two). A library mounted read-only (the Docker default) simply cannot take it. Notes are Markdown rendered by the same safe
+renderer as any `.md` page; `artist.nfo`, `album.nfo` and `metadata.opf` are read only for their text, with the standard XML parser after a check that
+refuses any document declaring entities, and at most 256 KB.
+
 ## The stream relay (`relay = true`, off by default)
 
 With the relay on, the server fetches a radio station or an HLS TV channel for a browser that cannot play it directly (plain http on an https

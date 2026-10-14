@@ -32,7 +32,7 @@ from starlette.responses import (FileResponse, HTMLResponse, JSONResponse, Plain
                                  RedirectResponse, Response, StreamingResponse)
 from starlette.routing import Route
 
-from . import cbz, kinds, markdown, mediainfo, opds, opds2, radio, relay, stationsave, subtitles, tabular, thumbs, textview, uploads, vault, web, ziputil
+from . import aboutfiles, cbz, kinds, markdown, mediainfo, notes, opds, opds2, radio, relay, stationsave, subtitles, tabular, thumbs, textview, uploads, vault, web, ziputil
 from .auth import Authenticator
 from .bodies import read_limited
 from .cbz import CbzError
@@ -636,15 +636,31 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
         await run_in_threadpool(state.dismiss_progress, user.name, root, "/".join(parts))
         return RedirectResponse(urls.home(), 303)
 
-    NOTE_TOP = ("artist.md", "author.md", "about.md")          # a note about the folder itself: shown at the top (a band, an author)
+    def may_edit_notes(user, root: str) -> bool:
+        """Whether the editor is open to this user for this library: a personal copy needs an upload folder, a shared note needs the right."""
+        if user.read_only:
+            return False
+        return lib.uploads_enabled(user) or (root != UPLOADS_ROOT and notes.may_share(cfg, user, root))
+
+    NOTE_TOP = notes.NOTE_NAMES[:5]                           # a note about the folder itself: shown at the top (a band, an author, an album, a series)
     NOTE_BOTTOM = ("readme.md", "index.md")                   # documentation: shown at the bottom, like on GitHub
 
     def folder_notes(user, root: str, parts: tuple, entries) -> tuple:
-        """(top, bottom): the rendered Markdown of this folder's note files, or '' for each that is not there. The first file found
-        of each group wins. Rendered by the same safe renderer as any .md page; a file that is too big, binary or unreadable is skipped."""
+        """(top, bottom, top name, bottom name): the rendered Markdown of this folder's note files ('' for each that is not there) and the
+        name of the file shown. A note the user made themselves (the overlay in their upload folder) wins over the library's, the first name
+        found of each group wins, and a folder with no top note shows what an artist.nfo or metadata.opf says. Rendered by the same safe
+        renderer as any .md page; a file that is too big, binary or unreadable is skipped."""
         files = {e.name.lower(): e for e in entries if not e.is_dir}
+        overlay = root != UPLOADS_ROOT and lib.uploads_enabled(user)
 
-        def one(names) -> str:
+        def one(names) -> tuple:
+            for wanted in names if overlay else ():
+                got = notes.read(lib, user, root, parts, wanted)
+                if got:
+                    try:
+                        return markdown.render(got[0], urls, root, parts), wanted
+                    except markdown.TooLarge:
+                        continue
             for wanted in names:
                 entry = files.get(wanted)
                 if entry is None:
@@ -654,11 +670,118 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
                     raw, truncated = textview.read_head(info.path, markdown.MAX_RENDER_BYTES)
                     if truncated or textview.looks_binary(raw):
                         continue
-                    return markdown.render(textview.decode(raw, name=entry.name)[0], urls, root, parts)
+                    return markdown.render(textview.decode(raw, name=entry.name)[0], urls, root, parts), wanted
                 except (markdown.TooLarge, NotFound, PathError, OSError):
                     continue
-            return ""
-        return one(NOTE_TOP), one(NOTE_BOTTOM)
+            return "", ""
+        top, top_name = one(NOTE_TOP)
+        if not top:                                                  # no note of ours: what an .nfo or .opf says, as plain paragraphs
+            for wanted in aboutfiles.FILES:
+                entry = files.get(wanted)
+                if entry is None:
+                    continue
+                try:
+                    info = lib.file_info(user, root, parts + (entry.name,), cfg.show_all_files)
+                    with open(info.path, "rb") as f:
+                        text = aboutfiles.summary(wanted, f.read(aboutfiles.MAX_BYTES + 1))
+                except (NotFound, PathError, OSError):
+                    continue
+                if text:
+                    top = aboutfiles.as_html(text)
+                    break
+        bottom, bottom_name = one(NOTE_BOTTOM)
+        return top, bottom, top_name, bottom_name
+
+    @guarded("web")
+    async def note_edit(request: Request, user):
+        """The editor for a folder's note: GET shows it, POST saves, previews or removes. A note goes to the user's own upload folder (see
+        notes.py), or, for a user with the notes right on a library that allows it, into the library itself for everybody. Never for the shared
+        anonymous login, and a read-only key cannot post."""
+        root = request.path_params["root"]
+        own_ok = lib.uploads_enabled(user)
+        share_ok = root != UPLOADS_ROOT and notes.may_share(cfg, user, root)
+        if not own_ok and not share_ok:
+            raise NotFound("notes cannot be edited here")
+        parts = _parts(request.path_params.get("path", ""))
+        await run_in_threadpool(lib.folder_path, user, root, parts)                       # the folder must exist and be one this user may see
+        here = urls.browse(root, parts)
+        in_place = root == UPLOADS_ROOT
+        choices = tuple(c for c in (("own", "my own note (only I see it)") if own_ok else None,
+                                    ("library", "a note in the library (everybody sees it)") if share_ok else None) if c)
+        if in_place:
+            choices = (("own", "my upload folder"),)
+
+        def library_text(name: str):
+            """The library's own note of that name, to start an edit from; None when there is none."""
+            for e in lib.list_dir(user, root, parts, cfg.show_all_files, False):
+                if not e.is_dir and e.name.lower() == name.lower():
+                    raw, truncated = textview.read_head(lib.file_info(user, root, parts + (e.name,), cfg.show_all_files).path, notes.MAX_NOTE_BYTES)
+                    if not truncated and not textview.looks_binary(raw):
+                        return textview.decode(raw, name=e.name)[0]
+            return None
+
+        def versions(name: str) -> dict:
+            mine = notes.read(lib, user, root, parts, name) if own_ok else None
+            shared = notes.read_shared(lib, user, root, parts, name) if share_ok else None
+            return {"own": mine[1] if mine else "", "library": shared[1] if shared else ""}
+
+        def page(name, text, vers, where, from_library=False, preview="", error="", status=200):
+            return HTMLResponse(web.note_editor_page(ctx_for(user), root, parts, name=name, names=notes.NOTE_NAMES, text=text, versions=vers,
+                                                     in_place=in_place, exists=bool(vers.get(where)), from_library=from_library,
+                                                     preview_html=preview, error=error, back_url=here, where_kind=where, choices=choices), status)
+
+        default_where = choices[0][0] if choices else "own"
+        if request.method == "GET":
+            name = request.query_params.get("name", "")
+            asked = request.query_params.get("where", "")
+            where = asked if asked in dict(choices) else default_where
+            if not name:
+                return page("", "", {"own": "", "library": ""}, where)
+            if notes.target(root, parts, name) is None:
+                raise NotFound("not a note name")
+            vers = await run_in_threadpool(versions, name)
+            if where == "library":
+                got = await run_in_threadpool(notes.read_shared, lib, user, root, parts, name)
+                return page(name, got[0] if got else "", vers, where)
+            mine = await run_in_threadpool(notes.read, lib, user, root, parts, name)
+            if mine:
+                return page(name, mine[0], vers, where)
+            start = None if in_place else await run_in_threadpool(library_text, name)
+            return page(name, start or "", vers, where, from_library=start is not None)
+        raw = await read_limited(request, 200_000)
+        if raw is None:
+            return PlainTextResponse("Request too large", 413)
+        form = {k: v[0] for k, v in parse_qs(raw.decode("utf-8", "replace"), keep_blank_values=True).items()}
+        name, text, action = form.get("name", ""), form.get("text", ""), form.get("action", "")
+        vers = {"own": form.get("v_own", ""), "library": form.get("v_library", "")}
+        where = form.get("where", default_where)
+        if where not in dict(choices):
+            return page(name if notes.target(root, parts, name) else "", text, vers, default_where, error=notes.MESSAGES["name"], status=403)
+        if notes.target(root, parts, name) is None:
+            return page("", text, vers, where, error=notes.MESSAGES["name"], status=400)
+        if action == "preview":
+            try:
+                shown = await run_in_threadpool(markdown.render, text, urls, root, parts)
+            except markdown.TooLarge:
+                return page(name, text, vers, where, error="That note is too large to preview.", status=400)
+            return page(name, text, vers, where, preview=shown)
+        try:
+            if action == "remove":
+                if where == "library":
+                    await run_in_threadpool(notes.remove_shared, lib, user, root, parts, name, vers["library"])
+                else:
+                    await run_in_threadpool(notes.remove, lib, user, root, parts, name, vers["own"])
+                return RedirectResponse(here + "?ok=noteremoved", 303)
+            if action != "save":
+                raise NotFound("no such action")
+            if where == "library":
+                await run_in_threadpool(notes.save_shared, lib, user, root, parts, name, text, vers["library"])
+            else:
+                await run_in_threadpool(notes.save, lib, cfg.upload_quota_mb, user, root, parts, name, text, vers["own"])
+            return RedirectResponse(here + "?ok=note", 303)
+        except notes.NoteError as e:
+            return page(name, text, vers, where, error=notes.MESSAGES.get(e.code, notes.MESSAGES["write"]),
+                        status=409 if e.code == "changed" else 400)
 
     @guarded("web")
     async def browse(request: Request, user):
@@ -685,7 +808,12 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
             except (NotFound, PathError, OSError):
                 return ""
         has_cover = await run_in_threadpool(folder_picture)
-        note_top, note_bottom = await run_in_threadpool(folder_notes, user, root, parts, entries) if page == 1 else ("", "")
+        note_top, note_bottom, top_name, bottom_name = (await run_in_threadpool(folder_notes, user, root, parts, entries) if page == 1
+                                                         else ("", "", "", ""))
+        can_note = may_edit_notes(user, root)
+        note_links = {"top": urls.note(root, parts, top_name) if (can_note and top_name) else "",
+                      "bottom": urls.note(root, parts, bottom_name) if (can_note and bottom_name) else "",
+                      "add": urls.note(root, parts) if (can_note and not top_name and page == 1) else ""}
         asked = request.query_params.get("view", "")
         asked = asked if asked in ("list", "grid") else ""
         shown_view = asked
@@ -710,7 +838,7 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
             root, parts, shown, page, pages, len(entries), ctx_for(user, shown_view), metas, progress, sort=sort, desc=desc,
             writable=root == UPLOADS_ROOT, flash=web.flash_text(request.query_params),
             cover_url=urls.cover(root, parts) if (has_cover and parts) else "", view_asked=asked, shelves=flags,
-            note_top=note_top, note_bottom=note_bottom))
+            note_top=note_top, note_bottom=note_bottom, note_links=note_links))
 
     @guarded("web")
     async def settings(request: Request, user):
@@ -904,18 +1032,79 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
             return None
         return textview.decode(raw, truncated)[0], len(raw), truncated
 
+    WIKI_DIRS = 300                                           # at most this many folders are listed to find one [[wiki link]]
+    WIKI_EXTENSIONS = ("", ".md", ".markdown", ".txt")
+
+    def wiki_finder(user, root: str, folder: tuple):
+        """name -> URL of the page [[name]] means, or None. By file name, no index: this folder first, then each folder above it, then the
+        folders below the top of the library (breadth first, a limited number of them). A folder of that name counts when no file does."""
+        found: dict = {}
+        listed = [0]
+
+        def look(where: tuple, wanted: set):
+            try:
+                entries = lib.list_dir(user, root, where, cfg.show_all_files)
+            except (NotFound, PathError, OSError):
+                return None, []
+            listed[0] += 1
+            hit = folder_hit = None
+            for e in entries:
+                lower = e.name.lower()
+                if e.is_dir:
+                    if lower in wanted and folder_hit is None:
+                        folder_hit = e
+                elif lower in wanted and hit is None and kinds.kind_of(e.name) in ("markdown", "text"):
+                    hit = e
+            return (hit, folder_hit), [e for e in entries if e.is_dir]
+
+        def find(name: str):
+            key = name.strip().lower()
+            if not key or "/" in key or "\\" in key or len(key) > 120:
+                return None
+            if key in found:
+                return found[key]
+            wanted = {key + ext for ext in WIKI_EXTENSIONS}
+            result = None
+            for depth in range(len(folder), -1, -1):                              # this folder, then upwards
+                got, _ = look(folder[:depth], wanted)
+                if got and (got[0] or got[1]):
+                    result = got[0] or got[1]
+                    break
+            if result is None:
+                queue = [()]
+                while queue and result is None and listed[0] < WIKI_DIRS:
+                    got, subs = look(queue.pop(0), wanted)
+                    if got and (got[0] or got[1]):
+                        result = got[0] or got[1]
+                    queue += [e.parts for e in subs]
+            url = None if result is None else (urls.browse(root, result.parts) if result.is_dir else urls.view(root, result.parts))
+            found[key] = url
+            return url
+        return find
+
     def markdown_view(user, root: str, parts: tuple, info):
         head = decoded_head(info)
         if head is None:
             return None
         text, shown, truncated = head
         try:
-            html = markdown.render(text, urls, root, parts[:-1])
+            done = markdown.render_full(text, urls, root, parts[:-1], wiki=wiki_finder(user, root, parts[:-1]))
         except markdown.TooLarge:
             return None                                       # too big to render: the plain text viewer takes over
-        return web.markdown_page(ctx_for(user), info.name, html=html, size=info.size, shown=shown, truncated=truncated,
+        html = done.html
+        return web.markdown_page(ctx_for(user), str(done.meta.get("title") or "") or info.name, html=html, size=info.size, shown=shown, truncated=truncated,
                                  download_url=urls.download(root, parts), back_url=urls.browse(root, parts[:-1]),
-                                 source_url=urls.view(root, parts) + "?as=text")
+                                 source_url=urls.view(root, parts) + "?as=text", edit_url=note_link(user, root, parts))
+
+    def note_link(user, root: str, parts: tuple) -> str:
+        """The editor's address for this Markdown file when the user may edit it: a file in their own upload folder, or a note of a library
+        folder (kept as their own copy). Otherwise ''."""
+        if not may_edit_notes(user, root):
+            return ""
+        name = parts[-1]
+        if notes.target(root, parts[:-1], name if root == UPLOADS_ROOT else name.lower()) is None:
+            return ""
+        return urls.note(root, parts[:-1], name if root == UPLOADS_ROOT else name.lower())
 
     def table_view(user, root: str, parts: tuple, info):
         head = decoded_head(info)
@@ -1306,6 +1495,29 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
                 return False
             return any(os.path.isfile(os.path.join(folder, name)) for name in NO_SHUFFLE_MARKERS)
 
+        has_note: dict = {}
+
+        def note_here(level: tuple) -> bool:
+            """Whether this folder shows a note about itself (a note of the user's own, or one in the library)."""
+            if level not in has_note:
+                got = False
+                if root != UPLOADS_ROOT and lib.uploads_enabled(user):
+                    got = any(notes.read(lib, user, root, level, n) for n in NOTE_TOP)
+                if not got:
+                    try:
+                        got = any(not e.is_dir and e.name.lower() in NOTE_TOP for e in lib.list_dir(user, root, level, True, False))
+                    except (NotFound, PathError, OSError):
+                        got = False
+                has_note[level] = got
+            return has_note[level]
+
+        def about_for(here: tuple) -> str:
+            """The page that tells about what is playing: the nearest folder (this one, then up to three above it) with a note."""
+            for depth in range(len(here), max(len(here) - 4, -1), -1):
+                if note_here(here[:depth]):
+                    return urls.browse(root, here[:depth])
+            return ""
+
         def build():
             found, visited = [], [0]
 
@@ -1320,8 +1532,12 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
                     if mix and e.name.lower().endswith(".m4b"):
                         continue
                     if not e.is_dir and kinds.kind_of(e.name) == "audio" and len(found) < 2000:
-                        found.append({"title": os.path.splitext(e.name)[0], "url": urls.raw(root, e.parts),
-                                      "view": urls.view(root, e.parts), "folder": lib.display_name(here[-1]) if here else root})
+                        item = {"title": os.path.splitext(e.name)[0], "url": urls.raw(root, e.parts),
+                                "view": urls.view(root, e.parts), "folder": lib.display_name(here[-1]) if here else root}
+                        about = about_for(here)
+                        if about:                                  # the player bar's link: the note about the artist, album or author
+                            item["page"], item["linkText"] = about, "About"
+                        found.append(item)
                 for e in entries:
                     if e.is_dir:
                         walk(e.parts, depth + 1)
@@ -1750,6 +1966,8 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
         Route("/sw.js", service_worker),
         Route("/join/{token}", join),
         Route("/share", share, methods=["POST"]),
+        Route("/note/{root}", note_edit, methods=["GET", "POST"]),
+        Route("/note/{root}/{path:path}", note_edit, methods=["GET", "POST"]),
         Route("/upload/{root}", upload, methods=["POST"]),
         Route("/upload/{root}/{path:path}", upload, methods=["POST"]),
         Route("/files/{op}/{root}", file_op, methods=["POST"]),

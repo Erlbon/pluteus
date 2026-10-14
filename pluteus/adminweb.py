@@ -307,14 +307,15 @@ def roots_cell(roots: tuple) -> str:
     return escape(", ".join(roots)) if roots else "<span class='pl-error'>none</span>"
 
 
-def _flags(adult: bool, upload: bool, admin: bool) -> str:
+def _flags(adult: bool, upload: bool, admin: bool, notes: bool = False) -> str:
     return ("<label class='pl-check'><input type='checkbox' name='adult'%s> May see adult folders</label>"
             "<label class='pl-check'><input type='checkbox' name='upload'%s> Personal upload folder</label>"
+            "<label class='pl-check'><input type='checkbox' name='notes'%s> May write shared notes (into libraries set to notes = \"edit\")</label>"
             "<label class='pl-check'><input type='checkbox' name='admin'%s> May use this admin page</label>"
-            % (" checked" if adult else "", " checked" if upload else "", " checked" if admin else ""))
+            % (" checked" if adult else "", " checked" if upload else "", " checked" if notes else "", " checked" if admin else ""))
 
 
-RIGHTS = (("Adult", "adult"), ("Uploads", "upload"), ("Admin", "admin"))    # one table column each; add a pair for a new right
+RIGHTS = (("Adult", "adult"), ("Uploads", "upload"), ("Notes", "notes"), ("Admin", "admin"))    # one table column each; add a pair for a new right
 
 
 def _key_form(name: str, has_key: bool) -> str:
@@ -353,7 +354,7 @@ def users_page(ctx: Ctx, users: list, root_names: list, me: str, flash: str = ""
                 "<button class='pl-btn' type='submit'>Change password</button></form>"
                 "<form class='pl-admin-form' method='post' action='/users/access'><input type='hidden' name='name' value='%s'>%s%s"
                 "<button class='pl-btn' type='submit'>Save access</button></form>%s</details>"
-                % (escape(u.name), escape(u.name), _roots_boxes(root_names, u.roots), _flags(u.adult, u.upload, u.admin),
+                % (escape(u.name), escape(u.name), _roots_boxes(root_names, u.roots), _flags(u.adult, u.upload, u.admin, u.notes),
                    _key_form(u.name, u.name in (keys or {})) +
                    ("" if u.name == me else _post("/users/remove", {"name": u.name}, "Remove user",
                                                   "Remove %s? Their upload folder and reading progress stay on the server." % u.name, True))))

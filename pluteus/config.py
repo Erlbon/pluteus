@@ -35,6 +35,7 @@ ALL_ROOTS = "*"      # in a user's roots list: every root, including ones added 
 class Root:
     name: str
     path: str
+    notes: str = ""        # "edit": users with the notes right may write a folder's note file (artist.md ...) into this library, for everyone
 
 
 @dataclass(frozen=True)
@@ -46,6 +47,7 @@ class User:
     upload: bool = True    # may use the personal upload folder (when uploads_dir is set)
     admin: bool = False    # may sign in to the admin page (admin_port); never given by default
     read_only: bool = False  # set only on a login made with the user's app key: reading and listing, nothing else (see auth.py)
+    notes: bool = False    # may write shared notes into the libraries that allow it (notes = "edit" on the root)
 
     def may_use(self, root_name: str) -> bool:
         return ALL_ROOTS in self.roots or root_name in self.roots
@@ -110,8 +112,8 @@ _SERVER_KEYS = {"host", "port", "page_size", "base_path", "realm", "auth_cache_s
                 "admin_port", "admin_host", "site_port", "update_check", "update_repo", "share_target", "join_token", "join_user", "admin_url", "library_bases", "subsonic", "webdav", "kosync", "thumbnails", "relay", "relay_streams_user", "relay_streams_total", "relay_key"}
 _GLOBAL_KEYS = {"exclude", "extensions", "display_strip", "adult_marker", "private_marker", "hidden_marker", "metadata", "cache_dir",
                 "data_dir", "themes_dir", "theme", "uploads_dir", "upload_max_mb", "upload_quota_mb"}
-_ROOT_KEYS = {"name", "path"}
-_USER_KEYS = {"name", "password_hash", "roots", "adult", "upload", "admin"}
+_ROOT_KEYS = {"name", "path", "notes"}
+_USER_KEYS = {"name", "password_hash", "roots", "adult", "upload", "admin", "notes"}
 UPLOADS_ROOT = "uploads"          # the virtual root every user sees for their own upload folder
 _FOLDER_NAME = re.compile(r"^[A-Za-z0-9_-](?:[A-Za-z0-9 _.-]*[A-Za-z0-9_-])?$")
 _DEVICE_NAMES = {"con", "prn", "aux", "nul", *("com%d" % i for i in range(1, 10)), *("lpt%d" % i for i in range(1, 10))}
@@ -188,7 +190,10 @@ def parse_config(data: dict, check_roots: bool = True) -> Config:
             raise ConfigError("the root name %r is reserved for the personal upload folders" % name)
         if check_roots and not os.path.isdir(longpath(path)):
             raise ConfigError("root %r: %r is not a folder" % (name, path))
-        roots[name] = Root(name, path)
+        notes = str(r.get("notes", ""))
+        if notes not in ("", "edit"):
+            raise ConfigError("root %r: notes must be \"edit\" or left out" % name)
+        roots[name] = Root(name, path, notes)
     if not roots:
         raise ConfigError("no [[roots]] defined")
 
@@ -209,7 +214,7 @@ def parse_config(data: dict, check_roots: bool = True) -> Config:
             if ar != ALL_ROOTS and ar not in roots:
                 raise ConfigError("user %r refers to unknown root %r" % (name, ar))
         users[name] = User(name, u["password_hash"], allowed, bool(u.get("adult", False)), bool(u.get("upload", True)),
-                           bool(u.get("admin", False)))
+                           bool(u.get("admin", False)), False, bool(u.get("notes", False)))
     if not users:
         raise ConfigError("no [[users]] defined")
 

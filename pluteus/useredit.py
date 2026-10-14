@@ -121,7 +121,7 @@ def _set_key(body: list, key: str, new_line) -> list:
 
 # ---- text -> text operations ---------------------------------------------------
 def add_user_text(text: str, name: str, password_hash: str, roots=(), adult: bool = False, upload: bool = True,
-                  admin: bool = False) -> str:
+                  admin: bool = False, notes: bool = False) -> str:
     lines, nl, trailing = _parse(text)
     if any(b["name"] == name for b in _user_blocks(lines)):
         raise EditError("user %r already exists" % name)
@@ -134,12 +134,14 @@ def add_user_text(text: str, name: str, password_hash: str, roots=(), adult: boo
         block.append("upload = false")
     if admin:
         block.append("admin = true")
+    if notes:
+        block.append("notes = true")
     while lines and not lines[-1].strip():
         lines.pop()
     return _join(lines + ([""] if lines else []) + block, nl, True)
 
 
-def set_user_text(text: str, name: str, *, password_hash=None, roots=UNSET, adult=None, upload=None, admin=None) -> str:
+def set_user_text(text: str, name: str, *, password_hash=None, roots=UNSET, adult=None, upload=None, admin=None, notes=None) -> str:
     lines, nl, trailing = _parse(text)
     b = _find(lines, name)
     body = lines[b["start"] + 1:b["end"]]
@@ -153,6 +155,8 @@ def set_user_text(text: str, name: str, *, password_hash=None, roots=UNSET, adul
         body = _set_key(body, "upload", None if upload else "upload = false")
     if admin is not None:                       # off by default, so only "on" is written
         body = _set_key(body, "admin", "admin = true" if admin else None)
+    if notes is not None:                       # off by default, so only "on" is written
+        body = _set_key(body, "notes", "notes = true" if notes else None)
     return _join(lines[:b["start"] + 1] + body + lines[b["end"]:], nl, trailing)
 
 
@@ -222,14 +226,14 @@ def apply_edit(path: str, new_text: str, check) -> Config:
 
 
 def add_user(path: str, name: str, password_hash: str, roots=(), adult: bool = False, upload: bool = True,
-             admin: bool = False) -> Config:
-    new = add_user_text(read_config_text(path), name, password_hash, tuple(roots), adult, upload, admin)
+             admin: bool = False, notes: bool = False) -> Config:
+    new = add_user_text(read_config_text(path), name, password_hash, tuple(roots), adult, upload, admin, notes)
     return apply_edit(path, new, lambda c: name in c.users and c.users[name].roots == tuple(roots)
                       and c.users[name].adult == adult and c.users[name].upload == upload
-                      and c.users[name].admin == admin and c.users[name].password_hash == password_hash)
+                      and c.users[name].admin == admin and c.users[name].notes == notes and c.users[name].password_hash == password_hash)
 
 
-def set_user(path: str, name: str, *, password_hash=None, roots=UNSET, adult=None, upload=None, admin=None) -> Config:
+def set_user(path: str, name: str, *, password_hash=None, roots=UNSET, adult=None, upload=None, admin=None, notes=None) -> Config:
     text = read_config_text(path)
     before = validate(text).users.get(name)
     if before is None:
@@ -238,11 +242,13 @@ def set_user(path: str, name: str, *, password_hash=None, roots=UNSET, adult=Non
     want_adult = before.adult if adult is None else adult
     want_upload = before.upload if upload is None else upload
     want_admin = before.admin if admin is None else admin
+    want_notes = before.notes if notes is None else notes
     want_hash = before.password_hash if password_hash is None else password_hash
-    new = set_user_text(text, name, password_hash=password_hash, roots=roots, adult=adult, upload=upload, admin=admin)
+    new = set_user_text(text, name, password_hash=password_hash, roots=roots, adult=adult, upload=upload, admin=admin, notes=notes)
     return apply_edit(path, new, lambda c: name in c.users and c.users[name].roots == want_roots
                       and c.users[name].adult == want_adult and c.users[name].upload == want_upload
-                      and c.users[name].admin == want_admin and c.users[name].password_hash == want_hash)
+                      and c.users[name].admin == want_admin and c.users[name].notes == want_notes
+                      and c.users[name].password_hash == want_hash)
 
 
 def remove_user(path: str, name: str) -> Config:

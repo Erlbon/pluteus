@@ -246,6 +246,22 @@ async def receive(stream, content_type: str, dirpath: str, *, max_bytes: int, qu
 
 
 # ---- new folder, rename, delete (synchronous: call them through run_in_threadpool) -------------------------------------
+def write_atomic(folder: str, file_name: str, raw: bytes) -> None:
+    """Write `raw` as folder/file_name through a hidden temporary file, so a reader never sees half of it. Raises UploadError('write')."""
+    temp = os.path.join(folder, ".%s.tmp" % file_name)
+    path = os.path.join(folder, file_name)
+    try:
+        with open(longpath(temp), "wb") as f:
+            f.write(raw)
+        _replace(longpath(temp), longpath(path))
+    except OSError:
+        try:
+            os.remove(longpath(temp))
+        except OSError:
+            pass
+        raise UploadError("write")
+
+
 def make_folder(dirpath: str, raw_name: str, is_hidden=lambda n: False) -> str:
     name = sanitize_name(raw_name, is_hidden)
     if name is None:

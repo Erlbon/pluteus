@@ -29,9 +29,10 @@ from xml.sax.saxutils import escape, quoteattr
 from starlette.concurrency import run_in_threadpool
 from starlette.responses import FileResponse, PlainTextResponse, Response
 
-from . import __version__, kinds, mediainfo, radio, textview
+from . import __version__, aboutfiles, kinds, mediainfo, notes, radio, textview
 from .auth import verify_password
 from .bodies import read_limited
+from .config import UPLOADS_ROOT
 from .fs import NotFound, PathError, clamp_time
 
 API_VERSION = "1.16.1"
@@ -501,6 +502,11 @@ class Subsonic:
         root, parts = read_id(p.get("id", ""))
         if not parts:
             return ""
+        if root != UPLOADS_ROOT and self.lib.uploads_enabled(user):          # a note the user wrote themselves comes first
+            for wanted in self._BIOGRAPHY_FILES:
+                mine = notes.read(self.lib, user, root, parts, wanted)
+                if mine and mine[0].strip():
+                    return plain_text(mine[0])
         files = {e.name.lower(): e for e in self.lib.list_dir(user, root, parts, True, False) if not e.is_dir}
         for wanted in self._BIOGRAPHY_FILES:
             entry = files.get(wanted)
@@ -515,6 +521,13 @@ class Subsonic:
             if len(raw) > 65536:
                 continue
             return plain_text(textview.decode(raw, name=entry.name)[0])
+        entry = files.get("artist.nfo")                                       # what Kodi, Plex and Lidarr write
+        if entry is not None:
+            try:
+                with open(self.lib.file_info(user, root, parts + (entry.name,), True).path, "rb") as f:
+                    return aboutfiles.summary("artist.nfo", f.read(aboutfiles.MAX_BYTES + 1)).replace("\n\n", "\n")
+            except (NotFound, PathError, OSError):
+                pass
         return ""
 
     def artist_info2(self, user, p):

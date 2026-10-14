@@ -126,6 +126,9 @@ hidden_marker = ".hidden"
 [[roots]]
 name = "books"
 path = 'D:\Library\Books'
+# notes = "edit"           # users with the "notes" right may write a folder's note file (artist.md, author.md ...) into this library, for
+                           # everybody. Off by default; needs the folder mounted read-write. Without it notes are personal copies in the
+                           # user's upload folder (see docs/notes-format.md).
 
 [[roots]]
 name = "comics"
@@ -147,4 +150,5 @@ name = "guest"
 password_hash = "scrypt$16384$8$1$replace-with-output-of-hash-password"
 roots = ["books"]           # only these roots; ["*"] = every root; no list = none
 # upload = false            # no personal upload folder for this user (when uploads_dir is set)
+# notes = true              # may write shared notes into libraries that have notes = "edit"
 # admin = true              # may sign in to the admin page (needs admin_port). Off by default.

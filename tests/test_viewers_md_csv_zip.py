@@ -89,7 +89,7 @@ def test_markdown_page_and_source_toggle(lib):
     (folder / "doc.md").write_text("# Hello\n\n<script>alert(1)</script>\n\n[x](javascript:alert(1)) ![i](pic.png)", encoding="utf-8")
     (folder / "pic.png").write_bytes(PNG)
     r = page(client, "comics", "doc.md")
-    assert r.status_code == 200 and "class='pl-markdown'" in r.text and "<h1>Hello</h1>" in r.text
+    assert r.status_code == 200 and "class='pl-markdown'" in r.text and "<h1 id='hello'>Hello " in r.text
     assert "<script>alert" not in r.text and "javascript:" not in r.text
     assert "/raw/comics/Plain/pic.png" in r.text and "id='source'" in r.text
     src = page(client, "comics", "doc.md", "?as=text")

@@ -97,6 +97,10 @@ class Urls:
     def logout(self) -> str:
         return self.base + "/logout"
 
+    def note(self, root: str, parts=(), name: str = "") -> str:
+        """The editor for a folder's note (name: which note file; empty to start a new one)."""
+        return self._build("note", root, parts) + ("?" + urlencode({"name": name}) if name else "")
+
     def upload(self, root: str, parts=()) -> str:
         return self._build("upload", root, parts)
 

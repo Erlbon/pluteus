@@ -353,7 +353,7 @@ def create_admin_app(main_app) -> Starlette:
         def action(model, form):
             adult, upload, admin = flags_of(form)
             model.add_user(_first(form, "name"), _first(form, "password"), _first(form, "again"), roots_of(form),
-                           adult, upload, admin)
+                           adult, upload, admin, "notes" in form)
             return "added"
         return await change(request, user, action)
 
@@ -371,7 +371,7 @@ def create_admin_app(main_app) -> Starlette:
             adult, upload, admin = flags_of(form)
             if admins_after(model, name, admin) < 1:
                 raise EditError("there must be at least one admin: this change would leave none")
-            model.set_access(name, roots_of(form), adult, upload, admin)
+            model.set_access(name, roots_of(form), adult, upload, admin, "notes" in form)
             return "access"
         return await change(request, user, action)
 

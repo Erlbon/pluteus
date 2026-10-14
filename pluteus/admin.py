@@ -77,20 +77,20 @@ class AdminModel:
             raise EditError("the password must be at least %d characters" % MIN_PASSWORD)
 
     def add_user(self, name: str, password: str, again: str, roots=(), adult: bool = False, upload: bool = True,
-                 admin: bool = False) -> None:
+                 admin: bool = False, notes: bool = False) -> None:
         name = name.strip()
         if not name:
             raise EditError("the user needs a name")
         self._check_password(password, again)
-        useredit.add_user(self.path, name, hash_password(password), tuple(roots), adult, upload, admin)
+        useredit.add_user(self.path, name, hash_password(password), tuple(roots), adult, upload, admin, notes)
 
     def change_password(self, name: str, password: str, again: str) -> None:
         self._check_password(password, again)
         useredit.set_user(self.path, name, password_hash=hash_password(password))
 
-    def set_access(self, name: str, roots=(), adult: bool = False, upload: bool = True, admin: bool = False) -> None:
-        """roots: root names, or ("*",) for every root; empty = none."""
-        useredit.set_user(self.path, name, roots=tuple(roots), adult=adult, upload=upload, admin=admin)
+    def set_access(self, name: str, roots=(), adult: bool = False, upload: bool = True, admin: bool = False, notes=None) -> None:
+        """roots: root names, or ("*",) for every root; empty = none. notes: None leaves the right as it is."""
+        useredit.set_user(self.path, name, roots=tuple(roots), adult=adult, upload=upload, admin=admin, notes=notes)
 
     def remove_user(self, name: str) -> None:
         if len(self.config().users) <= 1:

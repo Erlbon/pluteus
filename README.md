@@ -21,7 +21,11 @@ medieval library. Pronounced "PLOO-tee-us".
   **WebDAV** to mount the library as a drive, **KOReader** progress sync, **OPDS 2.0** next to OPDS 1.2, and optional cover thumbnails for the feeds.
 - **Per-user app keys** so no app has to store your real password, **favourites and "read next"** lists, and an optional **cover view** of folders.
 - **Safe to put on the internet** behind HTTPS: login lockouts that escalate, known devices, same-site checks, a
-  read-only view of your libraries (pluteus never writes to them).
+  read-only view of your libraries (pluteus writes to a library only for the shared notes you switch on, `notes = "edit"` on a root).
+- **Notes in folders:** a Markdown file next to what it describes (`artist.md`, `author.md`, `series.md`, `album.md`, `about.md`, `README.md`) shows on the
+  folder page, links from the music player ("About") and becomes the biography in Subsonic apps; `artist.nfo`, `album.nfo` and Calibre's `metadata.opf`
+  are read too. Notes have anchors, a contents list, front matter and `[[wiki links]]` by file name, and can be written in the browser (your own copy in your
+  upload folder, or shared, if you allow it). See [docs/notes-format.md](docs/notes-format.md) and [docs/library-layout.md](docs/library-layout.md).
 - A **web admin page** on a separate, local-only port: status, locks, users.
 - Runs on **Docker** (hardened compose example included) or natively on Windows and Linux; skinnable themes.
 
