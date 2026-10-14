@@ -2,7 +2,7 @@
 
 Release notes are taken from the section of the tagged version (`## 0.5.0 ...`).
 
-## Unreleased (for 0.9.4)
+## 0.9.4 - 2026-10-14
 - **Subtitles:** a movie shows the subtitle files that sit next to it (`Movie.srt`, `Movie.en.srt`, `Movie.no.forced.vtt` ...: the same name, then an optional language and flags). An `.srt` is converted to WebVTT as it is served (old Western European encodings are read too). The player gets a CC button that steps through the languages and off again and remembers the last choice; without the script the browser's own controls list them. Subtitles stored inside the video file, and the `.ass` and `.sub` formats, are not read.
 - **Movie player on a phone:** the five buttons (-, rewind, play, fast-forward, +) are a little smaller on a narrow screen, so they fit and the page no longer scrolls sideways.
 - **Movie player, full screen:** a wide picture turns the phone sideways while it is full screen (where the browser allows it), and the picture leaves room for the controls when the phone is held sideways.
