@@ -3,6 +3,7 @@
 Release notes are taken from the section of the tagged version (`## 0.5.0 ...`).
 
 ## Unreleased (for 0.9.5)
+- **Radio picker** (`tools/radio-picker.html`, not part of the server): a web page you open on your own computer. It searches the community directory radio-browser.info by country, genre and name (https only, working at the last check, no HLS), lets you listen, tick stations, and save one `.m3u` file per station into a library folder (Chrome or Edge), or download them as one list. Nothing is sent anywhere but the search.
 - **Radio:** a `.m3u`, `.pls` or `.url` file that holds an `http(s)://` stream address opens in a radio player (play and stop, the station name, a volume control on wide screens, lock-screen controls); a file with several stations shows a list. The browser plays the stream, pluteus never fetches it, and only this page's content policy lets media come from other servers. HLS (`.m3u8`) streams are not supported, and a plain `http://` station is blocked by the browser on an `https://` page (the player says so). A file with no stream address stays a text file.
 
 ## 0.9.4 - 2026-10-14
