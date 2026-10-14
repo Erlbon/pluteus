@@ -741,8 +741,34 @@ class Subsonic:
                                              "by": re.sub(r"[^\w .-]", "", p.get("c", ""))[:40]})
         return {}
 
+    def _resume_from_progress(self, user, newer_than: float):
+        """A queue made from the web player's saved position: the unfinished audio file opened most recently (if later than `newer_than`),
+        and the rest of its folder after it. None when there is none. Nothing is stored for this: the position is already kept for the web."""
+        for row in self.state.recent_progress(user.name, 40):
+            parts = tuple(row["path"].split("/"))
+            if row["updated"] <= newer_than:
+                return None                                           # the saved queue is newer than anything the web player did
+            if len(parts) < 2 or kinds.kind_of(parts[-1]) != "audio" or row["percent"] >= 0.98 or not self.lib.has_root(user, row["root"]):
+                continue
+            match = re.fullmatch(r"t:(\d+(?:[.]\d+)?)", row["locator"] or "")
+            try:
+                _, songs = self._list(user, row["root"], parts[:-1])
+            except (NotFound, PathError, OSError):
+                continue
+            items = self._songs(row["root"], songs, user)
+            ident = make_id(row["root"], parts)
+            at = next((i for i, item in enumerate(items) if item["id"] == ident), None)
+            if at is None:
+                continue
+            return {"ids": [item["id"] for item in items[at:at + 500]], "current": ident,
+                    "position": int(float(match.group(1)) * 1000) if match else 0, "by": "pluteus web player", "updated": row["updated"]}
+        return None
+
     def get_play_queue(self, user, p):
         saved = self.state.playqueue_get(user.name)
+        resumed = self._resume_from_progress(user, saved["updated"] if saved else 0.0)
+        if resumed is not None:
+            saved = resumed
         if not saved:
             return {"playQueue": {}}
         entries = []

@@ -74,6 +74,12 @@ def test_change_password_and_access(model):
     alice = model.users()[0]
     assert alice.roots == () and alice.adult and alice.upload
     assert "upload" not in open(model.path, encoding="utf-8").read().split("[[users]]")[1]    # default needs no key
+    model.set_access("alice", roots=(), adult=True, upload=True, notes=True)
+    assert model.users()[0].notes
+    model.set_access("alice", roots=(), adult=True, upload=True)            # left out: the right stays as it is (the Tk window always sends it)
+    assert model.users()[0].notes
+    model.set_access("alice", roots=(), adult=True, upload=True, notes=False)
+    assert not model.users()[0].notes and "notes" not in open(model.path, encoding="utf-8").read().split("[[users]]")[1]
     with pytest.raises(EditError, match="differ"):
         model.change_password("alice", "brand-new-pass-1", "other-pass-12345")
 
@@ -169,7 +175,7 @@ def window(tmp_path):
 def test_window_shows_users_and_the_file(window):
     app, path = window
     rows = [app.tree.item(i, "values") for i in app.tree.get_children()]
-    assert rows == [("alice", "none", "yes", "yes", "")]                                    # the last column: the admin page
+    assert rows == [("alice", "none", "yes", "yes", "", "")]                                # the last columns: notes, the admin page
     assert "# my comment, must survive" in app.text.get("1.0", "end")
     assert "pluteus admin - " in app.title()
 

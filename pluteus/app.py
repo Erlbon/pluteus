@@ -1273,7 +1273,8 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
             raise NotFound("no such page")
         text = (STATIC_DIR / "pickers" / (kind + "-picker.html")).read_text(encoding="utf-8")
         for key, value in (("__STATIC__", urls.static("pickers/")), ("__VENDOR__", urls.static("vendor/")), ("__SAVE__", urls.stations_save()),
-                           ("__BROWSE__", urls.browse(UPLOADS_ROOT, (stationsave.KINDS[kind],))), ("__BACK__", urls.settings())):
+                           ("__BROWSE__", urls.browse(UPLOADS_ROOT, (stationsave.KINDS[kind],))), ("__BACK__", urls.settings()),
+                           ("__RELAY__", "1" if cfg.relay else "0")):
             text = text.replace(key, escape_attr(value))
         csp = IPTV_CSP if kind == "tv" else RADIO_CSP.replace("connect-src 'self';", "connect-src 'self' https://*.api.radio-browser.info;", 1)
         return HTMLResponse(text, headers={"Content-Security-Policy": csp})
@@ -1309,6 +1310,8 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
     async def hls_playlist(user, lease: str, address: str, stream: str = "", entry=None) -> Response:
         """The HLS playlist at `address` with every address in it replaced by a signed token that only this user can use (see relay.sign).
         Each fetch of a playlist renews the stream's lease, which counts against the stream limits."""
+        if relay_limits.stopped(user.name, lease):
+            return PlainTextResponse("This channel was stopped by the administrator.", 410)
         if not relay_limits.lease(user.name, lease):
             return PlainTextResponse("Too many streams are open through the server right now. Close one and try again.", 429,
                                      headers={"Retry-After": "10"})
@@ -1378,6 +1381,8 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
         if found is None:
             raise NotFound("that piece is no longer offered")
         address, lease, stream = found
+        if lease and relay_limits.stopped(user.name, lease):
+            return PlainTextResponse("This channel was stopped by the administrator.", 410)
         entry, problem = stored_stream(user.name, stream)
         if stream and entry is None:
             return PlainTextResponse(problem, 409)

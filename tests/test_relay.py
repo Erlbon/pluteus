@@ -393,3 +393,27 @@ def test_admin_stop_ends_a_running_stream_and_frees_its_slot(cfg, tmp_path, stat
     worker.join(10)
     assert 0 < len(got["r"].content) < 50 * 1024                                              # cut short by the Stop
     assert limits.streams() == [] and limits.totals()["alice"] == len(got["r"].content) and limits.snapshot() == {}
+
+
+def test_stopping_an_hls_channel_refuses_its_playlist_and_pieces_for_a_while():
+    lim = relay.Limiter(per_user=2, total=4)
+    assert lim.lease("a", "uploads/tv.m3u#0") and lim.lease_list() == [("a", "uploads/tv.m3u#0")]
+    assert lim.stop_lease("a", "uploads/tv.m3u#0") is True
+    assert lim.stopped("a", "uploads/tv.m3u#0") and lim.lease_list() == [] and not lim.lease("a", "uploads/tv.m3u#0")
+    assert lim.lease("a", "other#0") and not lim.stopped("b", "uploads/tv.m3u#0")                            # only that user's channel
+    assert lim.stop_lease("a", "gone#0", hold=0.05) is False                                                  # already gone: still refused briefly
+    time.sleep(0.1)
+    assert not lim.stopped("a", "gone#0") and lim.lease("a", "gone#0")
+
+
+def test_an_admin_stop_ends_a_channel_for_the_player(cfg, tmp_path, station):
+    me, folder = signed_in(cfg, tmp_path, relay=True)
+    put(folder, "tv.m3u", station + "/hls/master.m3u8")
+    first = me.get("/relay/uploads/Radio/tv.m3u?i=0&hls=1")
+    token = pieces(first.text)[0]
+    limits = me.app.state.relay_limits
+    assert limits.lease_list() == [("alice", "uploads/Radio/tv.m3u#0")]
+    limits.stop_lease("alice", "uploads/Radio/tv.m3u#0")
+    gone = me.get("/relay/uploads/Radio/tv.m3u?i=0&hls=1")
+    assert gone.status_code == 410 and "stopped by the administrator" in gone.text
+    assert me.get("/relay-piece/" + token).status_code == 410

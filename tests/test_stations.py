@@ -118,3 +118,15 @@ def test_users_without_an_upload_folder_see_no_station_shortcuts(cfg, tmp_path):
     me = TestClient(app, follow_redirects=False)
     me.post("/login", content="username=alice&password=pw-alice", headers={"content-type": "application/x-www-form-urlencoded", **ORIGIN})
     assert "/browse/uploads/Radio" not in me.get("/", headers=HTML).text
+
+
+def test_the_tv_picker_knows_whether_the_relay_is_on(cfg, tmp_path):
+    from test_login_web import make
+    for relay_on in (False, True):
+        client, app = make(cfg, tmp_path / ("r%d" % relay_on), uploads_dir=str(tmp_path / ("up%d" % relay_on)), relay=relay_on)
+        me = TestClient(app, follow_redirects=False)
+        me.post("/login", content="username=alice&password=pw-alice", headers={"content-type": "application/x-www-form-urlencoded", **ORIGIN})
+        page = me.get("/stations/tv", headers=HTML).text
+        assert 'data-relay="%d"' % relay_on in page and "__RELAY__" not in page
+    js = me.get("/static/pickers/tv-picker.js").text
+    assert "relayOn" in js and "via the server?" in js

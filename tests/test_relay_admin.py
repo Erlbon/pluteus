@@ -60,3 +60,16 @@ def test_stop_needs_an_admin(tmp_path):
     client, _ = make(tmp_path, True)
     assert client.post("/relay/stop", headers={**basic("alice", "alice-password-1"), **FORM}, content="id=1").status_code in (401, 403)
     assert client.post("/relay/stop", headers=FORM, content="id=1").status_code == 401
+
+
+def test_the_admin_can_stop_a_tv_channel_from_the_box(tmp_path):
+    client, app = make(tmp_path, True)
+    limits = app.state.relay_limits
+    limits.lease("alice", "uploads/Radio/tv.m3u#0")
+    text = client.get("/", headers=BOSS).text
+    assert "uploads/Radio/tv.m3u#0" in text and "/relay/stop-channel" in text
+    r = client.post("/relay/stop-channel", headers={**BOSS, **FORM}, content="user=alice&key=uploads%2FRadio%2Ftv.m3u%230")
+    assert r.status_code == 303 and "ok=stopped" in r.headers["location"] and limits.stopped("alice", "uploads/Radio/tv.m3u#0")
+    r = client.post("/relay/stop-channel", headers={**BOSS, **FORM}, content="user=alice&key=none")
+    assert "ok=nothing" in r.headers["location"]
+    assert client.post("/relay/stop-channel", headers=FORM, content="user=alice&key=x").status_code == 401

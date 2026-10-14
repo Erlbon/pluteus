@@ -6,6 +6,9 @@
   var PAGE = 150;
   var $ = function (id) { return document.getElementById(id); };
   var channels = {}, streams = [], countries = {}, categoryNames = {}, shown = [], limit = PAGE, hls = null, playing = null, page = document.body.dataset;
+  var relayOn = page.relay === "1";                          // the server relay is on: a saved channel that a browser cannot play directly can still play through the server
+  var secure = location.protocol === "https:";
+  if (relayOn) { $("https").checked = false; $("relayNote").hidden = false; }                 // plain-http channels are worth offering then
 
   function say(text, bad) { var s = $("status"); s.textContent = text; s.className = "status" + (bad ? " warn" : ""); }
   function load(name) { return fetch(BASE + name + ".json").then(function (r) { if (!r.ok) throw new Error(name + ": HTTP " + r.status); return r.json(); }); }
@@ -88,7 +91,7 @@
   }
   function paintTest(s) {
     if (!s.testEl) return;
-    s.testEl.textContent = s.test === "ok" ? "plays" : s.test === "no" ? "fails" : s.test === "busy" ? "testing…" : "";
+    s.testEl.textContent = s.test === "ok" ? "plays" : s.test === "no" ? "fails" : s.test === "relay" ? "via the server?" : s.test === "busy" ? "testing…" : "";
     s.testEl.className = "test" + (s.test === "ok" ? " ok" : s.test === "no" ? " no" : "");
     if (s.why) s.testEl.title = s.why;
   }
@@ -129,6 +132,10 @@
 
   /* ---- test the ticked channels: can a web page read the manifest at all? (the usual reason a channel will not play in pluteus) ---- */
   function testOne(s) {
+    if (relayOn && secure && /^http:/i.test(s.url)) {        // a secure page cannot even ask a plain-http server: only the relay can say
+      s.test = "relay"; s.why = "Plain http cannot be tested from this secure page. Saved, it plays through the server (relay)."; paintTest(s);
+      return Promise.resolve();
+    }
     s.test = "busy"; paintTest(s);
     var ctl = new AbortController(), timer = setTimeout(function () { ctl.abort(); }, 9000);
     return fetch(s.url, { signal: ctl.signal }).then(function (r) {
@@ -137,7 +144,10 @@
     }).then(function (t) {
       if (t.indexOf("#EXTM3U") < 0) throw new Error("not a playlist");
       s.test = "ok"; s.why = "";
-    }).catch(function (e) { s.test = "no"; s.why = e.name === "AbortError" ? "no answer in 9 seconds" : (e.message === "Failed to fetch" ? "the server does not allow a web page to read it, or is down" : e.message); })
+    }).catch(function (e) {
+      s.test = "no"; s.why = e.name === "AbortError" ? "no answer in 9 seconds" : (e.message === "Failed to fetch" ? "the server does not allow a web page to read it, or is down" : e.message);
+      if (relayOn && e.message === "Failed to fetch") { s.test = "relay"; s.why += ". The relay fetches it for you, so it may still play in pluteus."; }       // the usual cause is the missing web-page permission (CORS), which the relay does not need
+    })
       .then(function () { clearTimeout(timer); paintTest(s); });
   }
   $("check").addEventListener("click", function () {
@@ -151,7 +161,8 @@
     for (var i = 0; i < 4; i++) workers.push(next());
     Promise.all(workers).then(function () {
       var bad = ticked().filter(function (s) { return s.test === "no"; }).length;
-      say("Tested " + total + ": " + (total - bad) + " answer, " + bad + " do not. Untick the ones that fail.");
+      var viaRelay = ticked().filter(function (s) { return s.test === "relay"; }).length;
+      say("Tested " + total + ": " + (total - bad - viaRelay) + " answer, " + bad + " do not" + (viaRelay ? ", " + viaRelay + " can only be tried through the server (keep them: the relay is on)" : "") + ". Untick the ones that fail.");
       update();
     });
   });

@@ -62,3 +62,28 @@ def test_recent_albums_come_from_the_saved_positions_newest_first(lib):
     state.put_progress("bob", "music", "Solo/single.mp3", "5", 0.5, now=5000)                         # another user's
     albums = body(get(c, "getAlbumList2", type="recent"))["albumList2"]["album"]
     assert [a["id"] for a in albums] == [subsonic.make_id("music", ("Kaizers", "Ompa")), subsonic.make_id("music", ("Solo",))]
+
+
+def test_without_a_saved_queue_the_web_players_position_is_the_resume_point(lib):
+    c = make(lib)
+    state = c.app.state.state
+    state.put_progress("alice", "music", "Kaizers/Ompa/01 spark.mp3", "t:42.5", 0.3, now=1000)
+    queue = body(get(c, "getPlayQueue"))["playQueue"]
+    assert [e["id"] for e in queue["entry"]] == [SPARK, OTHER] and queue["current"] == SPARK and queue["position"] == 42500
+    assert queue["changedBy"] == "pluteus web player"
+    state.put_progress("alice", "music", "Kaizers/Ompa/02 other.mp3", "t:0", 1.0, now=2000)           # finished: not a resume point
+    assert body(get(c, "getPlayQueue"))["playQueue"]["current"] == SPARK
+    state.put_progress("alice", "music", "Kaizers/Ompa/02 other.mp3", "t:7", 0.2, now=3000)           # opened later: the queue continues from here
+    queue = body(get(c, "getPlayQueue"))["playQueue"]
+    assert [e["id"] for e in queue["entry"]] == [OTHER] and queue["position"] == 7000
+
+
+def test_a_queue_saved_by_an_app_wins_when_it_is_newer_than_the_web_position(lib):
+    import time
+    c = make(lib)
+    c.app.state.state.put_progress("alice", "music", "Solo/single.mp3", "t:5", 0.5, now=time.time() - 3600)
+    c.get("/rest/savePlayQueue.view", params={"u": "alice", "p": KEY, "f": "json", "id": [SPARK], "current": SPARK, "position": "1000", "c": "Tempo"})
+    queue = body(get(c, "getPlayQueue"))["playQueue"]
+    assert queue["changedBy"] == "Tempo" and queue["current"] == SPARK
+    c.app.state.state.put_progress("alice", "music", "Solo/single.mp3", "t:9", 0.5, now=time.time() + 60)    # the web player was used after
+    assert body(get(c, "getPlayQueue"))["playQueue"]["current"] == SINGLE

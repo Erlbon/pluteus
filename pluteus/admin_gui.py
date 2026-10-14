@@ -152,6 +152,9 @@ class UserDialog(Dialog):
         self.admin = tk.BooleanVar(value=bool(self.user and self.user.admin))
         ttk.Checkbutton(body, text="May use the web admin page (admin_port)", variable=self.admin).grid(
             row=row + 3, column=0, columnspan=2, sticky="w")
+        self.notes = tk.BooleanVar(value=bool(self.user and self.user.notes))
+        ttk.Checkbutton(body, text="May write shared notes into libraries set to notes = \"edit\"", variable=self.notes).grid(
+            row=row + 4, column=0, columnspan=2, sticky="w")
         self._sync()
 
     def _sync(self) -> None:
@@ -165,7 +168,8 @@ class UserDialog(Dialog):
 
     def collect(self):
         roots = ("*",) if self.everything.get() else tuple(n for n, v in self.root_vars.items() if v.get())
-        result = {"roots": roots, "adult": self.adult.get(), "upload": self.upload.get(), "admin": self.admin.get()}
+        result = {"roots": roots, "adult": self.adult.get(), "upload": self.upload.get(), "admin": self.admin.get(),
+                  "notes": self.notes.get()}
         if self.user is None:
             result.update(name=self.name.get(), password=self.fields.first.get(), again=self.fields.second.get())
         return result
@@ -229,10 +233,10 @@ class App(tk.Tk):
     def _users_tab(self) -> None:
         frame = ttk.Frame(self.tabs, padding=10)
         self.tabs.add(frame, text="Users")
-        columns = ("name", "folders", "adult", "upload", "admin")
+        columns = ("name", "folders", "adult", "upload", "notes", "admin")
         self.tree = ttk.Treeview(frame, columns=columns, show="headings", selectmode="browse")
         for key, title, width in (("name", "User", 150), ("folders", "Folders", 200), ("adult", "Adult", 70),
-                                  ("upload", "Uploads", 90), ("admin", "Admin page", 90)):
+                                  ("upload", "Uploads", 90), ("notes", "Notes", 70), ("admin", "Admin page", 90)):
             self.tree.heading(key, text=title)
             self.tree.column(key, width=width, minwidth=width, stretch=key == "folders",
                              anchor="w" if key in ("name", "folders") else "center")
@@ -272,7 +276,7 @@ class App(tk.Tk):
         self.tree.delete(*self.tree.get_children())
         for u in users:
             self.tree.insert("", "end", values=(u.name, "all" if "*" in u.roots else (", ".join(u.roots) or "none"),"yes" if u.adult else "",
-                                                "yes" if u.upload else "no", "yes" if u.admin else ""))
+                                                "yes" if u.upload else "no", "yes" if u.notes else "", "yes" if u.admin else ""))
 
     def add_user(self) -> None:
         if not self.model:
@@ -283,7 +287,7 @@ class App(tk.Tk):
         data = UserDialog(self, roots).ask()
         if data:
             ok, _ = self.guard(lambda: self.model.add_user(data["name"], data["password"], data["again"], data["roots"],
-                                                           data["adult"], data["upload"], data["admin"]),
+                                                           data["adult"], data["upload"], data["admin"], data["notes"]),
                                "Added %s." % data["name"].strip())
             self.after_change(ok)
 
@@ -306,7 +310,7 @@ class App(tk.Tk):
         data = UserDialog(self, roots, user).ask()
         if data:
             ok, _ = self.guard(lambda: self.model.set_access(user.name, data["roots"], data["adult"], data["upload"],
-                                                             data["admin"]), "Saved the access of %s." % user.name)
+                                                             data["admin"], data["notes"]), "Saved the access of %s." % user.name)
             self.after_change(ok)
 
     def remove_user(self) -> None:

@@ -48,6 +48,7 @@ class Limiter:
         self._streams: dict = {}
         self._totals: dict = {}
         self._serial = 0
+        self._stopped: dict = {}                    # (user, channel key) -> until when a stopped HLS channel is refused
         self._lock = threading.Lock()
 
     def acquire(self, user: str) -> bool:
@@ -109,6 +110,8 @@ class Limiter:
     def lease(self, user: str, key: str, ttl: float = 45.0) -> bool:
         now = time.monotonic()
         with self._lock:
+            if self._stopped.get((user, key), 0) > now:
+                return False
             leases = {k: v for k, v in getattr(self, "_leases", {}).items() if v > now}
             held = [k for k in leases if k[0] == user]
             if (user, key) not in leases and (len(held) + self._open.get(user, 0) >= self.per_user
@@ -124,6 +127,20 @@ class Limiter:
         now = time.monotonic()
         with self._lock:
             return sorted(k for k, v in self._leases.items() if v > now)
+
+    def stop_lease(self, user: str, key: str, hold: float = 120.0) -> bool:
+        """The admin's Stop for an HLS channel: its lease goes and its playlist and pieces are refused for `hold` seconds, so the player
+        gives up. True when the channel was streaming."""
+        now = time.monotonic()
+        with self._lock:
+            live = self._leases.pop((user, key), 0) > now
+            self._stopped = {k: v for k, v in self._stopped.items() if v > now}
+            self._stopped[(user, key)] = now + hold
+            return live
+
+    def stopped(self, user: str, key: str) -> bool:
+        with self._lock:
+            return self._stopped.get((user, key), 0) > time.monotonic()
 
     def drop_lease(self, user: str, key: str) -> None:
         """A playlist that could not be fetched does not keep its place."""

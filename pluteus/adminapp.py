@@ -425,8 +425,16 @@ def create_admin_app(main_app) -> Starlette:
         log.info("admin %s: relay stream %s stopped (%s)", user.name, number, "found" if found else "already gone")
         return done("/", "stopped" if found else "nothing")
 
+    @guarded
+    async def relay_stop_channel(request, user):
+        form = await form_of(request)
+        found = st.relay_limits.stop_lease(_first(form, "user"), _first(form, "key"))
+        log.info("admin %s: relay channel stopped (%s)", user.name, "found" if found else "already gone")
+        return done("/", "stopped" if found else "nothing")
+
     routes = [
         Route("/relay/stop", relay_stop, methods=["POST"]),
+        Route("/relay/stop-channel", relay_stop_channel, methods=["POST"]),
         Route("/users/appkey", make_appkey, methods=["POST"]), Route("/users/appkey/revoke", revoke_appkey, methods=["POST"]),
         Route("/", status), Route("/logout", logout, methods=["POST"]), Route("/security", security),
         Route("/libraries", libraries), Route("/libraries/add", library_add, methods=["POST"]),

@@ -183,7 +183,9 @@ def _relay_box(r) -> str:
     rows = [[escape(s["user"]), escape(s["kind"]), escape(s["label"]), escape(ago(s["since"], now)), _size(s["bytes"]),
              _post("/relay/stop", {"id": s["id"]}, "Stop", "Stop this stream? The listener's player will end.", True)] for s in r["open"]]
     open_html = _table(["User", "Kind", "Station (file#number)", "Since", "Carried", ""], rows, "No audio stream is open.")
-    channels = ("<p>TV channels streaming now: %s</p>" % escape(", ".join("%s (%s)" % (label, user) for user, label in r["channels"]))) if r["channels"] else ""
+    channel_rows = [[escape(user), escape(label), _post("/relay/stop-channel", {"user": user, "key": label}, "Stop",
+                                                          "Stop this channel? It stays refused for two minutes.", True)] for user, label in r["channels"]]
+    channels = _table(["User", "TV channel (file#number)", ""], channel_rows, "") if channel_rows else ""
     totals = ", ".join("%s %s" % (escape(n), _size(b)) for n, b in sorted(r["totals"].items())) or "nothing yet"
     stored = ", ".join("%s (%d)" % (escape(n), c) for n, c in sorted(r["stored"].items())) or "none"
     return _box("Stream relay", "<p>%s &middot; limits %d per user, %d in all</p>%s%s<p>Carried since the start: %s.</p>"

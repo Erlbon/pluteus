@@ -7,7 +7,7 @@
 <link rel="stylesheet" href="__STATIC__picker.css">
 <script src="__STATIC__../scheme.js"></script>
 </head>
-<body data-save="__SAVE__" data-browse="__BROWSE__" data-kind="tv">
+<body data-save="__SAVE__" data-browse="__BROWSE__" data-kind="tv" data-relay="__RELAY__">
 <main>
   <p><a href="__BACK__">&larr; Settings</a></p>
   <h1>Find TV channels</h1>
@@ -30,6 +30,7 @@
     </div>
     <div class="bar">
       <label class="check"><input type="checkbox" id="https" checked> https only (needed on a secure site)</label>
+      <span class="status" id="relayNote" hidden>The relay is on: a saved plain-http channel plays through the server, so you can leave “https only” off. Here in the picker an http channel cannot be tried or tested on a secure site.</span>
       <label class="check"><input type="checkbox" id="hls" checked> HLS (.m3u8) only</label>
       <label class="check"><input type="checkbox" id="nogeo"> skip geo-blocked (only viewable inside their own country)</label>
       <label class="check"><input type="checkbox" id="best" checked> one stream per channel (the best)</label>

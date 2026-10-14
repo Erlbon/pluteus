@@ -80,7 +80,7 @@ public. See "Out of scope".
 | R2 (done in 0.9.8) | **Now playing** (ICY): title in the player bar, the lock screen and the radio page; a station's own "now playing" address where there is one | medium | The DAB-like feature. |
 | R3 (done in 0.9.8) | **HLS relay** for TV channels: playlist rewriting, segments and keys through the relay, CORS and mixed content solved; the picker can offer the http and CORS-blocked channels again | large | Biggest part: token expiry, redirects, many small requests. |
 | R4 (done in 0.9.8) | **Credentials and headers:** the encrypted per-user store, entries in a "my streams" page under Settings, station files that refer to an entry by name, `Referer` / `User-Agent` / basic auth / bearer token | large | SECURITY.md gets a full section. |
-| R5 (done in 0.9.8) | **Admin view and quotas:** running relays, per-user and total caps, Stop (a daily byte ceiling was left out: totals are shown instead) | medium | Stop ends audio streams; HLS channels are listed only. |
+| R5 (done in 0.9.8) | **Admin view and quotas:** running relays, per-user and total caps, Stop (a daily byte ceiling was left out: totals are shown instead) | medium | Stop ends audio streams and HLS channels (a stopped channel is refused for two minutes). |
 | R6 (done in 0.9.8) | Subsonic radio list with relay addresses for http stations | small | The app's key or token is echoed into the address; a plain `p` password is not. |
 
 ### How we will know it works (acceptance)
@@ -217,8 +217,6 @@ things up online, on purpose; the filling happens around it:
    at the top of a Markdown file, compatible with Obsidian and Jekyll, so other tools can write it without any pluteus code. A document, not a
    project.
 
-**Later, if wanted:** coloured code blocks (a small bundled script), read-only Jupyter notebooks (`.ipynb`: cells and outputs shown, nothing run).
-
 **Not planned because it needs an index (decided against):** full-text search, backlinks, tag pages. A file-name search inside a folder is possible.
 
 **Library layout guide (owner, 2026-10-14: with a few files per folder, the folder structure matters more):** `docs/library-layout.md` says
@@ -235,4 +233,4 @@ music and books layouts (the comics layout is recorded; "780 - Music" suggests D
 
 Done in 0.9.8: Subsonic recently played (from the saved positions, nothing new is logged) and resume (`savePlayQueue`, `getPlayQueue`); the player bar merged into the pluteus bar on wide screens; a TV mode for the web pages (large buttons, remote arrow keys; Kodi over WebDAV still covers most of it); a way to forget the per-folder List / Covers choices; a manual Docker image workflow (`docker.yml`, publishes only when ticked). The release workflow already smoke tests the packaged exe, and the Linux build, on every tag.
 
-Still open: a TV mode that has been tried on a real TV browser (the keys are checked in a desktop browser only); Subsonic "resume" from the web player's saved positions (the saved queue only comes from music apps).
+Still open: a TV mode that has been tried on a real TV browser (the keys are checked in a desktop browser only).
