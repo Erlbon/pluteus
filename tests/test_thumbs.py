@@ -103,6 +103,25 @@ def test_the_list_is_the_default_and_the_choice_can_be_saved_in_settings(client)
     assert "pl-grid" not in c.get("/browse/lib/A?view=list", headers={**AUTH, **HTML}).text           # one request can ask for the other
 
 
+def test_the_choice_can_be_kept_per_folder_instead_of_everywhere(client):
+    c, _ = client
+    origin = {**AUTH, "Origin": "http://testserver"}
+    r = c.post("/settings", data={"theme": "default", "icons": "gold", "view": "list", "view_scope": "folder"}, headers=origin, follow_redirects=False)
+    assert r.status_code == 303
+    assert "<option value='folder' selected>" in c.get("/settings", headers={**AUTH, **HTML}).text
+    assert "pl-grid" in c.get("/browse/lib/A?view=grid", headers={**AUTH, **HTML}).text                # covers for A only ...
+    assert "pl-grid" in c.get("/browse/lib/A", headers={**AUTH, **HTML}).text
+    assert "pl-grid" not in c.get("/browse/lib", headers={**AUTH, **HTML}).text                         # ... the other folders keep the general list
+    assert "pl-grid" not in c.get("/browse/lib/A?view=list", headers={**AUTH, **HTML}).text           # and A can be switched back on its own
+    assert "pl-grid" not in c.get("/browse/lib/A", headers={**AUTH, **HTML}).text
+    c.get("/browse/lib?view=grid", headers={**AUTH, **HTML})
+    c.post("/settings", data={"theme": "default", "icons": "gold", "view": "grid", "view_scope": "folder"}, headers=origin)
+    assert "pl-grid" in c.get("/browse/lib", headers={**AUTH, **HTML}).text                             # a folder with its own choice keeps it
+    assert "pl-grid" not in c.get("/browse/lib/A", headers={**AUTH, **HTML}).text                       # A chose the list on its own
+    c.post("/settings", data={"theme": "default", "icons": "gold", "view": "list", "view_scope": "all"}, headers=origin)
+    assert "pl-grid" not in c.get("/browse/lib/A", headers={**AUTH, **HTML}).text
+
+
 def test_the_list_or_covers_switch_on_a_folder_page_is_remembered(client):
     c, _ = client
     assert "pl-grid" not in c.get("/browse/lib/A", headers={**AUTH, **HTML}).text

@@ -21,6 +21,7 @@ class Ctx:
     admin_link: str = ""         # address of the admin page, for an administrator on the local network; else empty
     extras: bool = True          # the speed and sleep controls in the audio/video player
     tv_sound: bool = True        # the sound of a live TV channel goes on in the shell's player when its page is left
+    view_scope: str = "all"      # the List / Covers choice on a folder page holds for "all" folders or is kept per "folder"
     view: str = "list"           # how a folder is shown: "list" (rows) or "grid" (covers)
     thumbs: bool = False         # thumbnails are switched on (thumbnails = true): the cover view and its switches exist
 
@@ -846,7 +847,10 @@ def settings_page(ctx: Ctx, themes: list, saved: bool = False, stations: bool = 
             "<button class='pl-btn pl-btn-primary' type='submit'>Save</button></form>%s"
             "<p><a href='%s'>&larr; Back to the library</a></p></main>"
             % (note, escape(ctx.urls.settings()), opts, icon_opts,
-               ("<label class='pl-field'><span>Folders are shown as</span><select name='view'>%s</select></label>" % view_opts) if ctx.thumbs else "",
+               ("<label class='pl-field'><span>Folders are shown as</span><select name='view'>%s</select></label>"
+                "<label class='pl-field'><span>A List or Covers choice on a folder page holds for</span><select name='view_scope'>"
+                "<option value='all'%s>Every folder</option><option value='folder'%s>That folder only (the choice above is the start)</option></select></label>"
+                % (view_opts, " selected" if ctx.view_scope == "all" else "", " selected" if ctx.view_scope == "folder" else "")) if ctx.thumbs else "",
                extras_opts,
                "".join("<option value='%s'%s>%s</option>" % (k, " selected" if (k == "keep") == ctx.tv_sound else "", label)
                        for k, label in (("keep", "Keep the sound playing in the player bar"), ("stop", "Stop it"))),

@@ -4,7 +4,7 @@ Release notes are taken from the section of the tagged version (`## 0.5.0 ...`).
 
 ## Unreleased (for 0.9.7)
 - **Station and channel logos:** the radio and TV pickers send each station's logo (radio-browser's favicon, iptv-org's logo list), and the server downloads it once (guarded: public web addresses only, size and time limits, checked as a real picture and rewritten small) and saves it beside the file as `Name.png` or `.jpg`; the `.m3u` also keeps a `tvg-logo` attribute (Kodi reads it). A picture of the same name put next to a station file by hand counts too. The logo is the cover of the radio page, sits beside the channel name on the TV page, shows on the left of the player bar, and gives the station file a real tile in the cover view. Nothing is fetched when you browse. See SECURITY.md.
-- **List or Covers is remembered:** the List / Covers switch on a folder page used to apply to that page only; now the choice is saved (the same setting as in Settings) and holds in every folder.
+- **List or Covers is remembered:** the List / Covers switch on a folder page used to apply to that page only; now the choice is saved (the same setting as in Settings) and holds in every folder. A Settings option decides how far it reaches: **every folder** (the default) or **that folder only**, so some folders can stay covers and others lists; a folder with no choice of its own follows the general one set in Settings. (At most 500 folders are kept.)
 - **Live channel player:** the round play button sits closer to the LIVE row. The music and movie players keep room above it for the playback speed; a live channel has no speed, so that gap was empty.
 
 ## 0.9.6 - 2026-10-14

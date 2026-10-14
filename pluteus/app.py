@@ -363,7 +363,8 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
                        icons=icons_for(user.name), view=(view or view_for(user.name)) if cfg.thumbnails else "list",
                        thumbs=cfg.thumbnails,
                        extras=state.get_prefs(user.name).get("player_extras", True) is not False,
-                       tv_sound=state.get_prefs(user.name).get("tv_sound", True) is not False)
+                       tv_sound=state.get_prefs(user.name).get("tv_sound", True) is not False,
+                       view_scope="folder" if state.get_prefs(user.name).get("view_scope") == "folder" else "all")
 
     def unauthorized(request: Request, mode: str, wait: int) -> Response:
         if wait:
@@ -646,15 +647,26 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
         has_cover = await run_in_threadpool(folder_picture)
         asked = request.query_params.get("view", "")
         asked = asked if asked in ("list", "grid") else ""
-        if asked and cfg.thumbnails and user.name != cfg.anonymous_user and view_for(user.name) != asked:
-            # the List / Covers switch on a folder page is the user's choice from now on (the shared anonymous user keeps none)
-            def remember():
+        shown_view = asked
+        if cfg.thumbnails and user.name != cfg.anonymous_user:
+            # the List / Covers switch on a folder page is remembered (the shared anonymous user keeps none): for every folder, or for
+            # this folder only, as the user chose in Settings; a folder with no choice of its own follows the general one
+            def remember_and_find() -> str:
                 prefs = dict(state.get_prefs(user.name))
-                prefs["view"] = asked
-                state.set_prefs(user.name, prefs)
-            await run_in_threadpool(remember)
+                per_folder = prefs.get("view_scope") == "folder"
+                key = "/".join((root,) + parts)
+                folders = dict(prefs.get("view_folders") or {})
+                if asked and per_folder and folders.get(key) != asked:
+                    folders[key] = asked
+                    prefs["view_folders"] = dict(list(folders.items())[-500:])                    # a long list is trimmed from the oldest end
+                    state.set_prefs(user.name, prefs)
+                elif asked and not per_folder and prefs.get("view") != asked:
+                    prefs["view"] = asked
+                    state.set_prefs(user.name, prefs)
+                return asked or (folders.get(key, "") if per_folder else "")
+            shown_view = await run_in_threadpool(remember_and_find)
         return HTMLResponse(web.listing_page(
-            root, parts, shown, page, pages, len(entries), ctx_for(user, asked), metas, progress, sort=sort, desc=desc,
+            root, parts, shown, page, pages, len(entries), ctx_for(user, shown_view), metas, progress, sort=sort, desc=desc,
             writable=root == UPLOADS_ROOT, flash=web.flash_text(request.query_params),
             cover_url=urls.cover(root, parts) if (has_cover and parts) else "", view_asked=asked, shelves=flags))
 
@@ -673,6 +685,8 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
                 prefs["icons"] = icons
             if form.get("view") in ("list", "grid"):
                 prefs["view"] = form["view"]
+            if form.get("view_scope") in ("all", "folder"):
+                prefs["view_scope"] = form["view_scope"]
             if form.get("extras") in ("show", "hide"):
                 prefs["player_extras"] = form["extras"] == "show"
             if form.get("tv_sound") in ("keep", "stop"):
