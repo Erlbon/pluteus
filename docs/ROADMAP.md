@@ -46,6 +46,9 @@ public. See "Out of scope".
    addresses go through the relay (with the same checks), refreshed playlists passed on at the source's pace; `Range` is not used on live.
 6. **ICY metadata:** ask for `Icy-MetaData: 1`, strip the metadata blocks from the audio it passes on (or pass on the clean stream and the
    title as a separate small event stream), parse `StreamTitle`, send it to the page (server-sent events or a short poll) and to Media Session.
+   **How it shows (mockup first):** in the player bar the main line becomes `Artist – Title` with the station name and logo as the smaller line;
+   with no title (a station that sends none, or between songs) the bar stays as today, station name and "Live radio". The same text goes to the
+   radio page and the lock screen, and it changes live as the song changes.
 7. **Fallback, not default:** the player tries the direct address first and uses the relay only when the stream cannot be played directly (CORS,
    mixed content) or the entry says "always relay" (credentials, headers). Radio that works directly does not pass through the server.
 8. **Visible to the owner:** the admin page lists relayed streams now running, who, how long, how much; a switch turns the relay off
