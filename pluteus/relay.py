@@ -45,6 +45,9 @@ class Limiter:
         self._open: dict = {}
         self._leases: dict = {}
         self._pieces: dict = {}
+        self._streams: dict = {}
+        self._totals: dict = {}
+        self._serial = 0
         self._lock = threading.Lock()
 
     def acquire(self, user: str) -> bool:
@@ -66,6 +69,42 @@ class Limiter:
         with self._lock:
             return dict(self._open)
 
+    # what the admin page shows: who has a stream open (a label, never an address), how much each user has carried since the start, and
+    # a Stop that ends one (the pump looks at the flag between chunks)
+    def register(self, user: str, label: str, kind: str) -> dict:
+        with self._lock:
+            self._serial += 1
+            handle = {"id": self._serial, "user": user, "label": label, "kind": kind, "since": time.time(), "bytes": 0, "stop": False}
+            self._streams[self._serial] = handle
+            return handle
+
+    def unregister(self, handle: dict) -> None:
+        with self._lock:
+            self._streams.pop(handle["id"], None)
+            totals = self._totals
+            totals[handle["user"]] = totals.get(handle["user"], 0) + handle["bytes"]
+            self._totals = totals
+
+    def streams(self) -> list:
+        with self._lock:
+            return [dict(h) for h in self._streams.values()]
+
+    def totals(self) -> dict:
+        """Bytes carried per user since the start: finished streams plus what the open ones have carried so far."""
+        with self._lock:
+            out = dict(self._totals)
+            for h in self._streams.values():
+                out[h["user"]] = out.get(h["user"], 0) + h["bytes"]
+            return out
+
+    def stop(self, stream_id: int) -> bool:
+        with self._lock:
+            handle = self._streams.get(stream_id)
+            if handle is None:
+                return False
+            handle["stop"] = True
+            return True
+
     # an HLS stream is many short requests, so it holds a lease that every playlist refresh renews and that lapses when the player leaves
     def lease(self, user: str, key: str, ttl: float = 45.0) -> bool:
         now = time.monotonic()
@@ -79,6 +118,12 @@ class Limiter:
             leases[(user, key)] = now + ttl
             self._leases = leases
             return True
+
+    def lease_list(self) -> list:
+        """(user, label) of the TV channels that are streaming now (a lease that has not lapsed)."""
+        now = time.monotonic()
+        with self._lock:
+            return sorted(k for k, v in self._leases.items() if v > now)
 
     def drop_lease(self, user: str, key: str) -> None:
         """A playlist that could not be fetched does not keep its place."""

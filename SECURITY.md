@@ -60,6 +60,7 @@ around that: the code is in `pluteus/relay.py` and shares its address guard with
     breaks playback silently. **Back up the data folder or keep the config key:** entries cannot be recovered without the key.
   - **Only the owner:** an entry is looked up by the signed-in user's name and its name; another user, and the administrator, cannot use or read
     it, and the entries of a removed user are deleted.
+    The admin page's relay box shows only counts of stored streams per user and the key's fingerprint, never a name or a value.
   - **Sent only where it belongs:** the login and headers go only to the host names the entry lists, decided again at every hop, so a redirect or
     a playlist piece on another host never carries them (like `curl`). Playlist tokens carry the entry's name, never a secret; nothing of an entry
     appears in a page, a log or an error message; headers that could break the request (`Host`, `Content-Length`, `Authorization` ...) cannot be set.

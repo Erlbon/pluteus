@@ -1210,18 +1210,22 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
             relay_limits.release(user.name)
             raise
 
+        handle = relay_limits.register(user.name, "%s/%s#%d" % (root, "/".join(parts), number), "radio")
+
         async def pump():
             try:
-                while True:
+                while not handle["stop"]:                    # the admin's Stop sets the flag
                     chunk = await run_in_threadpool(relay.read_chunk, response)
                     if not chunk:
                         break
+                    handle["bytes"] += len(chunk)
                     yield chunk
             finally:                                         # the listener left, the stream ended or stalled: nothing stays open
                 try:
                     connection.close()
                 except Exception:                            # noqa: BLE001
                     pass
+                relay_limits.unregister(handle)
                 relay_limits.release(user.name)
         return StreamingResponse(pump(), media_type=kind, headers={"Cache-Control": "no-store", "X-Content-Type-Options": "nosniff"})
 
@@ -1801,6 +1805,8 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
     # What the admin page (adminapp.py, on its own port) shares with this app: the same state, throttle and users, the
     # same configuration, and the public routes for the stylesheets, icons and themes.
     app.state.cfg = cfg
+    app.state.relay_limits = relay_limits
+    app.state.relay_vault = vault_state
     app.state.config_path = config_path
     app.state.started = time.time()
     app.state.asset_routes = [r for r in routes if r.path in ("/static/{path:path}", "/favicon.ico", "/theme/{name}/{path:path}")]

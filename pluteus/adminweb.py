@@ -15,7 +15,7 @@ FLASH = {
     "unlocked": "The lock is cleared.", "nothing": "There was nothing to clear.", "forgot": "That device is forgotten.",
     "signedout": "Signed out everywhere (sessions and known devices removed).",
     "libadded": "Library added. It is available now.", "libremoved": "Library removed. Nothing on disk was touched.",
-    "added": "User added.", "password": "Password changed.", "access": "Access saved.", "removed": "User removed.", "keyrevoked": "App key revoked.",
+    "added": "User added.", "password": "Password changed.", "access": "Access saved.", "removed": "User removed.", "keyrevoked": "App key revoked.", "stopped": "That stream is stopped.",
 }
 
 
@@ -171,6 +171,25 @@ def _services_box(services) -> str:
     return _box("Services", _table(["Service", "State", "Address", "Login"], rows, "") + note)
 
 
+def _relay_box(r) -> str:
+    """The stream relay: what is open now (with a Stop), what each user has carried since the start, and who has stored streams (counts only)."""
+    if not r:
+        return ""
+    if r["key_id"]:
+        key = _light("ok", "key from %s" % escape(r["key_source"])) + " <span class='pl-muted'>&middot; fingerprint <code>%s</code></span>" % escape(r["key_id"])
+    else:
+        key = _light("bad", "stored streams off") + " <span class='pl-muted'>&middot; %s</span>" % escape(r["problem"] or "no key")
+    now = time.time()
+    rows = [[escape(s["user"]), escape(s["kind"]), escape(s["label"]), escape(ago(s["since"], now)), _size(s["bytes"]),
+             _post("/relay/stop", {"id": s["id"]}, "Stop", "Stop this stream? The listener's player will end.", True)] for s in r["open"]]
+    open_html = _table(["User", "Kind", "Station (file#number)", "Since", "Carried", ""], rows, "No audio stream is open.")
+    channels = ("<p>TV channels streaming now: %s</p>" % escape(", ".join("%s (%s)" % (label, user) for user, label in r["channels"]))) if r["channels"] else ""
+    totals = ", ".join("%s %s" % (escape(n), _size(b)) for n, b in sorted(r["totals"].items())) or "nothing yet"
+    stored = ", ".join("%s (%d)" % (escape(n), c) for n, c in sorted(r["stored"].items())) or "none"
+    return _box("Stream relay", "<p>%s &middot; limits %d per user, %d in all</p>%s%s<p>Carried since the start: %s.</p>"
+                "<p>Stored streams (logins and headers, encrypted; counts only): %s.</p>" % (key, r["per_user"], r["total"], open_html, channels, totals, stored))
+
+
 def status_page(ctx: Ctx, d: dict) -> str:
     n = d.get("names", {})
 
@@ -190,7 +209,7 @@ def status_page(ctx: Ctx, d: dict) -> str:
         space = "%s free of %s" % (_size(r["free"]), _size(r["total"])) if r["free"] is not None else ""
         roots.append([escape(r["name"]), "<code>%s</code>" % escape(r["path"]), state, escape(space)])
     services = _services_box(d.get("services"))
-    boxes = [_box("Server", facts)] + ([services] if services else []) + [_box("Libraries", _table(["Name", "Folder", "State", "Disk"], roots, "No libraries."))]
+    boxes = [_box("Server", facts)] + ([services] if services else []) + ([_relay_box(d.get("relay"))] if d.get("relay") else []) + [_box("Libraries", _table(["Name", "Folder", "State", "Disk"], roots, "No libraries."))]
     up = d["uploads"]
     if up:
         rows = [[escape(u["name"]), _size(u["size"])] for u in up["users"]]

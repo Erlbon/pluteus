@@ -377,3 +377,19 @@ def test_the_tv_page_offers_each_channel_its_playlist_through_the_server(cfg, tm
     plain, folder2 = signed_in(cfg, tmp_path / "plain")
     put(folder2, "tv.m3u", station + "/hls/master.m3u8")
     assert "data-relay=''" in plain.get("/view/uploads/Radio/tv.m3u", headers=HTML).text
+
+
+def test_admin_stop_ends_a_running_stream_and_frees_its_slot(cfg, tmp_path, station):
+    me, folder = signed_in(cfg, tmp_path, relay=True, relay_streams_user=1)
+    put(folder, "a.m3u", station + "/slow")
+    limits = me.app.state.relay_limits if hasattr(me.app.state, "relay_limits") else me.app.app.state.relay_limits
+    got = {}
+    worker = threading.Thread(target=lambda: got.update(r=me.get("/relay/uploads/Radio/a.m3u?i=0")))
+    worker.start()
+    time.sleep(0.4)
+    running = limits.streams()
+    assert len(running) == 1 and running[0]["user"] == "alice" and running[0]["label"] == "uploads/Radio/a.m3u#0"
+    assert limits.stop(running[0]["id"])
+    worker.join(10)
+    assert 0 < len(got["r"].content) < 50 * 1024                                              # cut short by the Stop
+    assert limits.streams() == [] and limits.totals()["alice"] == len(got["r"].content) and limits.snapshot() == {}

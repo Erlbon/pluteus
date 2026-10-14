@@ -80,7 +80,7 @@ public. See "Out of scope".
 | R2 (done in 0.9.8) | **Now playing** (ICY): title in the player bar, the lock screen and the radio page; a station's own "now playing" address where there is one | medium | The DAB-like feature. |
 | R3 (done in 0.9.8) | **HLS relay** for TV channels: playlist rewriting, segments and keys through the relay, CORS and mixed content solved; the picker can offer the http and CORS-blocked channels again | large | Biggest part: token expiry, redirects, many small requests. |
 | R4 (done in 0.9.8) | **Credentials and headers:** the encrypted per-user store, entries in a "my streams" page under Settings, station files that refer to an entry by name, `Referer` / `User-Agent` / basic auth / bearer token | large | SECURITY.md gets a full section. |
-| R5 | **Admin view and quotas:** running relays, per-user and total caps, daily ceiling | medium | |
+| R5 (done in 0.9.8) | **Admin view and quotas:** running relays, per-user and total caps, Stop (a daily byte ceiling was left out: totals are shown instead) | medium | Stop ends audio streams; HLS channels are listed only. |
 | R6 | Subsonic radio list with relay addresses for http stations | small | |
 
 ### How we will know it works (acceptance)

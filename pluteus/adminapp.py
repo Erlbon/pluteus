@@ -136,6 +136,16 @@ def create_admin_app(main_app) -> Starlette:
         except OSError:
             return None, None
 
+    def relay_status() -> dict:
+        """The relay as the admin sees it: limits, the key's source and fingerprint, open streams, totals, and how many streams each user has
+        stored (counts only: the admin cannot read or use a stored login)."""
+        lim, vstate = st.relay_limits, st.relay_vault
+        vlt = vstate["vault"]
+        stored = {n: len(state.stream_list(n)) for n in sorted(auth.users)}
+        return {"per_user": lim.per_user, "total": lim.total, "key_source": vstate["source"], "key_id": vlt.key_id if vlt else "",
+                "problem": vstate["problem"], "open": lim.streams(), "channels": lim.lease_list(), "totals": lim.totals(),
+                "stored": {n: c for n, c in stored.items() if c}}
+
     def collect_status() -> dict:
         roots = []
         for r in st.library.cfg.roots.values():
@@ -184,6 +194,7 @@ def create_admin_app(main_app) -> Starlette:
              "keys": "users with an upload folder"},
         ]
         return {
+            "relay": relay_status() if cfg.relay else None,
             "services": services,
             "update": updates.status() if updates else None,
             "bsdtar": bool(cbz.bsdtar()),
@@ -403,7 +414,18 @@ def create_admin_app(main_app) -> Starlette:
         log.info("admin %s: music app key revoked for %s", user.name, name)
         return done("/users", "keyrevoked")
 
+    @guarded
+    async def relay_stop(request, user):
+        try:
+            number = int(_first(await form_of(request), "id"))
+        except (TypeError, ValueError):
+            number = -1
+        found = st.relay_limits.stop(number)
+        log.info("admin %s: relay stream %s stopped (%s)", user.name, number, "found" if found else "already gone")
+        return done("/", "stopped" if found else "nothing")
+
     routes = [
+        Route("/relay/stop", relay_stop, methods=["POST"]),
         Route("/users/appkey", make_appkey, methods=["POST"]), Route("/users/appkey/revoke", revoke_appkey, methods=["POST"]),
         Route("/", status), Route("/logout", logout, methods=["POST"]), Route("/security", security),
         Route("/libraries", libraries), Route("/libraries/add", library_add, methods=["POST"]),
