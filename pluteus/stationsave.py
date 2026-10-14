@@ -163,3 +163,134 @@ def save(lib, quota_mb: int, user, data) -> dict:
                 if quota_left is not None:
                     quota_left -= len(data_bytes)
     return {"saved": saved, "skipped": skipped, "logos": logos, "folder": "/".join(base)}
+
+
+# ---- logos for the station files that are already there -------------------------------------------------------------------------
+_LOGO_ATTRIBUTE = re.compile(r'tvg-logo="([^"]{1,500})"', re.IGNORECASE)
+_EXTINF = re.compile(r"^(#EXTINF:[^\s,]*)", re.MULTILINE)
+MAX_WALK = 2000
+MAX_DEPTH = 3
+MAX_BATCH = 40
+
+
+def _kind_folder(lib, user, kind: str):
+    """(folder path, parts) of Radio/ or IPTV/ in the user's upload folder, or (None, ()) when there is none yet."""
+    if kind not in KINDS:
+        raise ValueError("format")
+    parts = (KINDS[kind],)
+    try:
+        return lib.upload_dir(user, parts), parts
+    except Exception:                                      # noqa: BLE001  NotFound: nothing saved yet
+        return None, parts
+
+
+def missing(lib, user, kind: str) -> list:
+    """The station files of Radio/ or IPTV/ (and the folders below, a few levels) that have no picture beside them:
+    [{"path": "Norway/NRK P3.m3u", "name": "NRK P3", "url": first stream address, "logo": the tvg-logo address in the file or ''}]."""
+    from . import radio
+    top, _ = _kind_folder(lib, user, kind)
+    found = []
+    if top is None:
+        return found
+    stack = [(top, "", 0)]
+    while stack and len(found) < MAX_WALK:
+        folder, rel, depth = stack.pop()
+        try:
+            with os.scandir(longpath(folder)) as it:
+                entries = sorted(it, key=lambda e: e.name.lower())
+        except OSError:
+            continue
+        for e in entries:
+            try:
+                if e.is_dir(follow_symlinks=False) and depth < MAX_DEPTH and not lib.is_hidden_name(e.name):
+                    stack.append((os.path.join(folder, e.name), rel + e.name + "/", depth + 1))
+                elif e.is_file(follow_symlinks=False) and radio.is_radio_file(e.name) and not lib.is_hidden_name(e.name):
+                    path = os.path.join(folder, e.name)
+                    if radio.find_logo(path):
+                        continue
+                    stations = radio.read_file(path)
+                    if not stations:
+                        continue
+                    try:
+                        with open(longpath(path), "rb") as f:
+                            head = f.read(65536).decode("utf-8", "replace")
+                    except OSError:
+                        head = ""
+                    m = _LOGO_ATTRIBUTE.search(head)
+                    found.append({"path": rel + e.name, "name": os.path.splitext(e.name)[0], "url": stations[0][1],
+                                  "logo": _logo_address(m.group(1)) if m else ""})
+            except OSError:
+                continue
+    return found[:MAX_WALK]
+
+
+def _with_logo_attribute(text: str, logo: str, stem: str) -> str:
+    """The file's text with a tvg-logo attribute on its first #EXTINF line (a plain list of addresses gets one); unchanged if it has one."""
+    if _LOGO_ATTRIBUTE.search(text):
+        return text
+    if _EXTINF.search(text):
+        return _EXTINF.sub(lambda m: '%s tvg-logo="%s"' % (m.group(1), logo), text, count=1)
+    lines = text.splitlines()
+    for i, line in enumerate(lines):
+        if _ADDRESS.fullmatch(line.strip()):
+            lines.insert(i, '#EXTINF:-1 tvg-logo="%s",%s' % (logo, _text(stem)))
+            return "\n".join(lines) + "\n"
+    return text
+
+
+def apply_logos(lib, quota_mb: int, user, kind: str, items: list) -> dict:
+    """Fetch the logo of each item ({"path": "Norway/NRK P3.m3u", "logo": address}) and save it beside that station file, and name it in the
+    file when the file does not. Only existing station files inside Radio/ or IPTV/ of this user are touched; a picture that is already
+    there is kept. Returns {"fetched": n, "failed": n, "skipped": n}."""
+    from . import radio
+    top, parts = _kind_folder(lib, user, kind)
+    if top is None or not isinstance(items, list):
+        raise ValueError("format")
+    wanted = []
+    for item in items[:MAX_BATCH]:
+        if isinstance(item, dict) and isinstance(item.get("path"), str):
+            wanted.append(item)
+    pictures = _fetch_logos(wanted)
+    quota_left = None
+    if quota_mb:
+        quota_left = max(0, quota_mb * 1024 * 1024 - uploads.tree_size(lib.upload_base(user)))
+    fetched = failed = skipped = 0
+    for number, item in enumerate(wanted):
+        names = [p for p in item["path"].split("/") if p]
+        if not names or len(names) > MAX_DEPTH + 1 or any(p in (".", "..") or "\\" in p or p != uploads.sanitize_name(p, lib.is_hidden_name) for p in names):
+            skipped += 1
+            continue
+        try:
+            folder = lib.upload_dir(user, parts + tuple(names[:-1]))
+        except Exception:                                  # noqa: BLE001  not a folder in the user's upload area
+            skipped += 1
+            continue
+        path = os.path.join(folder, names[-1])
+        if not (radio.is_radio_file(names[-1]) and os.path.isfile(longpath(path)) and not os.path.islink(longpath(path))) or radio.find_logo(path):
+            skipped += 1
+            continue
+        picture = pictures.get(number)
+        if not picture:
+            failed += 1
+            continue
+        data_bytes, ext = picture
+        if quota_left is not None and len(data_bytes) > quota_left:
+            raise uploads.UploadError("quota")
+        stem = os.path.splitext(names[-1])[0]
+        _write(folder, stem + "." + ext, data_bytes)
+        if quota_left is not None:
+            quota_left -= len(data_bytes)
+        try:                                               # name the logo in the file too (a .m3u; the file stays otherwise as it was)
+            if not names[-1].lower().endswith((".m3u", ".m3u8")) or not _logo_address(item.get("logo")):
+                raise OSError
+            with open(longpath(path), "rb") as f:
+                original = f.read(262144 + 1)
+            if len(original) <= 262144:
+                text = original.decode("utf-8", "replace")
+                updated = _with_logo_attribute(text, _logo_address(item.get("logo")), stem)
+                if updated != text:
+                    _write(folder, names[-1], updated.encode("utf-8"))
+        except OSError:
+            pass
+        fetched += 1
+    return {"fetched": fetched, "failed": failed, "skipped": skipped}

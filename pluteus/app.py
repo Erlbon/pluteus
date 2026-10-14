@@ -984,6 +984,35 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
         return HTMLResponse(text, headers={"Content-Security-Policy": csp})
 
     @guarded("web")
+    async def stations_missing(request: Request, user):
+        """The station files of Radio/ or IPTV/ (the user's upload folder) that have no logo beside them, for the picker's
+        "Fetch missing logos"."""
+        if not lib.uploads_enabled(user):
+            raise NotFound("no upload folder")
+        try:
+            found = await run_in_threadpool(stationsave.missing, lib, user, request.query_params.get("kind", ""))
+        except ValueError:
+            return JSONResponse({"error": "The request was not understood."}, 400)
+        return JSONResponse({"items": found})
+
+    @guarded("web")
+    async def stations_logos(request: Request, user):
+        """Fetch the logos the picker found for existing station files and save them beside those files."""
+        if not lib.uploads_enabled(user):
+            raise NotFound("no upload folder")
+        raw = await read_limited(request, 100_000)
+        if raw is None:
+            return JSONResponse({"error": "That is too many at once."}, 413)
+        try:
+            data = json.loads(raw.decode("utf-8"))
+            result = await run_in_threadpool(stationsave.apply_logos, lib, cfg.upload_quota_mb, user, data.get("kind", ""), data.get("items"))
+        except (ValueError, UnicodeDecodeError, AttributeError):
+            return JSONResponse({"error": "The request was not understood."}, 400)
+        except uploads.UploadError as e:
+            return JSONResponse({"error": "Not saved: %s." % web.UPLOAD_MESSAGES.get(e.code, "something went wrong")}, 400)
+        return JSONResponse(result)
+
+    @guarded("web")
     async def stations_save(request: Request, user):
         """Write the ticked stations as .m3u files into the user's upload folder (Radio/ or IPTV/)."""
         if not lib.uploads_enabled(user):
@@ -1442,6 +1471,8 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
         Route("/shell", shell),
         Route("/stations/{kind}", stations_page),
         Route("/api/stations", stations_save, methods=["POST"]),
+        Route("/api/stations/missing", stations_missing),
+        Route("/api/stations/logos", stations_logos, methods=["POST"]),
         Route("/api/queue/{root}/{path:path}", queue),
         Route("/api/queue/{root}", queue),
         Route("/zip/{root}/{path:path}", zip_entry),

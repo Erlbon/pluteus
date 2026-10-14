@@ -12,7 +12,7 @@
   function clean(text) { return String(text || "").replace(/[\u0000-\u001f\u007f]/g, " ").replace(/\s+/g, " ").trim().slice(0, 120); }
   function height(q) { var m = /^(\d+)p?/.exec(q || ""); return m ? +m[1] : 0; }
 
-  var logoOf = {};                                           // channel id -> the address of its logo (the picture closest to 256 pixels wide)
+  var logoOf = {}, channelOf = {};                           // channel id -> the address of its logo (the picture closest to 256 pixels wide); stream address -> channel id
   Promise.all([load("channels"), load("streams"), load("countries"), load("categories"), load("logos").catch(function () { return []; })]).then(function (all) {
     all[4].forEach(function (l) {
       if (!l.channel || !/^(PNG|JPEG|WebP)$/i.test(l.format || "") || !/^https?:\/\//i.test(l.url || "")) return;       // the server takes no SVG
@@ -29,6 +29,8 @@
       categoryNames[c.id] = c.name;
       var o = document.createElement("option"); o.value = c.id; o.textContent = c.name; $("category").appendChild(o);
     });
+    all[1].forEach(function (s) { if (s.channel && s.url) channelOf[s.url] = s.channel; });
+    $("fillLogos").disabled = false;
     streams = all[1].filter(function (s) {
       return s.channel && channels[s.channel] && /^https?:\/\//i.test(s.url) && !s.user_agent && !s.referrer;       // a web page cannot send these headers
     });
@@ -191,6 +193,41 @@
       })
       .catch(function () { log("Not saved: the server could not be reached.", true); })
       .then(function () { update(); });
+  });
+
+  /* ---- logos for the channel files already saved: ask the server which lack one, find each logo (the catalogue, by stream address)
+     and let the server fetch and save them ---- */
+  function fillMissing(kind, lookup) {
+    var button = $("fillLogos"), note = $("fillStatus");
+    button.disabled = true;
+    note.textContent = "Looking through your files…";
+    fetch(page.save + "/missing?kind=" + kind, { credentials: "same-origin" }).then(function (r) { return r.json(); }).then(function (d) {
+      var items = d.items || [];
+      if (!items.length) { note.textContent = "Every channel file already has a logo."; return null; }
+      var found = [];
+      items.forEach(function (item) {
+        var logo = item.logo || lookup(item);
+        if (logo) found.push({ path: item.path, logo: logo });
+      });
+      var totals = { fetched: 0, failed: 0 }, chain = Promise.resolve();
+      for (var b = 0; b < found.length; b += 25) (function (batch) {
+        chain = chain.then(function () {
+          note.textContent = "Fetching logos… (" + totals.fetched + " saved so far)";
+          return fetch(page.save.replace(/stations$/, "stations/logos"), {
+            method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ kind: kind, items: batch })
+          }).then(function (r) { return r.json().then(function (j) { if (!r.ok) throw new Error(j.error || "failed"); return j; }); })
+            .then(function (j) { totals.fetched += j.fetched; totals.failed += j.failed; });
+        });
+      })(found.slice(b, b + 25));
+      return chain.then(function () {
+        note.textContent = "Done: " + totals.fetched + " logos saved; " + (items.length - found.length) + " files have no logo in the catalogue; " +
+          totals.failed + " logos could not be fetched.";
+      });
+    }).catch(function (e) { note.textContent = "Not finished: " + ((e && e.message) || "the server could not be reached") + "."; })
+      .then(function () { button.disabled = false; });
+  }
+  $("fillLogos").addEventListener("click", function () {
+    fillMissing("tv", function (item) { var id = channelOf[item.url]; return id && logoOf[id] ? logoOf[id].url : ""; });
   });
 
   $("go").addEventListener("click", search);

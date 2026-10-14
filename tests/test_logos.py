@@ -184,3 +184,68 @@ def test_the_station_save_survives_slow_or_failing_logo_hosts(up, monkeypatch):
     r = post(me, {"kind": "radio", "stations": [{"name": "Boom", "url": "https://example.org/b", "logo": "https://l.example.org/b.png"}]})
     assert r.status_code == 200 and r.json()["saved"] == 1 and r.json()["logos"] == 0
     assert stationsave.LOGO_BUDGET > 0
+
+
+# ---- logos for station files that are already there ------------------------------------------------------------------------------
+def make_files(folder):
+    radio = folder / "alice" / "Radio"
+    (radio / "Norway").mkdir(parents=True)
+    (radio / "a.m3u").write_text("https://example.org/a\n", encoding="utf-8")
+    (radio / "Norway" / "b.m3u").write_text('#EXTM3U\n#EXTINF:-1 tvg-logo="https://logos.example.org/b.png",B Station\nhttps://example.org/b\n', encoding="utf-8")
+    (radio / "c.m3u").write_text("#EXTM3U\n#EXTINF:-1,C\nhttps://example.org/c\n", encoding="utf-8")
+    (radio / "c.png").write_bytes(png_bytes((16, 16)))                                    # c already has a picture
+    (radio / "d.pls").write_text("[playlist]\nFile1=https://example.org/d\nTitle1=D\n", encoding="utf-8")
+    (radio / "e.m3u").write_text("https://example.org/e\n", encoding="utf-8")
+    (radio / "local.m3u").write_text("song.mp3\n", encoding="utf-8")                      # not a station
+    (radio / "notes.txt").write_text("https://example.org/x\n", encoding="utf-8")
+    return radio
+
+
+def test_the_files_without_a_logo_are_listed_with_what_the_file_already_says(up):
+    me, app, folder = up
+    assert me.get("/api/stations/missing?kind=radio").json() == {"items": []}             # no Radio folder yet
+    make_files(folder)
+    items = me.get("/api/stations/missing?kind=radio").json()["items"]
+    assert sorted((i["path"], i["url"], i["logo"]) for i in items) == [
+        ("Norway/b.m3u", "https://example.org/b", "https://logos.example.org/b.png"),
+        ("a.m3u", "https://example.org/a", ""), ("d.pls", "https://example.org/d", ""), ("e.m3u", "https://example.org/e", "")]
+    assert me.get("/api/stations/missing?kind=nope").status_code == 400
+    assert me.get("/api/stations/missing?kind=tv").json() == {"items": []}
+
+
+def test_the_found_logos_are_fetched_saved_and_named_in_the_file(up, monkeypatch):
+    me, app, folder = up
+    radio = make_files(folder)
+    pic = png_bytes((48, 48))
+    monkeypatch.setattr(fetchimage, "fetch_logo", lambda url: (pic, "png") if "good" in url else None)
+    r = me.post("/api/stations/logos", content=json.dumps({"kind": "radio", "items": [
+        {"path": "a.m3u", "logo": "https://l.example.org/good-a.png"},
+        {"path": "Norway/b.m3u", "logo": "https://logos.example.org/good-b.png"},
+        {"path": "d.pls", "logo": "https://l.example.org/good-d.png"},
+        {"path": "c.m3u", "logo": "https://l.example.org/good-c.png"},                  # already has a picture: kept
+        {"path": "../../x.m3u", "logo": "https://l.example.org/good-x.png"},              # outside: refused
+        {"path": "gone.m3u", "logo": "https://l.example.org/good-g.png"},
+        {"path": "notes.txt", "logo": "https://l.example.org/good-n.png"},                # not a station file
+        {"path": "e.m3u", "logo": "https://l.example.org/bad.png"}]}), headers=JSON)                # the host gives no picture: counted, not fatal
+    assert r.status_code == 200 and r.json() == {"fetched": 3, "failed": 1, "skipped": 4}
+    assert (radio / "a.png").read_bytes() == pic and (radio / "Norway" / "b.png").read_bytes() == pic and (radio / "d.png").read_bytes() == pic
+    assert (radio / "c.png").read_bytes() != pic and not (radio / "gone.png").exists()
+    assert (radio / "a.m3u").read_text(encoding="utf-8") == '#EXTINF:-1 tvg-logo="https://l.example.org/good-a.png",a\nhttps://example.org/a\n'
+    assert 'tvg-logo="https://logos.example.org/b.png"' in (radio / "Norway" / "b.m3u").read_text(encoding="utf-8")      # it already named one
+    assert (radio / "d.pls").read_text(encoding="utf-8") == "[playlist]\nFile1=https://example.org/d\nTitle1=D\n"        # a .pls is left as it was
+    assert [i["path"] for i in me.get("/api/stations/missing?kind=radio").json()["items"]] == ["e.m3u"]                  # only the failed one is left
+
+
+def test_the_logo_calls_need_a_signed_in_user_with_an_upload_folder(up, cfg, tmp_path):
+    from starlette.testclient import TestClient
+    from test_login_web import make
+    me, app, folder = up
+    anon = TestClient(app, follow_redirects=False)
+    assert anon.get("/api/stations/missing?kind=radio").status_code in (401, 303)
+    assert anon.post("/api/stations/logos", content="{}", headers=JSON).status_code in (401, 303)
+    assert me.post("/api/stations/logos", content="not json", headers=JSON).status_code == 400
+    assert me.post("/api/stations/logos", content=json.dumps({"kind": "radio", "items": "x"}), headers=JSON).status_code == 400
+    client, plain = make(cfg, tmp_path)                                                   # uploads off
+    off = TestClient(plain, follow_redirects=False)
+    off.post("/login", content="username=alice&password=pw-alice", headers={"content-type": "application/x-www-form-urlencoded", **ORIGIN})
+    assert off.get("/api/stations/missing?kind=radio").status_code == 404

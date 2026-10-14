@@ -34,8 +34,8 @@
     posEl.textContent = item.live ? "live" : (index + 1) + " / " + queue.length;
     logoEl.hidden = !item.logo;                           // a station or channel with a logo: it shows at the left of the title
     if (item.logo) logoEl.src = item.logo;
-    linkEl.hidden = !item.page;                           // a TV channel: a link back to its picture
-    if (item.page) linkEl.href = item.page;
+    linkEl.hidden = !item.page;                           // a TV channel or a radio station: a link back to its page
+    if (item.page) { linkEl.href = item.page; linkEl.textContent = item.linkText || "Picture"; }
     barEl.style.width = "0";
     if ("mediaSession" in navigator && typeof MediaMetadata !== "undefined") {
       try { navigator.mediaSession.metadata = new MediaMetadata({ title: item.title, album: item.folder || "", artist: "Pluteus" }); } catch (e) { /* ignore */ }
@@ -136,7 +136,7 @@
     keepTv: function (item) {
       if (!item || typeof item.url !== "string") return;
       window.plShell.playQueue([{ title: item.title, url: item.url, folder: item.folder || "Live TV", live: true, tv: true, page: item.page || "",
-                                  logo: item.logo || "" }], 0);
+                                  logo: item.logo || "", linkText: "Picture" }], 0);
     },
     /* a song that was playing in the page being left carries on here, from where it was (a short gap while the file is opened again) */
     takeOver: function (items, start, at) {

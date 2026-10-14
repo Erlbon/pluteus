@@ -149,6 +149,55 @@
       .then(function () { update(); });
   });
 
+  /* ---- logos for the station files already saved: ask the server which lack one, find each logo (radio-browser, by stream address)
+     and let the server fetch and save them ---- */
+  function fillMissing(kind, lookup) {
+    var button = $("fillLogos"), note = $("fillStatus");
+    button.disabled = true;
+    note.textContent = "Looking through your files…";
+    fetch(page.save + "/missing?kind=" + kind, { credentials: "same-origin" }).then(function (r) { return r.json(); }).then(function (d) {
+      var items = d.items || [];
+      if (!items.length) { note.textContent = "Every station file already has a logo."; return null; }
+      var found = [], index = 0, workers = [];
+      function next() {
+        var item = items[index++];
+        if (!item) return Promise.resolve();
+        var have = item.logo ? Promise.resolve(item.logo) : lookup(item);
+        return have.catch(function () { return ""; }).then(function (logo) {
+          if (logo) found.push({ path: item.path, logo: logo });
+          note.textContent = "Looked at " + Math.min(index, items.length) + " of " + items.length + "…";
+          return next();
+        });
+      }
+      for (var i = 0; i < 4; i++) workers.push(next());
+      return Promise.all(workers).then(function () {
+        var totals = { fetched: 0, failed: 0 }, chain = Promise.resolve();
+        for (var b = 0; b < found.length; b += 25) (function (batch) {
+          chain = chain.then(function () {
+            note.textContent = "Fetching logos… (" + totals.fetched + " saved so far)";
+            return fetch(page.save.replace(/stations$/, "stations/logos"), {
+              method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ kind: kind, items: batch })
+            }).then(function (r) { return r.json().then(function (j) { if (!r.ok) throw new Error(j.error || "failed"); return j; }); })
+              .then(function (j) { totals.fetched += j.fetched; totals.failed += j.failed; });
+          });
+        })(found.slice(b, b + 25));
+        return chain.then(function () {
+          note.textContent = "Done: " + totals.fetched + " logos saved; " + (items.length - found.length) + " files have no logo in the directory; " +
+            totals.failed + " logos could not be fetched.";
+        });
+      });
+    }).catch(function (e) { note.textContent = "Not finished: " + ((e && e.message) || "the server could not be reached") + "."; })
+      .then(function () { button.disabled = false; });
+  }
+  $("fillLogos").addEventListener("click", function () {
+    fillMissing("radio", function (item) {
+      return api("/json/stations/byurl?url=" + encodeURIComponent(item.url)).then(function (list) {
+        var hit = (list || []).filter(function (s) { return /^https?:\/\//i.test(s.favicon || ""); })[0];
+        return hit ? hit.favicon : "";
+      });
+    });
+  });
+
   $("go").addEventListener("click", search);
   ["tag", "name"].forEach(function (id) { $(id).addEventListener("keydown", function (e) { if (e.key === "Enter") search(); }); });
   update();

@@ -18,8 +18,9 @@
   try { shell = window.parent !== window ? window.parent.plShell : null; } catch (e) { shell = null; }
   function items() {
     var logo = root.dataset.logo || "";                       // the picture next to the station file (a file with several stations: all share it)
-    var list = stations.length ? stations.map(function (b) { return { title: b.dataset.name, url: b.dataset.url, folder: "Live radio", live: true, logo: logo }; })
-                               : [{ title: name, url: url, folder: "Live radio", live: true, logo: logo }];
+    var back = location.pathname + location.search;           // the player bar links back to this page
+    var list = stations.length ? stations.map(function (b) { return { title: b.dataset.name, url: b.dataset.url, folder: "Live radio", live: true, logo: logo, page: back, linkText: "Station" }; })
+                               : [{ title: name, url: url, folder: "Live radio", live: true, logo: logo, page: back, linkText: "Station" }];
     return list;
   }
   function shellPlaying() { return !!shell && shell.isPlaying() && shell.currentUrl() === url; }
