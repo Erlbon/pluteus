@@ -36,6 +36,7 @@ from .fs import NotFound, PathError, clamp_time
 API_VERSION = "1.16.1"
 SEP = "\x1f"
 MAX_ALBUMS = 3000
+RADIO_FOLDER = "radio"          # a top-level folder of station files (.m3u): not an artist, left out of the music lists
 _XML_BAD = re.compile("[\x00-\x08\x0b\x0c\x0e-\x1f]")
 _ALBUM_CACHE_SECONDS = 120
 UNKNOWN_LISTS = {"starred", "highest", "frequent", "recent", "byYear", "byGenre"}
@@ -286,7 +287,7 @@ class Subsonic:
 
     def _list(self, user, root: str, parts):
         entries = self.lib.list_dir(user, root, parts, True, True)
-        dirs = [e for e in entries if e.is_dir]
+        dirs = [e for e in entries if e.is_dir and not (not parts and e.name.lower() == RADIO_FOLDER)]       # no station files among the artists
         songs = [e for e in entries if not e.is_dir and kinds.kind_of(e.name) == "audio"]
         return dirs, songs
 
