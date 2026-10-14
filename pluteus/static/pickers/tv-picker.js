@@ -12,7 +12,13 @@
   function clean(text) { return String(text || "").replace(/[\u0000-\u001f\u007f]/g, " ").replace(/\s+/g, " ").trim().slice(0, 120); }
   function height(q) { var m = /^(\d+)p?/.exec(q || ""); return m ? +m[1] : 0; }
 
-  Promise.all([load("channels"), load("streams"), load("countries"), load("categories")]).then(function (all) {
+  var logoOf = {};                                           // channel id -> the address of its logo (the picture closest to 256 pixels wide)
+  Promise.all([load("channels"), load("streams"), load("countries"), load("categories"), load("logos").catch(function () { return []; })]).then(function (all) {
+    all[4].forEach(function (l) {
+      if (!l.channel || !/^(PNG|JPEG|WebP)$/i.test(l.format || "") || !/^https?:\/\//i.test(l.url || "")) return;       // the server takes no SVG
+      var best = logoOf[l.channel];
+      if (!best || Math.abs((l.width || 0) - 256) < Math.abs((best.width || 0) - 256)) logoOf[l.channel] = { url: l.url, width: l.width };
+    });
     all[0].forEach(function (c) { if (!c.is_nsfw && !c.closed) channels[c.id] = c; });
     all[2].forEach(function (c) { countries[c.code] = c.name; });
     all[2].sort(function (a, b) { return a.name.localeCompare(b.name); }).forEach(function (c) {
@@ -45,7 +51,7 @@
     }).map(function (s) {
       var c = channels[s.channel];
       return { id: c.id, name: clean(c.name), country: c.country || "", cats: c.categories || [], url: s.url, quality: s.quality || "",
-               labels: s.labels || [], on: false, test: "" };
+               labels: s.labels || [], logo: logoOf[c.id] ? logoOf[c.id].url : "", on: false, test: "" };
     });
     out.sort(function (a, b) { return a.name.localeCompare(b.name) || height(b.quality) - height(a.quality); });
     if ($("best").checked) {
@@ -171,13 +177,13 @@
       method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ kind: "tv", sub: $("sub").value.trim(), by_country: $("bycountry").checked, overwrite: $("overwrite").checked,
                              stations: list.map(function (s) {
-                               return { name: s.name, url: s.url, id: s.id, group: categoryNames[s.cats[0]] || "", country: countries[s.country] || s.country };
+                               return { name: s.name, url: s.url, id: s.id, group: categoryNames[s.cats[0]] || "", country: countries[s.country] || s.country, logo: s.logo };
                              }) })
     }).then(function (r) { return r.json().then(function (j) { return { ok: r.ok, body: j }; }); })
       .then(function (res) {
         if (!res.ok) { log(res.body.error || "Not saved.", true); return; }
         var l = $("log");
-        l.textContent = "Saved " + res.body.saved + " in " + res.body.folder + "." +
+        l.textContent = "Saved " + res.body.saved + " in " + res.body.folder + (res.body.logos ? " with " + res.body.logos + " logos" : "") + "." +
           (res.body.skipped ? " Left alone because they already exist: " + res.body.skipped + " (tick “overwrite existing” to replace them)." : "") + " ";
         var a = document.createElement("a");
         a.href = page.browse + (res.body.folder.indexOf("/") > 0 ? "/" + res.body.folder.split("/").slice(1).map(encodeURIComponent).join("/") : "");

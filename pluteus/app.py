@@ -646,6 +646,13 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
         has_cover = await run_in_threadpool(folder_picture)
         asked = request.query_params.get("view", "")
         asked = asked if asked in ("list", "grid") else ""
+        if asked and cfg.thumbnails and user.name != cfg.anonymous_user and view_for(user.name) != asked:
+            # the List / Covers switch on a folder page is the user's choice from now on (the shared anonymous user keeps none)
+            def remember():
+                prefs = dict(state.get_prefs(user.name))
+                prefs["view"] = asked
+                state.set_prefs(user.name, prefs)
+            await run_in_threadpool(remember)
         return HTMLResponse(web.listing_page(
             root, parts, shown, page, pages, len(entries), ctx_for(user, asked), metas, progress, sort=sort, desc=desc,
             writable=root == UPLOADS_ROOT, flash=web.flash_text(request.query_params),
@@ -862,6 +869,7 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
             return None
         page = web.iptv_page if radio.looks_like_tv(head[0], stations) else web.radio_page
         extra = {"page_url": urls.view(root, parts)} if page is web.iptv_page else {}
+        extra["logo_url"] = urls.cover(root, parts) if radio.find_logo(info.path) else ""
         html = page(ctx_for(user), info.name, stations=stations, download_url=urls.download(root, parts),
                     text_url=urls.view(root, parts) + "?as=text", back_url=urls.browse(root, parts[:-1]), **extra)
         return html, (IPTV_CSP if page is web.iptv_page else RADIO_CSP)
@@ -1042,6 +1050,8 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
         def find():
             try:                                                # a file: its own picture, else its folder's
                 info = lib.file_info(user, root, parts, cfg.show_all_files)
+                if radio.is_radio_file(info.name):                  # a station file: the picture beside it (its logo)
+                    return radio.read_logo(info.path)
                 return mediainfo.read_cover(info.path) if kinds.kind_of(info.name) in ("audio", "video") else None
             except NotFound:                                    # a folder: folder.jpg, cover.jpg ...
                 return mediainfo.read_folder_cover(lib.folder_path(user, root, parts))

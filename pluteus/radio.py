@@ -23,6 +23,35 @@ def looks_like_tv(text: str, stations: list) -> bool:
     return any(urlsplit(url).path.lower().endswith(".m3u8") for _, url in stations)
 
 
+LOGO_TYPES = ((".png", "image/png"), (".jpg", "image/jpeg"), (".jpeg", "image/jpeg"), (".webp", "image/webp"))
+MAX_LOGO = 600_000
+
+
+def find_logo(path: str) -> str:
+    """The picture that sits next to a station file and is named like it (NRK P3.m3u -> NRK P3.png), or ''. The pickers save it there;
+    a picture put there by hand counts too."""
+    stem = os.path.splitext(path)[0]
+    for ext, _ in LOGO_TYPES:
+        candidate = stem + ext
+        if os.path.isfile(candidate) and not os.path.islink(candidate):
+            return candidate
+    return ""
+
+
+def read_logo(path: str):
+    """(bytes, mime) of the picture next to a station file, or None. The type is stated here, never taken from the file."""
+    found = find_logo(path)
+    if not found:
+        return None
+    mime = dict(LOGO_TYPES)[os.path.splitext(found)[1].lower()]
+    try:
+        with open(found, "rb") as f:
+            data = f.read(MAX_LOGO + 1)
+    except OSError:
+        return None
+    return (data, mime) if 0 < len(data) <= MAX_LOGO else None
+
+
 def is_radio_file(name: str) -> bool:
     return os.path.splitext(name)[1].lower() in EXTENSIONS
 

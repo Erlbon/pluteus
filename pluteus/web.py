@@ -5,7 +5,7 @@ import time
 from dataclasses import dataclass
 from html import escape
 
-from . import __version__, kinds, mediainfo
+from . import __version__, kinds, mediainfo, radio
 from .icons import COLOR_SPRITE, OUTLINE_SPRITE, ico
 from .themes import DEFAULT
 from .urls import Urls
@@ -352,7 +352,10 @@ def _tiles(ctx: Ctx, root: str, entries: list, metas: dict, progress: dict, shel
         else:
             open_url = urls.view(root, e.parts)
         art = kind_icon(kind)
-        if kind in COVER_KINDS:
+        if kind == "text" and radio.is_radio_file(e.name) and radio.find_logo(e.path):         # a station file with its logo beside it
+            art = ("<img class='pl-tile-img pl-logo-img' src='%s' alt='' loading='lazy'><span class='pl-tile-fallback'>%s</span>"
+                   % (escape(urls.cover(root, e.parts)), art))
+        elif kind in COVER_KINDS:
             art = ("<img class='pl-tile-img' src='%s?w=320' alt='' loading='lazy'><span class='pl-tile-fallback'>%s</span>"
                    % (escape(urls.thumb(root, e.parts)), art))
         pct = progress.get("/".join(e.parts))
@@ -656,7 +659,7 @@ def shell_page(ctx: Ctx, start_url: str) -> str:
     def btn(ident: str, label: str, icon: str) -> str:
         return ("<button type='button' class='pl-vol-btn' id='%s' aria-label='%s'><span class='pl-icon pl-i-%s'></span></button>"
                 % (ident, label, icon))
-    strip = ("<div class='pl-shell-player' id='sp' data-hls='%s' hidden>%s%s%s<span class='pl-shell-title' id='sp-title'></span>"
+    strip = ("<div class='pl-shell-player' id='sp' data-hls='%s' hidden>%s%s%s<img class='pl-shell-logo' id='sp-logo' alt='' hidden><span class='pl-shell-title' id='sp-title'></span>"
              "<a class='pl-shell-link' id='sp-link' target='shell-frame' href='#' hidden>Picture</a>"
              "<span class='pl-muted' id='sp-pos'></span>%s<div class='pl-shell-prog'><i id='sp-bar'></i></div></div>"
              % (escape(ctx.urls.static("vendor/hls.min.js")), btn("sp-prev", "Previous", "prev"), btn("sp-play", "Play", "play"),
@@ -667,7 +670,8 @@ def shell_page(ctx: Ctx, start_url: str) -> str:
     return layout("Pluteus", strip + frame, ctx, body_class="pl-shell-page", scripts=(ctx.urls.static("shell.js"),), shell=False)
 
 
-def iptv_page(ctx: Ctx, title: str, *, stations: list, download_url: str, text_url: str, back_url: str, page_url: str = "") -> str:
+def iptv_page(ctx: Ctx, title: str, *, stations: list, download_url: str, text_url: str, back_url: str, page_url: str = "",
+              logo_url: str = "") -> str:
     """A live channel (or several) from a station file: the picture and sound play in a video element; HLS goes through the vendored
     hls.js (iptv.js) where the browser cannot play it itself. The addresses are written by the owner of the library."""
     name = title.rsplit(".", 1)[0] if "." in title else title
@@ -685,10 +689,12 @@ def iptv_page(ctx: Ctx, title: str, *, stations: list, download_url: str, text_u
                 "<button type='button' id='fs' class='pl-vol-btn pl-fs-btn' aria-label='Full screen'><span class='pl-icon pl-i-fullscreen'></span></button></div>")
     transport = ("<div class='pl-transport'><span class='pl-play-wrap'><button class='pl-btn pl-play' id='play' type='button' aria-label='Play'>"
                  "<span class='pl-icon pl-i-play'></span></button></span></div>")
-    stage = ("<div class='pl-media-box pl-player pl-videobox pl-iptv'><div class='pl-track'><h1 class='pl-track-title' id='now'>%s</h1></div>"
-             "<div class='pl-videowrap'><video id='tv' controls playsinline data-url='%s' data-page='%s'%s></video></div>%s%s%s"
+    logo = "<img class='pl-tv-logo' src='%s' alt=''>" % escape(logo_url) if logo_url else ""
+    stage = ("<div class='pl-media-box pl-player pl-videobox pl-iptv'><div class='pl-track pl-tv-head'>%s<h1 class='pl-track-title' id='now'>%s</h1></div>"
+             "<div class='pl-videowrap'><video id='tv' controls playsinline data-url='%s' data-page='%s' data-logo='%s'%s></video></div>%s%s%s"
              "<div class='pl-toast' id='status' hidden></div></div>"
-             % (escape(heading), escape(first_url), escape(page_url), " data-keep-sound='1'" if ctx.tv_sound else "", live_row, transport, listing))
+             % (logo, escape(heading), escape(first_url), escape(page_url), escape(logo_url), " data-keep-sound='1'" if ctx.tv_sound else "",
+                live_row, transport, listing))
     tools = _download_link(download_url) + _reader_scheme()
     foot = "<a href='%s'>Show as text</a>" % escape(text_url)
     scripts = (ctx.urls.static("vendor/hls.min.js"), ctx.urls.static("iptv.js"))
@@ -696,7 +702,7 @@ def iptv_page(ctx: Ctx, title: str, *, stations: list, download_url: str, text_u
                    stage_class="pl-media-stage", scripts=scripts)
 
 
-def radio_page(ctx: Ctx, title: str, *, stations: list, download_url: str, text_url: str, back_url: str) -> str:
+def radio_page(ctx: Ctx, title: str, *, stations: list, download_url: str, text_url: str, back_url: str, logo_url: str = "") -> str:
     """The radio player for a station file: the stations are written by the owner of the library, the browser plays the stream
     itself (an <audio> element; the page's CSP allows media from anywhere, see app.RADIO_CSP). radio.js does the rest."""
     name = title.rsplit(".", 1)[0] if "." in title else title
@@ -707,7 +713,8 @@ def radio_page(ctx: Ctx, title: str, *, stations: list, download_url: str, text_
                % "".join("<button type='button' class='pl-station%s' data-url='%s' data-name='%s'>%s</button>"
                          % (" pl-now" if i == 0 else "", escape(url), escape(label or name), escape(label or "%s %d" % (name, i + 1)))
                          for i, (label, url) in enumerate(stations))) if many else ""
-    stage = ("<div class='pl-media-box pl-player pl-radio'><div class='pl-cover'><div class='pl-cover-blank'>%s</div></div>"
+    art = "<img class='pl-cover-img pl-logo-img' src='%s' alt=''>" % escape(logo_url) if logo_url else "<div class='pl-cover-blank'>%s</div>" % ico("audio")
+    stage = ("<div class='pl-media-box pl-player pl-radio'><div class='pl-cover'>%s</div>"
              "<div class='pl-track'><h1 class='pl-track-title' id='now'>%s</h1><div class='pl-track-by'>%s</div>"
              "<div class='pl-chips'><span class='pl-chip'>Live radio</span></div></div>"
              "<audio id='radio' controls preload='none' src='%s'><p>Your browser cannot play this stream.</p></audio>"
@@ -716,11 +723,12 @@ def radio_page(ctx: Ctx, title: str, *, stations: list, download_url: str, text_
              "<div class='pl-scrub pl-radio-scrub'><span class='pl-vol'><button type='button' id='mute' class='pl-vol-btn' aria-label='Mute'>"
              "<span class='pl-icon pl-i-volume'></span></button><input type='range' id='volume' min='0' max='100' value='100' aria-label='Volume'></span></div>"
              "%s<div class='pl-toast' id='status' hidden></div></div>"
-             % (ico("audio"), escape(heading), escape(name) if heading != name else "&nbsp;", escape(first_url), listing))
+             % (art, escape(heading), escape(name) if heading != name else "&nbsp;", escape(first_url), listing))
     tools = _download_link(download_url) + _reader_scheme()
     foot = "<a href='%s'>Show as text</a>" % escape(text_url)
     return _viewer(ctx, title, back_url, tools=tools, stage=stage, foot=foot, classes="pl-mediaview pl-audio",
-                   stage_class="pl-media-stage", data=(("title", heading), ("artwork", ctx.urls.static("icon/icon-512.png"))),
+                   stage_class="pl-media-stage",
+                   data=(("title", heading), ("artwork", logo_url or ctx.urls.static("icon/icon-512.png")), ("logo", logo_url)),
                    scripts=(ctx.urls.static("radio.js"),))
 
 

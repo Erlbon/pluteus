@@ -103,6 +103,19 @@ def test_the_list_is_the_default_and_the_choice_can_be_saved_in_settings(client)
     assert "pl-grid" not in c.get("/browse/lib/A?view=list", headers={**AUTH, **HTML}).text           # one request can ask for the other
 
 
+def test_the_list_or_covers_switch_on_a_folder_page_is_remembered(client):
+    c, _ = client
+    assert "pl-grid" not in c.get("/browse/lib/A", headers={**AUTH, **HTML}).text
+    assert "pl-grid" in c.get("/browse/lib/A?view=grid", headers={**AUTH, **HTML}).text               # the switch is clicked once ...
+    assert "pl-grid" in c.get("/browse/lib/A", headers={**AUTH, **HTML}).text                         # ... and stays, with no ?view= any more
+    assert "pl-grid" in c.get("/browse/lib", headers={**AUTH, **HTML}).text                           # in other folders too
+    assert "pl-list" not in c.get("/settings", headers={**AUTH, **HTML}).text                         # (the Settings page agrees, below)
+    assert "<option value='grid' selected>" in c.get("/settings", headers={**AUTH, **HTML}).text
+    assert "pl-grid" not in c.get("/browse/lib/A?view=list", headers={**AUTH, **HTML}).text           # and switching back is remembered as well
+    assert "pl-grid" not in c.get("/browse/lib/A", headers={**AUTH, **HTML}).text
+    assert "pl-grid" not in c.get("/browse/lib/A?view=junk", headers={**AUTH, **HTML}).text           # junk changes nothing
+
+
 # ---- thumbnails are off until switched on ---------------------------------------------------------------------------------------------------
 @pytest.fixture
 def quiet(tmp_path):

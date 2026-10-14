@@ -53,7 +53,8 @@
         var key = (s.name || "").trim().toLowerCase();
         if (!key || seen[key]) return;                    // the same name twice: the more popular one is first
         seen[key] = true;
-        kept.push({ uuid: s.stationuuid, name: clean(s.name), url: url, codec: s.codec || "", bitrate: s.bitrate || 0, country: s.countrycode || "",
+        kept.push({ uuid: s.stationuuid, name: clean(s.name), url: url, logo: /^https?:\/\//i.test(s.favicon || "") ? s.favicon : "",
+                    codec: s.codec || "", bitrate: s.bitrate || 0, country: s.countrycode || "",
                     tags: s.tags || "", home: /^https?:\/\//i.test(s.homepage || "") ? s.homepage : "", on: false });
       });
       stations = kept;
@@ -134,11 +135,11 @@
     fetch(page.save, {
       method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ kind: "radio", sub: $("sub").value.trim(), overwrite: $("overwrite").checked,
-                             stations: list.map(function (s) { return { name: s.name, url: s.url }; }) })
+                             stations: list.map(function (s) { return { name: s.name, url: s.url, logo: s.logo }; }) })
     }).then(function (r) { return r.json().then(function (j) { return { ok: r.ok, body: j }; }); })
       .then(function (res) {
         if (!res.ok) { log(res.body.error || "Not saved.", true); return; }
-        var msg = "Saved " + res.body.saved + " in " + res.body.folder + "." +
+        var msg = "Saved " + res.body.saved + " in " + res.body.folder + (res.body.logos ? " with " + res.body.logos + " logos" : "") + "." +
           (res.body.skipped ? " Left alone because they already exist: " + res.body.skipped + " (tick “overwrite existing” to replace them)." : "");
         var l = $("log"); l.textContent = msg + " ";
         var a = document.createElement("a"); a.href = page.browse + (res.body.folder.indexOf("/") > 0 ? "/" + res.body.folder.split("/").slice(1).map(encodeURIComponent).join("/") : "");

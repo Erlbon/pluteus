@@ -11,7 +11,7 @@
   audio.preload = "auto";
   audio.playsInline = true;
   var el = function (id) { return document.getElementById(id); };
-  var playBtn = el("sp-play"), titleEl = el("sp-title"), posEl = el("sp-pos"), barEl = el("sp-bar"), linkEl = el("sp-link");
+  var playBtn = el("sp-play"), titleEl = el("sp-title"), posEl = el("sp-pos"), barEl = el("sp-bar"), linkEl = el("sp-link"), logoEl = el("sp-logo");
 
   /* ---- the player ---- */
   function icon(button, name) { var i = button.querySelector(".pl-icon"); if (i) i.className = "pl-icon pl-i-" + name; }
@@ -32,6 +32,8 @@
     document.body.classList.add("pl-shell-playing");
     titleEl.textContent = item.title + (item.folder ? " – " + item.folder : "");
     posEl.textContent = item.live ? "live" : (index + 1) + " / " + queue.length;
+    logoEl.hidden = !item.logo;                           // a station or channel with a logo: it shows at the left of the title
+    if (item.logo) logoEl.src = item.logo;
     linkEl.hidden = !item.page;                           // a TV channel: a link back to its picture
     if (item.page) linkEl.href = item.page;
     barEl.style.width = "0";
@@ -133,7 +135,8 @@
     /* a TV channel being left: its sound carries on here (item: title, url, folder, page = the address of its picture) */
     keepTv: function (item) {
       if (!item || typeof item.url !== "string") return;
-      window.plShell.playQueue([{ title: item.title, url: item.url, folder: item.folder || "Live TV", live: true, tv: true, page: item.page || "" }], 0);
+      window.plShell.playQueue([{ title: item.title, url: item.url, folder: item.folder || "Live TV", live: true, tv: true, page: item.page || "",
+                                  logo: item.logo || "" }], 0);
     },
     /* a song that was playing in the page being left carries on here, from where it was (a short gap while the file is opened again) */
     takeOver: function (items, start, at) {

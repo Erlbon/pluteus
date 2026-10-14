@@ -36,7 +36,7 @@ def test_stations_are_saved_as_m3u_files_in_the_users_radio_folder(up):
         {"name": "Spaces", "url": "https://example.org/a b"},
         {"name": "../../Escape", "url": "https://example.org/e"},
         {"name": "Line\nbreak", "url": "http://example.org:8000/x"}]})
-    assert r.status_code == 200 and r.json() == {"saved": 3, "skipped": 0, "folder": "Radio/Norway"}
+    assert r.status_code == 200 and r.json() == {"saved": 3, "skipped": 0, "logos": 0, "folder": "Radio/Norway"}
     mine = folder / "alice" / "Radio" / "Norway"
     assert sorted(p.name for p in mine.iterdir()) == ["Escape.m3u", "Line break.m3u", "NRK P3.m3u"]
     assert (mine / "NRK P3.m3u").read_text(encoding="utf-8") == "#EXTM3U\n#EXTINF:-1,NRK P3\nhttps://example.org/p3\n"

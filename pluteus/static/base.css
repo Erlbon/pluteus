@@ -478,6 +478,12 @@ body.pl-shell-page { display: flex; flex-direction: column; height: 100vh; heigh
 .pl-shell-player[hidden] { display: none; }
 .pl-shell-player .pl-icon { color: var(--pl-accent); width: 22px; height: 22px; }
 .pl-shell-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+/* station and channel logos: shown on a light tile so dark logos stay readable on the dark themes */
+.pl-shell-logo { width: 26px; height: 26px; border-radius: 6px; object-fit: contain; background: #fff; padding: 2px; flex: none; }
+.pl-shell-logo[hidden] { display: none; }
+.pl-radio .pl-logo-img, .pl-tile-img.pl-logo-img { object-fit: contain; background: #fff; padding: 10px; }
+.pl-tv-head { display: flex; align-items: center; justify-content: center; gap: 10px; }
+.pl-tv-logo { width: 38px; height: 38px; border-radius: 8px; object-fit: contain; background: #fff; padding: 3px; flex: none; }
 .pl-shell-link { white-space: nowrap; font-size: 13px; font-weight: 600; border: 1px solid var(--pl-accent); border-radius: 999px; padding: 2px 12px; text-decoration: none; }
 .pl-shell-link[hidden] { display: none; }
 .pl-shell-prog { position: absolute; left: 0; right: 0; bottom: 0; height: 2px; }

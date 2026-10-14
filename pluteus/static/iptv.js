@@ -123,7 +123,7 @@
   if (shell && video.dataset.keepSound === "1") {
     window.addEventListener("pagehide", function () {
       if (!wanted || !url) return;
-      try { shell.keepTv({ title: (now ? now.textContent : "") || "TV", url: url, folder: "Live TV", page: video.dataset.page || "" }); } catch (e) { /* the shell is gone */ }
+      try { shell.keepTv({ title: (now ? now.textContent : "") || "TV", url: url, folder: "Live TV", page: video.dataset.page || "", logo: video.dataset.logo || "" }); } catch (e) { /* the shell is gone */ }
     });
   }
   start();

@@ -17,8 +17,9 @@
   var shell = null, current = 0;
   try { shell = window.parent !== window ? window.parent.plShell : null; } catch (e) { shell = null; }
   function items() {
-    var list = stations.length ? stations.map(function (b) { return { title: b.dataset.name, url: b.dataset.url, folder: "Live radio", live: true }; })
-                               : [{ title: name, url: url, folder: "Live radio", live: true }];
+    var logo = root.dataset.logo || "";                       // the picture next to the station file (a file with several stations: all share it)
+    var list = stations.length ? stations.map(function (b) { return { title: b.dataset.name, url: b.dataset.url, folder: "Live radio", live: true, logo: logo }; })
+                               : [{ title: name, url: url, folder: "Live radio", live: true, logo: logo }];
     return list;
   }
   function shellPlaying() { return !!shell && shell.isPlaying() && shell.currentUrl() === url; }
