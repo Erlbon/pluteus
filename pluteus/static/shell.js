@@ -13,19 +13,24 @@
 
   /* ---- the player ---- */
   function icon(button, name) { var i = button.querySelector(".pl-icon"); if (i) i.className = "pl-icon pl-i-" + name; }
+  var listeners = [];                        // pages in the frame that want to know when the player changes (the radio page)
+  function playingNow() { return !audio.paused && !audio.ended; }
   function paint() {
-    var playing = !audio.paused && !audio.ended;
+    var playing = playingNow();
     icon(playBtn, playing ? "pause" : "play");
     playBtn.setAttribute("aria-label", playing ? "Pause" : "Play");
     if ("mediaSession" in navigator) navigator.mediaSession.playbackState = playing ? "playing" : "paused";
+    listeners = listeners.filter(function (fn) { try { fn(); return true; } catch (e) { return false; } });     // a page that is gone throws
   }
+  function live() { return !!(queue[index] && queue[index].live); }
   function show() {
     var item = queue[index];
     if (!item) return;
     strip.hidden = false;
     document.body.classList.add("pl-shell-playing");
     titleEl.textContent = item.title + (item.folder ? " – " + item.folder : "");
-    posEl.textContent = (index + 1) + " / " + queue.length;
+    posEl.textContent = item.live ? "live" : (index + 1) + " / " + queue.length;
+    barEl.style.width = "0";
     if ("mediaSession" in navigator && typeof MediaMetadata !== "undefined") {
       try { navigator.mediaSession.metadata = new MediaMetadata({ title: item.title, album: item.folder || "", artist: "Pluteus" }); } catch (e) { /* ignore */ }
     }
@@ -52,17 +57,27 @@
   }
   audio.addEventListener("play", paint);
   audio.addEventListener("pause", paint);
-  audio.addEventListener("playing", function () { failures = 0; paint(); });
-  audio.addEventListener("ended", function () { if (index + 1 < queue.length) go(index + 1); else paint(); });
-  audio.addEventListener("error", function () {         // a file that will not play: on to the next (not forever)
-    if (!queue.length || ++failures > 5) { paint(); return; }
+  audio.addEventListener("playing", function () { failures = 0; show(); paint(); });
+  audio.addEventListener("ended", function () { if (!live() && index + 1 < queue.length) go(index + 1); else paint(); });
+  audio.addEventListener("error", function () {         // a file that will not play: on to the next (not forever); a live stream just stops
+    var item = queue[index];                             // an error left over from a source that was just replaced is not this file's
+    if (!item || !audio.getAttribute("src") || audio.currentSrc !== new URL(item.url, location.href).href) { paint(); return; }
+    if (live()) { titleEl.textContent = queue[index].title + " – the stream did not start"; paint(); return; }
+    if (++failures > 5) { paint(); return; }
     if (index + 1 < queue.length) go(index + 1);
   });
   audio.addEventListener("timeupdate", function () {
     if (isFinite(audio.duration) && audio.duration > 0) barEl.style.width = (100 * audio.currentTime / audio.duration) + "%";
   });
-  playBtn.addEventListener("click", function () { if (audio.paused) { var p = audio.play(); if (p && p.catch) p.catch(function () { /* blocked */ }); } else audio.pause(); });
-  el("sp-prev").addEventListener("click", function () { if (audio.currentTime > 4) audio.currentTime = 0; else go(index - 1); });
+  function dropStream() { audio.pause(); audio.removeAttribute("src"); audio.load(); paint(); }     // live radio: pause = leave the broadcast
+  playBtn.addEventListener("click", function () {
+    if (audio.paused) {
+      if (live() && !audio.getAttribute("src")) audio.src = queue[index].url;                        // joins the broadcast as it is now
+      var p = audio.play(); if (p && p.catch) p.catch(function () { /* blocked */ });
+    } else if (live()) dropStream();
+    else audio.pause();
+  });
+  el("sp-prev").addEventListener("click", function () { if (!live() && audio.currentTime > 4) audio.currentTime = 0; else go(index - 1); });
   el("sp-next").addEventListener("click", function () { go(index + 1); });
   el("sp-close").addEventListener("click", stop);
   if ("mediaSession" in navigator) {
@@ -81,8 +96,12 @@
       failures = 0;
       if (queue.length) go(Math.max(0, Math.min(start || 0, queue.length - 1)));
     },
-    pause: function () { audio.pause(); },
-    active: function () { return queue.length > 0; }
+    pause: function () { if (live()) dropStream(); else audio.pause(); },
+    stop: stop,
+    active: function () { return queue.length > 0; },
+    isPlaying: playingNow,
+    currentUrl: function () { return queue[index] ? queue[index].url : ""; },
+    onState: function (fn) { listeners.push(fn); }
   };
 
   /* ---- the frame: keep the address bar, the title and light/dark in step with it ---- */

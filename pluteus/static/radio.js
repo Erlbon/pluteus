@@ -13,6 +13,15 @@
   document.documentElement.classList.add("pl-js");
   audio.controls = false;
   audio.removeAttribute("src");                                // nothing is fetched until play is pressed
+  /* in the shell the stream plays there (the resident player), so it keeps going when this page is left */
+  var shell = null, current = 0;
+  try { shell = window.parent !== window ? window.parent.plShell : null; } catch (e) { shell = null; }
+  function items() {
+    var list = stations.length ? stations.map(function (b) { return { title: b.dataset.name, url: b.dataset.url, folder: "Live radio", live: true }; })
+                               : [{ title: name, url: url, folder: "Live radio", live: true }];
+    return list;
+  }
+  function shellPlaying() { return !!shell && shell.isPlaying() && shell.currentUrl() === url; }
 
   function say(text, ms) {
     if (!statusEl) return;
@@ -22,8 +31,13 @@
     if (ms) statusTimer = setTimeout(function () { statusEl.hidden = true; }, ms);
   }
   function paint() {
-    var playing = wanted && !audio.paused;
     var icon = play.querySelector(".pl-icon");
+    if (shell) {
+      if (icon) icon.className = "pl-icon " + (shellPlaying() ? "pl-i-pause" : "pl-i-play");
+      play.setAttribute("aria-label", shellPlaying() ? "Stop" : "Play");
+      return;
+    }
+    var playing = wanted && !audio.paused;
     if (icon) icon.className = "pl-icon " + (playing || (wanted && !audio.error) ? "pl-i-pause" : "pl-i-play");
     play.setAttribute("aria-label", wanted ? "Stop" : "Play");
   }
@@ -35,6 +49,7 @@
     }
     say("");
     wanted = true;
+    if (shell) { shell.playQueue(items(), current); paint(); return; }
     audio.src = url;
     var p = audio.play();
     if (p && p.catch) p.catch(function (e) {
@@ -44,12 +59,13 @@
   }
   function stop() {
     wanted = false;
+    if (shell) { if (shell.currentUrl() === url) shell.stop(); paint(); return; }
     audio.pause();
     audio.removeAttribute("src");
     audio.load();                                              // drops the connection
     paint();
   }
-  play.addEventListener("click", function () { if (wanted) stop(); else start(); });
+  play.addEventListener("click", function () { if (shell ? shellPlaying() : wanted) stop(); else start(); });
   audio.addEventListener("playing", function () { say(""); paint(); });
   audio.addEventListener("waiting", function () { if (wanted) say("Connecting…"); });
   audio.addEventListener("error", function () {
@@ -61,7 +77,7 @@
   stations.forEach(function (button) {
     button.addEventListener("click", function () {
       stations.forEach(function (b) { b.classList.toggle("pl-now", b === button); });
-      url = button.dataset.url; name = button.dataset.name;
+      url = button.dataset.url; name = button.dataset.name; current = stations.indexOf(button);
       if (now) now.textContent = name;
       mediaSession();
       start();
@@ -71,7 +87,7 @@
 
   /* lock-screen / notification controls */
   function mediaSession() {
-    if (!("mediaSession" in navigator) || typeof MediaMetadata === "undefined") return;
+    if (shell || !("mediaSession" in navigator) || typeof MediaMetadata === "undefined") return;       // the shell has the lock-screen controls
     try {
       navigator.mediaSession.metadata = new MediaMetadata({ title: name, artist: "Live radio", artwork: [{ src: root.dataset.artwork || "", sizes: "512x512" }] });
       navigator.mediaSession.setActionHandler("play", start);
@@ -82,7 +98,7 @@
 
   /* volume (wide screens only, like the music player) */
   var volume = document.getElementById("volume"), mute = document.getElementById("mute");
-  if (volume && mute) {
+  if (!shell && volume && mute) {
     var level = 1;
     try { var saved = parseFloat(localStorage.getItem("pluteus-media-volume")); if (saved >= 0 && saved <= 1) level = saved; } catch (e) { /* storage blocked */ }
     audio.volume = level;
@@ -99,5 +115,6 @@
       if (icon) icon.className = "pl-icon " + (audio.muted ? "pl-i-mute" : "pl-i-volume");
     });
   }
+  if (shell) shell.onState(paint);
   paint();
 })();

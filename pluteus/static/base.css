@@ -481,6 +481,7 @@ body.pl-shell-page { display: flex; flex-direction: column; height: 100vh; heigh
 .pl-shell-prog { position: absolute; left: 0; right: 0; bottom: 0; height: 2px; }
 .pl-shell-prog i { display: block; height: 2px; width: 0; background: var(--pl-accent); }
 .pl-play-all { margin: 8px 0; }
+.pl-framed .pl-radio-scrub { display: none !important; }       /* in the shell the stream plays there, with the device's own volume */
 /* the radio player: the station list under the play button */
 .pl-js .pl-radio audio { display: none; }
 .pl-radio-scrub { width: auto; justify-content: center; }
