@@ -103,14 +103,36 @@ Recording or saving streams; transcoding; a programme guide; public re-streaming
 as such (the pickers only use catalogues of publicly available streams); a general-purpose open proxy (the relay only fetches addresses that
 belong to the signed-in user's own entries).
 
-## 2. Playlists
+## 2. Random mix for music and music videos
+
+**One sentence:** a Shuffle button on folder pages and a Random mix button on the home page build a queue of mixed music files and music videos
+that plays in the player bar while you browse and read; a video shows its picture in a panel docked under the bar.
+
+**Decisions (owner, 2026-10-14):** the picture panel is **docked under the bar** for the first attempt (not a floating window); the work waits
+for the new quota, after or next to the relay.
+
+- **Server:** a random pick across the user's libraries, audio and video together, with a filter (both, only music, only videos) and a count
+  (for example 50). There is no index, so it is approximate: random folders, then random files inside them (the way the Subsonic "random
+  songs" call already works), a handful of directory listings, capped. The existing queue list for a folder (`/api/queue/...`) learns to include
+  video files when asked.
+- **Shuffle:** a button beside "Play all" on a folder page; the list is shuffled in the browser.
+- **The shell's player already uses a video element** (since the TV sound), so it can show a picture: when the current item is a video, a panel
+  opens under the bar with the picture and the site below shifts down; a "sound only" toggle hides the picture, a full-screen button takes the
+  panel full screen; when the next item is a song the panel closes by itself. On a phone the panel is the same, full width.
+- **Limits to state in the documentation:** subtitles and saved position belong to a video's own page and do not carry over into the panel; a
+  video the browser cannot decode (some MKV) is skipped with a note.
+- **Size:** about 20 to 25 minutes (server pick: medium, Shuffle button: small, the panel: medium, tests and real-signal checks: medium).
+  The panel is a visual change: a mockup comes first.
+- **Later:** a saved playlist from a mix once playlists exist (item 3); a random channel from the user's `IPTV` folder.
+
+## 3. Playlists
 
 A queue is already there (Play all, the player bar). Still to do: saved playlists per user in the state database; the option to mirror them
 as `.m3u` files in the upload folder (`Playlists/`), one way; the Subsonic playlist calls (`getPlaylists`, `getPlaylist`, `createPlaylist`,
 `updatePlaylist`, `deletePlaylist`) so Tempo and Android Auto get them; hand-dropped `.m3u` files with relative paths opening as playlists;
 a visible queue list (see, reorder, remove).
 
-## 3. Smaller items
+## 4. Smaller items
 
 - Subsonic: recently played (`getAlbumList2` type recent) and resume across devices (`getPlayQueue`, `savePlayQueue`) from the saved positions.
 - Artist information: `artist.md` / `artist.txt` / `artist.nfo` text on the folder page and in `getArtistInfo2`; artist links in the player.
