@@ -68,7 +68,7 @@
     <div class="bar">
       <label class="check"><input type="checkbox" id="https" checked> https only (needed on a secure site)</label>
       <label class="check"><input type="checkbox" id="hls" checked> HLS (.m3u8) only</label>
-      <label class="check"><input type="checkbox" id="nogeo" checked> skip geo-blocked</label>
+      <label class="check"><input type="checkbox" id="nogeo"> skip geo-blocked (only viewable inside their own country)</label>
       <label class="check"><input type="checkbox" id="best" checked> one stream per channel (the best)</label>
     </div>
     <div class="bar">
@@ -147,7 +147,8 @@
       return true;
     }).map(function (s) {
       var c = channels[s.channel];
-      return { id: c.id, name: clean(c.name), country: c.country || "", cats: c.categories || [], url: s.url, quality: s.quality || "", on: false, test: "" };
+      return { id: c.id, name: clean(c.name), country: c.country || "", cats: c.categories || [], url: s.url, quality: s.quality || "",
+               labels: s.labels || [], on: false, test: "" };
     });
     out.sort(function (a, b) { return a.name.localeCompare(b.name) || height(b.quality) - height(a.quality); });
     if ($("best").checked) {
@@ -168,7 +169,7 @@
       var info = document.createElement("div");
       var nm = document.createElement("div"); nm.className = "name"; nm.textContent = s.name;
       var meta = document.createElement("div"); meta.className = "meta";
-      meta.textContent = [s.quality, countries[s.country] || s.country, s.cats.join(", ")].filter(Boolean).join(" · ");
+      meta.textContent = [s.quality, countries[s.country] || s.country, s.cats.join(", "), s.labels.join(", ")].filter(Boolean).join(" · ");
       info.appendChild(nm); info.appendChild(meta);
       var test = document.createElement("span"); test.className = "test"; s.testEl = test; paintTest(s);
       var play = document.createElement("button"); play.className = "play"; play.textContent = "▶"; play.title = "Try it"; play.setAttribute("aria-label", "Try " + s.name);
