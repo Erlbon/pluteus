@@ -32,7 +32,7 @@ from starlette.responses import (FileResponse, HTMLResponse, JSONResponse, Plain
                                  RedirectResponse, Response, StreamingResponse)
 from starlette.routing import Route
 
-from . import cbz, kinds, markdown, mediainfo, opds, opds2, radio, relay, stationsave, subtitles, tabular, thumbs, textview, uploads, web, ziputil
+from . import cbz, kinds, markdown, mediainfo, opds, opds2, radio, relay, stationsave, subtitles, tabular, thumbs, textview, uploads, vault, web, ziputil
 from .auth import Authenticator
 from .bodies import read_limited
 from .cbz import CbzError
@@ -738,7 +738,8 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
             state.set_prefs(user.name, prefs)
             return RedirectResponse(urls.settings() + "?saved=1", 303)
         return HTMLResponse(web.settings_page(ctx_for(user), themes.names(), "saved" in request.query_params,
-                                              stations=lib.uploads_enabled(user)))
+                                              stations=lib.uploads_enabled(user),
+                                              streams=bool(cfg.relay and lib.uploads_enabled(user) and vault_state["vault"] is not None)))
 
     # ---- personal upload folder: upload, new folder, rename, delete -----------------------------------------------
     def flash_url(parts: tuple, **query) -> str:
@@ -949,6 +950,7 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
         page = web.iptv_page if radio.looks_like_tv(head[0], stations) else web.radio_page
         extra = {"page_url": urls.view(root, parts)} if page is web.iptv_page else {}
         extra["logo_url"] = urls.cover(root, parts) if radio.find_logo(info.path) else ""
+        extra["always"] = [bool(name) for name in radio.parse_streams(head[0])]      # a station that names a stored stream only plays through the server
         if cfg.relay and lib.uploads_enabled(user):          # the player may fall back to the server for a stream it cannot play
             extra["relay_urls"] = [urls.relay(root, parts, i) + ("&hls=1" if page is web.iptv_page else "") for i in range(len(stations))]
         html = page(ctx_for(user), info.name, stations=stations, download_url=urls.download(root, parts),
@@ -1051,23 +1053,94 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
         return HTMLResponse(text, headers={"Content-Security-Policy": csp})
 
     relay_limits = relay.Limiter(cfg.relay_streams_user, cfg.relay_streams_total)
+    vault_state = {"vault": None, "source": "", "problem": ""}
+    if cfg.relay:                                            # stored logins and headers for protected streams (vault.py), encrypted at rest
+        try:
+            master, vault_source = vault.load_master(cfg.relay_key, cfg.data_dir)
+            vault_state.update(vault=vault.Vault(master), source=vault_source)
+        except vault.VaultError as e:
+            vault_state["problem"] = str(e)
+            log.warning("the relay's stored streams are off: %s", e)
 
-    async def hls_playlist(user, lease: str, address: str) -> Response:
+    def stored_stream(user_name: str, name: str) -> tuple:
+        """(entry, '') for the user's own stored stream `name`, or (None, a sentence saying why not). '' for a station that needs none."""
+        if not name:
+            return None, ""
+        vlt = vault_state["vault"]
+        if vlt is None:
+            return None, "Stored streams are not available (%s)." % (vault_state["problem"] or "the relay is off")
+        row = state.stream_get(user_name, name)
+        if row is None:
+            return None, 'This station needs the stored stream "%s", which is not set up. Add it under Settings, My streams.' % name
+        blob, key_id = row
+        if key_id != vlt.key_id:
+            return None, 'The stored stream "%s" was stored with another key and cannot be opened. Add it again under Settings, My streams.' % name
+        try:
+            return vlt.open(blob), ""
+        except vault.VaultError:
+            return None, 'The stored stream "%s" cannot be opened. Add it again under Settings, My streams.' % name
+
+    async def hls_playlist(user, lease: str, address: str, stream: str = "", entry=None) -> Response:
         """The HLS playlist at `address` with every address in it replaced by a signed token that only this user can use (see relay.sign).
         Each fetch of a playlist renews the stream's lease, which counts against the stream limits."""
         if not relay_limits.lease(user.name, lease):
             return PlainTextResponse("Too many streams are open through the server right now. Close one and try again.", 429,
                                      headers={"Retry-After": "10"})
         try:
-            data, _, final = await run_in_threadpool(relay.fetch_body, address, relay.MAX_PLAYLIST)
+            data, _, final = await run_in_threadpool(relay.fetch_body, address, relay.MAX_PLAYLIST, entry)
         except relay.Refused as e:
             relay_limits.drop_lease(user.name, lease)
             return PlainTextResponse(e.message, e.status)
         if not relay.is_playlist(data):
             relay_limits.drop_lease(user.name, lease)
             return PlainTextResponse("That is not an HLS playlist.", 415)
-        text = relay.rewrite_playlist(data.decode("utf-8", "replace"), final, lambda target: urls.relay_piece(relay.sign(target, user.name, lease)))
+        text = relay.rewrite_playlist(data.decode("utf-8", "replace"), final, lambda target: urls.relay_piece(relay.sign(target, user.name, lease, stream=stream)))
         return Response(text, media_type="application/vnd.apple.mpegurl", headers={"Cache-Control": "no-store", "X-Content-Type-Options": "nosniff"})
+
+    KEY_NOTES = {"config": "The key that encrypts these comes from relay_key in the config.",
+                 "file": "The key that encrypts these was made by pluteus and is kept in relay.key in the data folder. Keep it with your backups: "
+                         "without it stored streams cannot be recovered.",
+                 "memory": "There is no data folder, so the key, and everything stored here, lasts only until the server restarts."}
+
+    @guarded("web")
+    async def my_streams(request: Request, user):
+        """Settings > My streams: the user's own stored logins and headers for protected streams. Nothing stored is ever shown back."""
+        vlt = vault_state["vault"]
+        if not cfg.relay or vlt is None or not lib.uploads_enabled(user):
+            raise NotFound("stored streams are off")
+        message = error = ""
+        if request.method == "POST":
+            raw = await read_limited(request, 16384)
+            if raw is None:
+                return PlainTextResponse("Request too large", 413)
+            form = _form(raw)
+            try:
+                if form.get("action") == "delete":
+                    await run_in_threadpool(state.stream_delete, user.name, form.get("name", ""))
+                    message = "Deleted."
+                elif form.get("action") == "save":
+                    name = vault.clean_name(form.get("name", ""))
+                    entry = vault.clean_entry(form.get("login", ""), form.get("user", ""), form.get("password", ""), form.get("token", ""),
+                                              form.get("headers", ""), form.get("hosts", ""))
+                    have = [n for n, _, _ in await run_in_threadpool(state.stream_list, user.name)]
+                    if len(have) >= 30 and name not in have:
+                        raise ValueError("At most 30 stored streams.")
+                    await run_in_threadpool(state.stream_put, user.name, name, vlt.seal(entry), vlt.key_id)
+                    message = 'Saved "%s".' % name
+            except ValueError as e:
+                error = str(e)
+        entries = []
+        for name, blob, key_id in await run_in_threadpool(state.stream_list, user.name):
+            status, shown = "ok", None
+            if key_id != vlt.key_id:
+                status = "other-key"
+            else:
+                try:
+                    shown = vault.describe(vlt.open(blob))
+                except vault.VaultError:
+                    status = "damaged"
+            entries.append({"name": name, "status": status, "shown": shown})
+        return HTMLResponse(web.streams_page(ctx_for(user), entries, KEY_NOTES[vault_state["source"]], message, error))
 
     @guarded("media")
     async def relay_piece(request: Request, user):
@@ -1078,16 +1151,19 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
         found = relay.verify(request.path_params["token"], user.name)
         if found is None:
             raise NotFound("that piece is no longer offered")
-        address, lease = found
+        address, lease, stream = found
+        entry, problem = stored_stream(user.name, stream)
+        if stream and entry is None:
+            return PlainTextResponse(problem, 409)
         if not relay_limits.acquire_piece(user.name):
             return PlainTextResponse("Too many pieces at once.", 429, headers={"Retry-After": "2"})
         try:
-            data, _, final = await run_in_threadpool(relay.fetch_body, address, relay.MAX_PIECE)
+            data, _, final = await run_in_threadpool(relay.fetch_body, address, relay.MAX_PIECE, entry)
             if relay.is_playlist(data):                         # a variant (media) playlist: rewritten again, and it renews the lease
                 if lease and not relay_limits.lease(user.name, lease):
                     return PlainTextResponse("Too many streams are open through the server right now.", 429, headers={"Retry-After": "10"})
                 text = relay.rewrite_playlist(data.decode("utf-8", "replace"), final,
-                                              lambda target: urls.relay_piece(relay.sign(target, user.name, lease)))
+                                              lambda target: urls.relay_piece(relay.sign(target, user.name, lease, stream=stream)))
                 return Response(text, media_type="application/vnd.apple.mpegurl", headers={"Cache-Control": "no-store", "X-Content-Type-Options": "nosniff"})
             return Response(data, media_type=relay.piece_type(data, final), headers={"Cache-Control": "no-store", "X-Content-Type-Options": "nosniff"})
         except relay.Refused as e:
@@ -1110,19 +1186,23 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
             number = int(request.query_params.get("i", "0"))
         except ValueError:
             raise NotFound("no such station")
-        stations = await run_in_threadpool(radio.read_file, info.path)
+        stations = await run_in_threadpool(radio.read_file_streams, info.path)
         if not 0 <= number < len(stations):
             raise NotFound("no such station")
+        entry, problem = stored_stream(user.name, stations[number][2])      # a station that names a stored stream needs it (login, headers)
+        if stations[number][2] and entry is None:
+            return PlainTextResponse(problem, 409)
         if request.query_params.get("now") == "1":           # what the station is playing now (its ICY title); the audio is not carried
-            playing = await run_in_threadpool(relay.now_playing, stations[number][1], stations[number][0])
+            playing = await run_in_threadpool(relay.now_playing, stations[number][1], stations[number][0], entry, user.name)
             return JSONResponse(playing, headers={"Cache-Control": "no-store"})
         if request.query_params.get("hls") == "1":           # a TV channel: its playlist, rewritten so every piece comes through the server
-            return await hls_playlist(user, "%s/%s#%d" % (root, "/".join(parts), number), stations[number][1])
+            return await hls_playlist(user, "%s/%s#%d" % (root, "/".join(parts), number), stations[number][1],
+                                       stations[number][2], entry)
         if not relay_limits.acquire(user.name):
             return PlainTextResponse("Too many streams are open through the server right now. Close one and try again.", 429,
                                      headers={"Retry-After": "10"})
         try:
-            connection, response, kind = await run_in_threadpool(relay.open_stream, stations[number][1])
+            connection, response, kind = await run_in_threadpool(relay.open_stream, stations[number][1], None, relay.AUDIO, entry)
         except relay.Refused as e:
             relay_limits.release(user.name)
             return PlainTextResponse(e.message, e.status)
@@ -1648,6 +1728,7 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
         Route("/shell", shell),
         Route("/relay/{root}/{path:path}", relay_stream),
         Route("/relay-piece/{token}", relay_piece),
+        Route("/settings/streams", my_streams, methods=["GET", "POST"]),
         Route("/stations/{kind}", stations_page),
         Route("/api/stations", stations_save, methods=["POST"]),
         Route("/api/stations/missing", stations_missing),

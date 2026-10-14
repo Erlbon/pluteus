@@ -21,7 +21,7 @@ import threading
 import time
 from urllib.parse import urljoin, urlsplit
 
-from . import fetchimage
+from . import fetchimage, vault
 
 TIMEOUT = 15.0            # seconds to connect, and the longest a stream may stall before the relay ends it
 CHUNK = 16384
@@ -118,10 +118,12 @@ def _split(url: str):
     return parts.scheme, parts.hostname, port, (parts.path or "/") + ("?" + parts.query if parts.query else "")
 
 
-def open_stream(url: str, extra: dict | None = None, accept=AUDIO):
+def open_stream(url: str, extra: dict | None = None, accept=AUDIO, entry: dict | None = None):
     """(connection, response, content type) for the stream, after the checks. The caller closes the connection. Raises Refused.
     `extra`: more request headers (the now-playing look-up asks for Icy-MetaData). `accept`: the content types allowed (audio by default;
-    None for the pieces of an HLS stream, which are checked by what they contain). `connection.final_url` is the address after redirects."""
+    None for the pieces of an HLS stream, which are checked by what they contain). `entry`: a stored stream (vault.py): its login and headers are
+    sent only to the hosts it names, decided again for every hop, so a redirect to another host never carries them.
+    `connection.final_url` is the address after redirects."""
     for _ in range(4):
         scheme, host, port, path = _split(url)
         try:
@@ -132,7 +134,8 @@ def open_stream(url: str, extra: dict | None = None, accept=AUDIO):
         connection = cls(host, port, sockaddr, family, TIMEOUT)         # one limit for connecting and for every read: a stalled stream ends
         try:
             connection.request("GET", path, headers={"Host": host if port in (80, 443) else "%s:%d" % (host, port),
-                                                     "User-Agent": "pluteus-relay/1", "Accept": "*/*", "Connection": "close", **(extra or {})})
+                                                     "User-Agent": "pluteus-relay/1", "Accept": "*/*", "Connection": "close",
+                                                     **(vault.request_headers(entry, host) if entry else {}), **(extra or {})})
             response = connection.getresponse()
             if response.status in (301, 302, 303, 307, 308):
                 location = response.getheader("Location") or ""
@@ -213,20 +216,21 @@ def _read_exact(response, count: int, deadline: float) -> bytes:
     return bytes(data)
 
 
-def now_playing(url: str, station_name: str = "") -> dict:
+def now_playing(url: str, station_name: str = "", entry: dict | None = None, user: str = "") -> dict:
     """The title the station is playing now, as {"text", "artist", "title"}, or {} (the station sends none, or nothing useful). Opens the
     stream for a moment with Icy-MetaData: 1, reads up to the first metadata block (about 16 KB) and closes: the audio is not carried.
     Answers are kept for ten seconds, so any number of listeners cost one look-up. Never raises."""
     now = time.monotonic()
+    key = (user, url) if entry else url                  # a protected stream's title is kept per user, never shown to another
     with _cache_lock:
-        hit = _cache.get(url)
+        hit = _cache.get(key)
         if hit and now - hit[0] < CACHE_SECONDS:
             return hit[1]
     result: dict = {}
     if _peeks.acquire(blocking=False):
         connection = None
         try:
-            connection, response, _ = open_stream(url, {"Icy-MetaData": "1"})
+            connection, response, _ = open_stream(url, {"Icy-MetaData": "1"}, entry=entry)
             try:
                 metaint = int(response.getheader("icy-metaint") or 0)
             except ValueError:
@@ -251,7 +255,7 @@ def now_playing(url: str, station_name: str = "") -> dict:
     with _cache_lock:
         if len(_cache) > 200:
             _cache.clear()
-        _cache[url] = (time.monotonic(), result)
+        _cache[key] = (time.monotonic(), result)
     return result
 
 
@@ -271,16 +275,17 @@ def _unb64(text: str) -> bytes:
     return base64.urlsafe_b64decode(text + "=" * (-len(text) % 4))
 
 
-def sign(url: str, user: str, lease: str, now: float | None = None) -> str:
+def sign(url: str, user: str, lease: str, now: float | None = None, stream: str = "") -> str:
     """A token that names `url` for this user and no other: only the server can make one, so a page can only fetch what the server
-    offered it in a playlist it fetched itself. It lapses after an hour."""
-    payload = json.dumps({"u": url, "n": user, "k": lease, "e": int((now or time.time()) + TOKEN_SECONDS)}, separators=(",", ":")).encode("utf-8")
+    offered it in a playlist it fetched itself. It lapses after an hour. `stream` is the NAME of the stored stream the pieces need (never a
+    login or a header: those are looked up when the piece is fetched)."""
+    payload = json.dumps({"u": url, "n": user, "k": lease, "s": stream, "e": int((now or time.time()) + TOKEN_SECONDS)}, separators=(",", ":")).encode("utf-8")
     body = _b64(payload)
     return body + "." + _b64(hmac.new(_KEY, body.encode("ascii"), hashlib.sha256).digest()[:18])
 
 
 def verify(token: str, user: str, now: float | None = None):
-    """(url, lease key) for a token made by sign() for this user and still valid, else None."""
+    """(url, lease key, stored stream name) for a token made by sign() for this user and still valid, else None."""
     try:
         body, _, signature = token.partition(".")
         good = _b64(hmac.new(_KEY, body.encode("ascii"), hashlib.sha256).digest()[:18])
@@ -289,7 +294,7 @@ def verify(token: str, user: str, now: float | None = None):
         data = json.loads(_unb64(body).decode("utf-8"))
         if data.get("n") != user or int(data.get("e", 0)) < (now or time.time()):
             return None
-        return str(data["u"]), str(data.get("k", ""))
+        return str(data["u"]), str(data.get("k", "")), str(data.get("s", ""))
     except (ValueError, KeyError, TypeError, UnicodeError):
         return None
 
@@ -312,10 +317,10 @@ def rewrite_playlist(text: str, base_url: str, point) -> str:
     return "\n".join(out)
 
 
-def fetch_body(url: str, cap: int):
+def fetch_body(url: str, cap: int, entry: dict | None = None):
     """(bytes, content type, final address) of a small reply (a playlist or one piece of a stream), after the checks; Refused if it is
     larger than `cap` bytes."""
-    connection, response, kind = open_stream(url, accept=None)
+    connection, response, kind = open_stream(url, accept=None, entry=entry)
     try:
         data = bytearray()
         while len(data) <= cap:

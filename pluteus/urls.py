@@ -52,6 +52,9 @@ class Urls:
         """Station number `index` of a station file, played through the server (the relay)."""
         return "%s?i=%d" % (self._build("relay", root, parts), index)
 
+    def my_streams(self) -> str:
+        return self.base + "/settings/streams"
+
     def relay_piece(self, token: str) -> str:
         """One piece (playlist, segment, key) of a relayed HLS stream, named by a token only the server can make."""
         return "%s/relay-piece/%s" % (self.base, token)

@@ -34,6 +34,8 @@ CREATE TABLE IF NOT EXISTS devices (
     token_hash TEXT PRIMARY KEY, username TEXT NOT NULL, pwfp TEXT NOT NULL,
     first_seen REAL NOT NULL, last_seen REAL NOT NULL, last_ip TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS appkeys (username TEXT PRIMARY KEY, secret TEXT NOT NULL, created REAL NOT NULL);
+CREATE TABLE IF NOT EXISTS streams (username TEXT NOT NULL, name TEXT NOT NULL, blob BLOB NOT NULL, key_id TEXT NOT NULL, created REAL NOT NULL,
+    PRIMARY KEY (username, name));
 CREATE TABLE IF NOT EXISTS shelves (
     username TEXT NOT NULL, shelf TEXT NOT NULL, root TEXT NOT NULL, path TEXT NOT NULL, is_dir INTEGER NOT NULL,
     rank REAL NOT NULL, added REAL NOT NULL, PRIMARY KEY (username, shelf, root, path));
@@ -194,11 +196,32 @@ class StateDB:
         """{user name: secret}: the Subsonic login keys (few: one per user)."""
         return {r[0]: r[1] for r in self._all("SELECT username, secret FROM appkeys")}
 
+    # ---- stored streams: encrypted logins and headers for protected streams (see vault.py); the state never sees a clear value --------------
+    def stream_put(self, username: str, name: str, blob: bytes, key_id: str, now=None) -> None:
+        self._write("INSERT OR REPLACE INTO streams VALUES (?,?,?,?,?)", (username, name, blob, key_id, time.time() if now is None else now))
+
+    def stream_get(self, username: str, name: str):
+        """(blob, key_id) of this user's entry, or None. Another user's entry of the same name is a different row."""
+        row = self._one("SELECT blob, key_id FROM streams WHERE username=? AND name=?", (username, name))
+        return (bytes(row[0]), row[1]) if row else None
+
+    def stream_list(self, username: str) -> list:
+        return [(r[0], bytes(r[1]), r[2]) for r in self._all("SELECT name, blob, key_id FROM streams WHERE username=? ORDER BY name COLLATE NOCASE", (username,))]
+
+    def stream_delete(self, username: str, name: str) -> int:
+        return self._write("DELETE FROM streams WHERE username=? AND name=?", (username, name))
+
+    def streams_delete_user(self, username: str) -> int:
+        return self._write("DELETE FROM streams WHERE username=?", (username,))
+
     def purge_appkeys(self, existing) -> int:
         """Delete the keys of users that are no longer in the configuration (a new user with the same name must not inherit one)."""
         gone = [name for name in self.appkeys() if name not in existing]
         for name in gone:
             self.delete_appkey(name)
+        for (name,) in self._all("SELECT DISTINCT username FROM streams"):             # stored streams of a user that is gone: the same rule
+            if name not in existing:
+                self.streams_delete_user(name)
         return len(gone)
 
     def appkey_users(self) -> dict:

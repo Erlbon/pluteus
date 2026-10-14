@@ -683,7 +683,7 @@ def shell_page(ctx: Ctx, start_url: str) -> str:
 
 
 def iptv_page(ctx: Ctx, title: str, *, stations: list, download_url: str, text_url: str, back_url: str, page_url: str = "",
-              logo_url: str = "", relay_urls: list | None = None) -> str:
+              logo_url: str = "", relay_urls: list | None = None, always: list | None = None) -> str:
     """A live channel (or several) from a station file: the picture and sound play in a video element; HLS goes through the vendored
     hls.js (iptv.js) where the browser cannot play it itself. The addresses are written by the owner of the library."""
     name = title.rsplit(".", 1)[0] if "." in title else title
@@ -691,9 +691,9 @@ def iptv_page(ctx: Ctx, title: str, *, stations: list, download_url: str, text_u
     heading = first_name or name
     relays = relay_urls or []                                   # each channel's playlist through the server, when the relay is on
     listing = ("<div class='pl-stations' id='stations'>%s</div>"
-               % "".join("<button type='button' class='pl-station%s' data-url='%s' data-name='%s' data-relay='%s'>%s</button>"
+               % "".join("<button type='button' class='pl-station%s' data-url='%s' data-name='%s' data-relay='%s' data-always='%s'>%s</button>"
                          % (" pl-now" if i == 0 else "", escape(url), escape(label or name), escape(relays[i] if i < len(relays) else ""),
-                            escape(label or "%s %d" % (name, i + 1)))
+                            "1" if (always and i < len(always) and always[i]) else "0", escape(label or "%s %d" % (name, i + 1)))
                          for i, (label, url) in enumerate(stations))) if len(stations) > 1 else ""
     # the same pieces as the movie player: a row under the picture (here the LIVE badge in place of the position bar, then the volume
     # and full screen) and the big round play button; without the script the video keeps the browser's own controls
@@ -705,9 +705,9 @@ def iptv_page(ctx: Ctx, title: str, *, stations: list, download_url: str, text_u
                  "<span class='pl-icon pl-i-play'></span></button></span></div>")
     logo = "<img class='pl-tv-logo' src='%s' alt=''>" % escape(logo_url) if logo_url else ""
     stage = ("<div class='pl-media-box pl-player pl-videobox pl-iptv'><div class='pl-track pl-tv-head'>%s<h1 class='pl-track-title' id='now'>%s</h1></div>"
-             "<div class='pl-videowrap'><video id='tv' controls playsinline data-url='%s' data-page='%s' data-logo='%s' data-relay='%s'%s></video></div>%s%s%s"
+             "<div class='pl-videowrap'><video id='tv' controls playsinline data-url='%s' data-page='%s' data-logo='%s' data-relay='%s' data-always='%s'%s></video></div>%s%s%s"
              "<div class='pl-toast' id='status' hidden></div></div>"
-             % (logo, escape(heading), escape(first_url), escape(page_url), escape(logo_url), escape(relays[0] if relays else ""),
+             % (logo, escape(heading), escape(first_url), escape(page_url), escape(logo_url), escape(relays[0] if relays else ""), "1" if (always and always[0]) else "0",
                 " data-keep-sound='1'" if ctx.tv_sound else "", live_row, transport, listing))
     tools = _download_link(download_url) + _reader_scheme()
     foot = "<a href='%s'>Show as text</a>" % escape(text_url)
@@ -717,7 +717,7 @@ def iptv_page(ctx: Ctx, title: str, *, stations: list, download_url: str, text_u
 
 
 def radio_page(ctx: Ctx, title: str, *, stations: list, download_url: str, text_url: str, back_url: str, logo_url: str = "",
-               relay_urls: list | None = None) -> str:
+               relay_urls: list | None = None, always: list | None = None) -> str:
     """The radio player for a station file: the stations are written by the owner of the library, the browser plays the stream
     itself (an <audio> element; the page's CSP allows media from anywhere, see app.RADIO_CSP). radio.js does the rest."""
     name = title.rsplit(".", 1)[0] if "." in title else title
@@ -744,8 +744,49 @@ def radio_page(ctx: Ctx, title: str, *, stations: list, download_url: str, text_
     return _viewer(ctx, title, back_url, tools=tools, stage=stage, foot=foot, classes="pl-mediaview pl-audio",
                    stage_class="pl-media-stage",
                    data=(("title", heading), ("artwork", logo_url or ctx.urls.static("icon/icon-512.png")), ("logo", logo_url),
-                         ("relay", "|".join(relay_urls or []))),               # one address per station, when the relay is on
+                         ("relay", "|".join(relay_urls or [])),               # one address per station, when the relay is on
+                         ("always", "|".join("1" if a else "0" for a in (always or [])))),    # 1: the station needs a stored stream: only the server may fetch it
                    scripts=(ctx.urls.static("radio.js"),))
+
+
+def streams_page(ctx: Ctx, entries: list, key_note: str, message: str = "", error: str = "") -> str:
+    """My streams (Settings): the user's stored logins and headers for protected streams. It lists what each one holds without any value, and
+    takes a new one; a secret is never written into a page."""
+    badges = {"ok": "", "other-key": " <span class='pl-badge'>stored with another key: add it again</span>",
+              "damaged": " <span class='pl-badge'>cannot be opened: add it again</span>"}
+    rows = []
+    for e in entries:
+        shown = e.get("shown") or {}
+        what = [{"basic": "a login", "bearer": "a token"}.get(shown.get("login", ""), "")]
+        if shown.get("headers"):
+            what.append("headers: " + ", ".join(shown["headers"]))
+        rows.append("<li class='pl-row'><span class='pl-title-text'><strong>%s</strong>%s<br><span class='pl-muted'>%s &middot; sent only to %s</span></span>"
+                    "<form method='post' action='%s' data-confirm='Delete the stored stream %s?'><input type='hidden' name='action' value='delete'>"
+                    "<input type='hidden' name='name' value='%s'><button class='pl-btn pl-btn-small' type='submit'>Delete</button></form></li>"
+                    % (escape(e["name"]), badges[e["status"]], escape(", ".join(w for w in what if w) or "nothing"),
+                       escape(", ".join(shown.get("hosts", [])) or "no host"), escape(ctx.urls.my_streams()), escape(e["name"]), escape(e["name"])))
+    listing = ("<ul class='pl-list'>%s</ul>" % "".join(rows)) if rows else "<p class='pl-muted'>Nothing stored yet.</p>"
+    note = ("<p class='pl-flash' role='status'>%s</p>" % escape(message)) if message else ""
+    note += ("<p class='pl-flash pl-error' role='alert'>%s</p>" % escape(error)) if error else ""
+    form = ("<form class='pl-card' method='post' action='%s' autocomplete='off'><input type='hidden' name='action' value='save'>"
+            "<label class='pl-field'><span>Name</span><input name='name' maxlength='60' required placeholder='My subscription'></label>"
+            "<label class='pl-field'><span>Login</span><select name='login'><option value='none'>No login</option>"
+            "<option value='basic'>User name and password</option><option value='bearer'>A token</option></select></label>"
+            "<label class='pl-field'><span>User name</span><input name='user' maxlength='200' autocomplete='off'></label>"
+            "<label class='pl-field'><span>Password</span><input name='password' type='password' maxlength='200' autocomplete='new-password'></label>"
+            "<label class='pl-field'><span>Token</span><input name='token' type='password' maxlength='2000' autocomplete='off'></label>"
+            "<label class='pl-field'><span>Headers, one per line (for example Referer: https://www.example.com/)</span><textarea name='headers' rows='3'></textarea></label>"
+            "<label class='pl-field'><span>Send these only to the host names (separated by commas)</span>"
+            "<input name='hosts' required placeholder='stream.example.org'></label>"
+            "<button class='pl-btn pl-btn-primary' type='submit'>Save</button></form>" % escape(ctx.urls.my_streams()))
+    body = ("<main class='pl-main'><h1>My streams</h1>%s"
+            "<p class='pl-muted'>Logins and headers for streams that need them. They are kept encrypted, only you can use them, and they are never shown again. "
+            "To use one, add <code>pluteus-stream=\"Name\"</code> to the station's <code>#EXTINF</code> line in its <code>.m3u</code> file: that station then always "
+            "plays through the server, which sends the login and headers to the host names you list here and to no other host.</p>"
+            "<section class='pl-card pl-home-box'><h2>Stored</h2>%s</section><h2>Add or replace one</h2>%s"
+            "<p class='pl-muted'>%s</p><p><a href='%s'>&larr; Back to Settings</a></p></main>"
+            % (note, listing, form, escape(key_note), escape(ctx.urls.settings())))
+    return layout("My streams", body, ctx)
 
 
 def info_page(ctx: Ctx, title: str, *, rows: list, download_url: str, text_url: str, back_url: str, note: str = "") -> str:
@@ -843,7 +884,7 @@ VIEW_STYLES = (("list", "A list"), ("grid", "Covers (a picture for each book)"))
 EXTRAS_STYLES = (("show", "Show"), ("hide", "Hide"))
 
 
-def settings_page(ctx: Ctx, themes: list, saved: bool = False, stations: bool = False) -> str:
+def settings_page(ctx: Ctx, themes: list, saved: bool = False, stations: bool = False, streams: bool = False) -> str:
     opts = "".join("<option value='%s'%s>%s</option>"
                    % (escape(t), " selected" if t == ctx.theme else "", escape(t)) for t in themes)
     icon_opts = "".join("<option value='%s'%s>%s</option>" % (k, " selected" if k == ctx.icons else "", escape(label))
@@ -874,7 +915,8 @@ def settings_page(ctx: Ctx, themes: list, saved: bool = False, stations: bool = 
                " selected" if ctx.queue_subfolders else "", "" if ctx.queue_subfolders else " selected",
                ("<section class='pl-card'><h2>Radio and TV</h2><p class='pl-muted'>Find stations and channels in public catalogues and save them "
                 "into your upload folder, where pluteus plays them (and shows them to music apps as radio).</p>"
-                "<p><a class='pl-btn' href='%s'>Find radio stations</a> <a class='pl-btn' href='%s'>Find TV channels</a></p></section>"
-                % (escape(ctx.urls.stations("radio")), escape(ctx.urls.stations("tv")))) if stations else "",
+                "<p><a class='pl-btn' href='%s'>Find radio stations</a> <a class='pl-btn' href='%s'>Find TV channels</a>%s</p></section>"
+                % (escape(ctx.urls.stations("radio")), escape(ctx.urls.stations("tv")),
+                   (" <a class='pl-btn' href='%s'>My streams</a>" % escape(ctx.urls.my_streams())) if streams else "")) if stations else "",
                escape(ctx.urls.home())))
     return layout("Settings", body, ctx)

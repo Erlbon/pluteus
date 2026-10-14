@@ -63,6 +63,7 @@
   function failedLive(item) { titleEl.textContent = item.title + " – the stream did not start"; paint(); }
   function load(item) {
     releaseHls();
+    if (item.always && !item.relay) { titleEl.textContent = item.title + " – needs the server relay (a stored login or header)"; paint(); return; }
     var go = function () { var p = audio.play(); if (p && p.catch) p.catch(function () { paint(); }); };
     if (item.tv && /[.]m3u8(?:$|[?#])/i.test(item.url)) {
       var token = hlsToken;
@@ -171,7 +172,7 @@
     keepTv: function (item) {
       if (!item || typeof item.url !== "string") return;
       window.plShell.playQueue([{ title: item.title, url: item.url, folder: item.folder || "Live TV", live: true, tv: true, page: item.page || "",
-                                  logo: item.logo || "", linkText: "Picture", relay: item.relay || "", viaRelay: !!item.viaRelay }], 0);
+                                  logo: item.logo || "", linkText: "Picture", relay: item.relay || "", viaRelay: !!item.viaRelay, always: !!item.always }], 0);
     },
     /* a song that was playing in the page being left carries on here, from where it was (a short gap while the file is opened again) */
     takeOver: function (items, start, at) {

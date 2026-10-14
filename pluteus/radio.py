@@ -13,6 +13,7 @@ EXTENSIONS = (".m3u", ".m3u8", ".pls", ".url")
 MAX_STATIONS = 500
 MAX_URL = 2000
 _CONTROL = re.compile(r"[\x00-\x1f\x7f]")
+_STREAM_ATTRIBUTE = re.compile(r'pluteus-stream="([^"]{1,60})"', re.IGNORECASE)
 _PLS = re.compile(r"^(File|Title)(\d+)\s*=\s*(.*)$", re.IGNORECASE)
 
 
@@ -90,8 +91,23 @@ def read_file(path: str) -> list:
     return parse(text)
 
 
-def parse(text: str) -> list:
-    """[(name, url)] of the stations in the text; [] when it holds none."""
+def read_file_streams(path: str) -> list:
+    """[(name, url, stored stream)] of a station file on disk, like read_file with the stored-stream name of each station."""
+    try:
+        with open(path, "rb") as f:
+            raw = f.read(64 * 1024)
+    except OSError:
+        return []
+    try:
+        text = raw.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        text = raw.decode("cp1252", "replace")
+    return _parse(text)
+
+
+def _parse(text: str) -> list:
+    """[(name, url, stored stream)] of the stations in the text; [] when it holds none. The stored stream is the name given by a
+    pluteus-stream="..." attribute on the #EXTINF line (a login or header set up under Settings), or ''."""
     if "#EXT-X-" in text:                                    # an HLS manifest is a stream itself, not a list of stations
         return []
     stations = []
@@ -99,7 +115,7 @@ def parse(text: str) -> list:
     if any(line.lower() == "[internetshortcut]" for line in lines):
         for line in lines:
             if line.lower().startswith("url=") and _address(line[4:]):
-                stations.append(("", _address(line[4:])))
+                stations.append(("", _address(line[4:]), ""))
     elif any(line.lower() == "[playlist]" for line in lines):
         files, titles = {}, {}
         for line in lines:
@@ -108,14 +124,26 @@ def parse(text: str) -> list:
                 (files if m.group(1).lower() == "file" else titles)[int(m.group(2))] = m.group(3)
         for number in sorted(files):
             if _address(files[number]):
-                stations.append((_name(titles.get(number, "")), _address(files[number])))
+                stations.append((_name(titles.get(number, "")), _address(files[number]), ""))
     else:
-        name = ""
+        name = stream = ""
         for line in lines:
             if line.upper().startswith("#EXTINF"):
                 name = _name(line.rpartition(",")[2]) if "," in line else ""            # IPTV attributes may hold commas; the name is last
+                found = _STREAM_ATTRIBUTE.search(line)
+                stream = _name(found.group(1)) if found else ""
             elif line and not line.startswith("#"):
                 if _address(line):
-                    stations.append((name, _address(line)))
-                name = ""
-    return [(n, u) for n, u in stations if len(u) <= MAX_URL][:MAX_STATIONS]
+                    stations.append((name, _address(line), stream))
+                name = stream = ""
+    return [(n, u, st) for n, u, st in stations if len(u) <= MAX_URL][:MAX_STATIONS]
+
+
+def parse(text: str) -> list:
+    """[(name, url)] of the stations in the text; [] when it holds none."""
+    return [(n, u) for n, u, _ in _parse(text)]
+
+
+def parse_streams(text: str) -> list:
+    """For each station of parse(text), the name of the stored stream it needs ('' for none)."""
+    return [st for _, _, st in _parse(text)]

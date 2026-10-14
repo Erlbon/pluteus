@@ -47,5 +47,22 @@ around that: the code is in `pluteus/relay.py` and shares its address guard with
   playlist does not keep its place); pieces are capped at 30 MB, playlists at 1 MB, and at most eight pieces per user at once.
 - **Now playing:** a short side connection reads one ICY metadata block (about 16 KB); answers are kept for ten seconds and at most four
   look-ups run at once.
-- **Not in the relay yet:** stored logins and headers for protected streams (a later step, with an encrypted per-user store; see docs/ROADMAP.md).
-  Traffic through the relay uses the server's upload bandwidth, which is why it is off by default and limited.
+- **Stored logins and headers for protected streams (`pluteus/vault.py`):** a user stores an entry under Settings, My streams: a name, a login
+  or token, headers (`Referer`, `User-Agent` ...) and the host names they may be sent to. A station file refers to it with
+  `pluteus-stream="Name"` on its `#EXTINF` line, and that station then always plays through the server.
+  - **Encrypted at rest:** every entry is a blob in the state database, sealed with keys derived (HMAC-SHA256) from one master key: the data is
+    XOR-ed with an HMAC-SHA256 keystream in counter mode (a fresh random nonce each time) and an HMAC-SHA256 tag over nonce and ciphertext is
+    verified in constant time before anything is decrypted. Built only from the Python standard library, no extra dependency. A wrong key or a
+    changed blob is refused, never decrypted to garbage. The database holds no login, header or host in clear.
+  - **The key:** `relay_key` in the config wins (stretched with PBKDF2); otherwise a random key in `relay.key` in the data folder (created with
+    owner-only permissions where the system supports it, never replaced if it exists but is unusable); with no data folder, a key for this run
+    only. Each entry carries the fingerprint of the key it was sealed with, so a changed key is reported ("stored with another key") and never
+    breaks playback silently. **Back up the data folder or keep the config key:** entries cannot be recovered without the key.
+  - **Only the owner:** an entry is looked up by the signed-in user's name and its name; another user, and the administrator, cannot use or read
+    it, and the entries of a removed user are deleted.
+  - **Sent only where it belongs:** the login and headers go only to the host names the entry lists, decided again at every hop, so a redirect or
+    a playlist piece on another host never carries them (like `curl`). Playlist tokens carry the entry's name, never a secret; nothing of an entry
+    appears in a page, a log or an error message; headers that could break the request (`Host`, `Content-Length`, `Authorization` ...) cannot be set.
+  - **Honest limit:** the key has to be readable by the server, so someone who can read both the data folder and the config (or the running process)
+    can open the entries. The encryption protects a copy of the database, a backup or a leaked state file, not a compromised server.
+- Traffic through the relay uses the server's upload bandwidth, which is why it is off by default and limited.

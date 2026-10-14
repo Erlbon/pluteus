@@ -374,6 +374,7 @@ def create_admin_app(main_app) -> Starlette:
                 raise EditError("the last admin cannot be removed")
             model.remove_user(name)
             state.delete_appkey(name)                     # a new user with the same name must not inherit the key
+            state.streams_delete_user(name)               # ... nor the stored logins and headers for protected streams
             auth.forget_user(name)
             return "removed"
         return await change(request, user, action)

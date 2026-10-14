@@ -11,7 +11,7 @@
   var now = document.getElementById("now"), statusEl = document.getElementById("status"), statusTimer = null;
   var playBtn = document.getElementById("play"), box = document.querySelector(".pl-videobox");
   var stations = Array.prototype.slice.call(document.querySelectorAll(".pl-station"));
-  var hls = null, url = "", wanted = false, viaRelay = false, relay = video.dataset.relay || "";   // relay: this channel's playlist through the server ('' when it is off)
+  var hls = null, url = "", wanted = false, viaRelay = video.dataset.always === "1", always = video.dataset.always === "1", relay = video.dataset.relay || "";   // relay: this channel's playlist through the server ('' when it is off)
   document.documentElement.classList.add("pl-js");
   video.controls = false;
 
@@ -33,13 +33,18 @@
     video.load();
   }
   function failed() {
-    if (relay && !viaRelay) { viaRelay = true; start(); return; }          // the direct stream failed (no CORS, refused): once through the server
+    if (relay && !viaRelay && !always) { viaRelay = true; start(); return; }          // the direct stream failed (no CORS, refused): once through the server
     wanted = false; paint();
     say(relay ? "The stream did not start, not even through the server. It may be off the air, or in a format this browser cannot play."
               : "The stream did not start. Its server may be off the air, may not allow playback from a web page, or the picture is in a format this browser cannot play.", 12000);
   }
   function start() {
     release();
+    if (always && !relay) {                                    // a channel that needs a stored login or header: only the server can fetch it
+      wanted = false; paint();
+      say("This channel needs a stored login or header, which only the server relay can use. Switch the relay on (relay = true) and add the stream under Settings, My streams.", 14000);
+      return;
+    }
     // a plain http channel on this secure page cannot play directly: through the server when it offers that (the relay)
     if (relay && !viaRelay && location.protocol === "https:" && /^http:/i.test(url)) viaRelay = true;
     if (location.protocol === "https:" && /^http:/i.test(url) && !(relay && viaRelay)) {
@@ -114,12 +119,12 @@
     button.addEventListener("click", function () {
       stations.forEach(function (b) { b.classList.toggle("pl-now", b === button); });
       if (now) now.textContent = button.dataset.name;
-      url = button.dataset.url; relay = button.dataset.relay || ""; viaRelay = false;
+      url = button.dataset.url; relay = button.dataset.relay || ""; always = button.dataset.always === "1"; viaRelay = always;
       start();
     });
   });
   url = stations.length ? stations[0].dataset.url : video.dataset.url;
-  if (stations.length) relay = stations[0].dataset.relay || "";
+  if (stations.length) { relay = stations[0].dataset.relay || ""; always = stations[0].dataset.always === "1"; viaRelay = always; }
 
   /* in the shell, with "keep the sound" on: leaving this page hands the channel to the player bar as sound only (a link there brings
      the picture back); coming back to the page takes it from the bar again, so the sound is never doubled */

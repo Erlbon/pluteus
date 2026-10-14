@@ -20,9 +20,10 @@
     var logo = root.dataset.logo || "";                       // the picture next to the station file (a file with several stations: all share it)
     var back = location.pathname + location.search;           // the player bar links back to this page
     var relays = (root.dataset.relay || "").split("|");       // the address of each station through the server (empty when the relay is off)
+    var always = (root.dataset.always || "").split("|");          // "1": the station needs a stored stream, so only the server may fetch it
     function now(i) { return relays[i] ? relays[i] + "&now=1" : ""; }                  // the address that tells what the station plays now
-    var list = stations.length ? stations.map(function (b, i) { return { title: b.dataset.name, url: b.dataset.url, folder: "Live radio", live: true, logo: logo, page: back, linkText: "Station", relay: relays[i] || "", now: now(i) }; })
-                               : [{ title: name, url: url, folder: "Live radio", live: true, logo: logo, page: back, linkText: "Station", relay: relays[0] || "", now: now(0) }];
+    var list = stations.length ? stations.map(function (b, i) { return { title: b.dataset.name, url: b.dataset.url, folder: "Live radio", live: true, logo: logo, page: back, linkText: "Station", relay: relays[i] || "", now: now(i), always: always[i] === "1", viaRelay: always[i] === "1" }; })
+                               : [{ title: name, url: url, folder: "Live radio", live: true, logo: logo, page: back, linkText: "Station", relay: relays[0] || "", now: now(0), always: always[0] === "1", viaRelay: always[0] === "1" }];
     return list;
   }
   function shellPlaying() { return !!shell && shell.isPlaying() && shell.currentUrl() === url; }
@@ -48,7 +49,13 @@
     play.setAttribute("aria-label", wanted ? "Stop" : "Play");
   }
   function relayFor() { return (root.dataset.relay || "").split("|")[current] || ""; }
+  function alwaysFor() { return (root.dataset.always || "").split("|")[current] === "1"; }
   function start() {
+    if (alwaysFor() && !relayFor()) {
+      wanted = false; paint();
+      say("This station needs a stored login or header, which only the server relay can use. Switch the relay on (relay = true) and add the stream under Settings, My streams.", 14000);
+      return;
+    }
     if (location.protocol === "https:" && /^http:/i.test(url) && !relayFor()) {
       wanted = false; paint();
       say("This station is on plain http and the browser blocks it on this secure page. Open the site over http on the local network, or use a station with an https address.", 12000);
@@ -57,7 +64,7 @@
     say("");
     wanted = true;
     if (shell) { shell.playQueue(items(), current); paint(); return; }
-    audio.src = (location.protocol === "https:" && /^http:/i.test(url) && relayFor()) ? relayFor() : url;       // outside the shell too: http on https goes through the server
+    audio.src = (alwaysFor() || (location.protocol === "https:" && /^http:/i.test(url))) && relayFor() ? relayFor() : url;       // outside the shell too: http on https goes through the server
     var p = audio.play();
     if (p && p.catch) p.catch(function (e) {
       if (e && e.name === "NotAllowedError") { wanted = false; paint(); say("Tap play to start", 4000); }   // anything else is the error event's job

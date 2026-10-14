@@ -20,6 +20,8 @@ page_size = 50              # entries per OPDS / web page
 #                    # relay_streams_total in all are open at once (defaults 2 and 6). Uses the server's upload bandwidth.
 # relay_streams_user = 2
 # relay_streams_total = 6
+# relay_key = "a long passphrase"   # encrypts the stored logins and headers (Settings > My streams). Without it pluteus makes a key in the data folder
+#                                   # (relay.key): back that folder up, stored streams cannot be recovered without the key.
 
 # opds_pse = true           # OPDS page-streaming links so Android comic apps can read a CBZ page by page; reads each
 #                           # comic's page list once per feed page (cached). Set false to turn off.
