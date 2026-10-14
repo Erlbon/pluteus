@@ -28,6 +28,20 @@ def _name(text: str) -> str:
     return _CONTROL.sub("", text).strip()[:120]
 
 
+def read_file(path: str) -> list:
+    """[(name, url)] of a station file on disk (a small text file: only its first 64 KB is read); [] when unreadable or no station."""
+    try:
+        with open(path, "rb") as f:
+            raw = f.read(64 * 1024)
+    except OSError:
+        return []
+    try:
+        text = raw.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        text = raw.decode("cp1252", "replace")
+    return parse(text)
+
+
 def parse(text: str) -> list:
     """[(name, url)] of the stations in the text; [] when it holds none."""
     if "#EXT-X-" in text:                                    # an HLS manifest is a stream itself, not a list of stations

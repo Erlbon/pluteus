@@ -28,7 +28,7 @@ from xml.sax.saxutils import escape, quoteattr
 from starlette.concurrency import run_in_threadpool
 from starlette.responses import FileResponse, PlainTextResponse, Response
 
-from . import __version__, kinds, mediainfo
+from . import __version__, kinds, mediainfo, radio
 from .auth import verify_password
 from .bodies import read_limited
 from .fs import NotFound, PathError, clamp_time
@@ -133,6 +133,7 @@ class Subsonic:
         self._pw_ok: dict = {}
         self._albums: dict = {}
         self._albums_lock = threading.Lock()
+        self._radio: dict = {}
         self.handlers = {
             "ping": self.ping, "getlicense": self.license, "getopensubsonicextensions": self.extensions,
             "getmusicfolders": self.music_folders, "getindexes": self.indexes, "getmusicdirectory": self.music_directory,
@@ -141,14 +142,14 @@ class Subsonic:
             "search2": self.search2, "search3": self.search3, "getcoverart": self.cover_art, "stream": self.stream,
             "download": self.download, "getuser": self.user_info, "getscanstatus": self.scan_status,
             "startscan": self.scan_status, "star": self.star, "unstar": self.unstar, "getstarred": self.starred,
-            "getstarred2": self.starred2, "getlyricsbysongid": self.lyrics_by_id,
+            "getstarred2": self.starred2, "getlyricsbysongid": self.lyrics_by_id, "getinternetradiostations": self.radio_stations,
         }
         self.empty = {
             "getplaylists": "playlists", "getlyrics": "lyrics", "getgenres": "genres",
             "getnowplaying": "nowPlaying", "getartistinfo": "artistInfo", "getartistinfo2": "artistInfo2",
             "getalbuminfo": "albumInfo", "getalbuminfo2": "albumInfo", "gettopsongs": "topSongs",
             "getsimilarsongs": "similarSongs", "getsimilarsongs2": "similarSongs2", "getpodcasts": "podcasts",
-            "getinternetradiostations": "internetRadioStations", "getbookmarks": "bookmarks", "getshares": "shares",
+            "getbookmarks": "bookmarks", "getshares": "shares",
             "getplayqueue": "playQueue", "getsongsbygenre": "songsByGenre", "getvideos": "videos",
         }
         self.nothing = {"scrobble", "setrating", "updatenowplaying", "savebookmark", "deletebookmark",
@@ -406,6 +407,45 @@ class Subsonic:
 
     def extensions(self, user, p):
         return {"openSubsonicExtensions": [{"name": "apiKeyAuthentication", "versions": [1]}, {"name": "songLyrics", "versions": [1]}]}
+
+    # ---- internet radio: the station files (.m3u, .pls, .url) of a top-level Radio folder, in it and one folder down ---------
+    def _stations(self, user) -> list:
+        hit = self._radio.get(user.name)
+        if hit and hit[0] > time.monotonic():
+            return hit[1]
+        found = []
+        for r in self._roots(user):
+            try:
+                top = self.lib.list_dir(user, r.name, (), True, True)
+            except (NotFound, OSError):
+                continue
+            for folder in (e for e in top if e.is_dir and e.name.lower() == RADIO_FOLDER):
+                try:
+                    inside = self.lib.list_dir(user, r.name, folder.parts, True, True)
+                    files = [e for e in inside if not e.is_dir]
+                    for sub in (e for e in inside if e.is_dir):
+                        files += [e for e in self.lib.list_dir(user, r.name, sub.parts, True, True) if not e.is_dir]
+                except (NotFound, OSError):
+                    continue
+                for entry in sorted(files, key=lambda e: e.parts)[:300]:
+                    if not radio.is_radio_file(entry.name) or len(found) >= radio.MAX_STATIONS:
+                        continue
+                    try:
+                        path = self.lib.file_info(user, r.name, entry.parts, True).path
+                    except (NotFound, PathError, OSError):
+                        continue
+                    stem = os.path.splitext(entry.name)[0]
+                    stations = radio.read_file(path)
+                    for n, (name, url) in enumerate(stations):
+                        label = name or (stem if len(stations) == 1 else "%s %d" % (stem, n + 1))
+                        found.append({"id": make_id(r.name, entry.parts) + ("" if len(stations) == 1 else ".%d" % n),
+                                      "name": label, "streamUrl": url})
+        found = found[:radio.MAX_STATIONS]
+        self._radio = {**{k: v for k, v in self._radio.items() if v[0] > time.monotonic()}, user.name: (time.monotonic() + _ALBUM_CACHE_SECONDS, found)}
+        return found
+
+    def radio_stations(self, user, p):
+        return {"internetRadioStations": {"internetRadioStation": self._stations(user)}}
 
     # ---- stars: the user's Favourites shelf, the same list as the heart in the web pages ------------------------------------
     def _is_dir(self, user, root: str, parts) -> bool:

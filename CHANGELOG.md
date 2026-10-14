@@ -3,6 +3,7 @@
 Release notes are taken from the section of the tagged version (`## 0.5.0 ...`).
 
 ## Unreleased (for 0.9.5)
+- **Subsonic internet radio:** `getInternetRadioStations` lists the station files (`.m3u`, `.pls`, `.url` with an http(s) stream) of a top-level `Radio` folder, in it and one folder down, so apps such as Tempo (and the car) show them as radio stations. The names come from the file (the `#EXTINF` name, else the file name); the list is kept for two minutes. Adding, renaming and deleting stations from an app is not supported: the files are the list.
 - **Subsonic:** a folder named `Radio` at the top of a library (where you keep station `.m3u` files next to the music) is left out of the artist and album lists, so apps do not show it as an empty artist. A `Radio` folder deeper down is an ordinary folder.
 - **Subsonic stars:** `star`, `unstar` and `getStarred2` use the user's Favourites shelf, so a heart tapped in an app is the same as the heart in the web pages, and starred songs and albums show the heart in the app. (Before, a star was ignored and the heart went away again.)
 - **Subsonic lyrics:** OpenSubsonic `getLyricsBySongId` serves the timed lines of a `.lrc` file or tag, else the plain tag text; apps such as Tempo can show them.
