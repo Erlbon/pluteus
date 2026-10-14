@@ -469,6 +469,18 @@ html[data-icons="aurora"] .pl-ico-upload  { color: light-dark(#1f7ae0, #7cc8ff);
   .pl-play-wrap { margin: 0 2px; }
 }
 .pl-fs-btn { margin-left: 4px; }
+/* the shell: the pluteus bar, a slim player strip, and the whole site in a frame; a page in the frame has no bar of its own */
+.pl-framed .pl-bar { display: none; }
+body.pl-shell-page { display: flex; flex-direction: column; height: 100vh; height: 100dvh; margin: 0; overflow: hidden; }
+.pl-shell-frame { flex: 1; min-height: 0; width: 100%; border: 0; display: block; background: var(--pl-bg); }
+.pl-shell-player { position: relative; display: flex; align-items: center; gap: 8px; padding: 6px 12px; background: var(--pl-card);
+  border-bottom: 1px solid var(--pl-line); }
+.pl-shell-player[hidden] { display: none; }
+.pl-shell-player .pl-icon { color: var(--pl-accent); width: 22px; height: 22px; }
+.pl-shell-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.pl-shell-prog { position: absolute; left: 0; right: 0; bottom: 0; height: 2px; }
+.pl-shell-prog i { display: block; height: 2px; width: 0; background: var(--pl-accent); }
+.pl-play-all { margin: 8px 0; }
 /* the radio player: the station list under the play button */
 .pl-js .pl-radio audio { display: none; }
 .pl-radio-scrub { width: auto; justify-content: center; }

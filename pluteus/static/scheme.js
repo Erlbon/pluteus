@@ -19,6 +19,15 @@
   catch (e) { /* storage blocked: the system setting still works */ }
   if (saved === "dark" || saved === "light") root.setAttribute("data-scheme", saved);
 
+  /* The shell: a signed-in page opened on its own moves into the shell page (the player lives there and keeps playing while the
+     site is shown in its frame); a page that is already in the frame hides its own bar, the shell has one. ?noshell=1 opts out. */
+  var shell = root.getAttribute("data-shell");
+  if (window.top !== window) {
+    root.classList.add("pl-framed");
+  } else if (shell && !/[?&]noshell=1/.test(location.search)) {
+    location.replace(shell + "?go=" + encodeURIComponent(location.pathname + location.search + location.hash));
+  }
+
   /* A do-nothing service worker, only so that Chrome offers "Install app" (it lives at <site prefix>/sw.js) */
   if ("serviceWorker" in navigator) {
     window.addEventListener("load", function () {

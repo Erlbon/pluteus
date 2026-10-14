@@ -25,7 +25,7 @@ class Ctx:
 
 
 def layout(title: str, body: str, ctx: Ctx, *, head: str = "", scripts: tuple = (), bar: bool = True,
-           body_class: str = "", module_scripts: tuple = ()) -> str:
+           body_class: str = "", module_scripts: tuple = (), shell: bool = True) -> str:
     u = ctx.urls
     css = ["<link rel='stylesheet' href='%s'>" % escape(u.static("base.css")),
            "<link rel='stylesheet' href='%s'>" % escape(u.theme(DEFAULT, "theme.css"))]
@@ -48,11 +48,13 @@ def layout(title: str, body: str, ctx: Ctx, *, head: str = "", scripts: tuple = 
     js = "".join("<script src='%s' defer></script>" % escape(s) for s in scripts)
     js += "".join("<script type='module' src='%s'></script>" % escape(s) for s in module_scripts)
     # scheme.js is NOT deferred: it must run before the first paint so a saved dark/light choice never flashes.
-    return ("<!doctype html><html lang='en' data-icons='%s'><head><meta charset='utf-8'>"
+    # data-shell: a signed-in page opened on its own moves into the shell (scheme.js), where the player outlives page changes
+    to_shell = " data-shell='%s'" % escape(u.shell()) if (shell and ctx.user) else ""
+    return ("<!doctype html><html lang='en' data-icons='%s'%s><head><meta charset='utf-8'>"
             "<meta name='viewport' content='width=device-width, initial-scale=1'>"
             "<title>%s</title>%s%s<script src='%s'></script>%s%s</head>"
             "<body class='%s'>%s%s%s</body></html>"
-            % (escape(ctx.icons), escape(title), icon_links(u), "".join(css), escape(u.static("scheme.js")), head, js,
+            % (escape(ctx.icons), to_shell, escape(title), icon_links(u), "".join(css), escape(u.static("scheme.js")), head, js,
                escape(body_class), COLOR_SPRITE if ctx.icons == "color" else OUTLINE_SPRITE, chrome, body))
 
 
@@ -313,11 +315,12 @@ def listing_page(root: str, parts: tuple, entries: list, page: int, pages: int, 
     forms = _upload_forms(urls, root, parts) if writable else ""
     picture = ("<img class='pl-folder-cover' src='%s' alt='Cover of this folder' loading='lazy'>" % escape(cover_url)
                if cover_url else "")
-    body = ("<main class='pl-main'><div class='pl-crumbs'>%s</div>%s<h1>%s</h1><div class='pl-muted'>%d items &middot; "
+    body = ("<main class='pl-main' data-queue='%s'><div class='pl-crumbs'>%s</div>%s<h1>%s</h1><div class='pl-muted'>%d items &middot; "
             "<a href='%s'>OPDS</a></div>%s%s<ul class='%s'>%s</ul>%s</main>"
-            % (" / ".join(crumbs), picture, escape(title), total, escape(urls.opds(root, parts)),
+            % (escape(urls.api("queue", root, parts)), " / ".join(crumbs), picture, escape(title), total, escape(urls.opds(root, parts)),
                note + forms, bar + pager, "pl-list pl-grid" if grid else "pl-list", "".join(tiles if grid else rows), pager))
-    scripts = ((urls.static("uploads.js"),) if writable else ()) + ((urls.static("grid.js"),) if grid else ()) + (urls.static("shelf.js"),)
+    scripts = (((urls.static("uploads.js"),) if writable else ()) + ((urls.static("grid.js"),) if grid else ())
+               + (urls.static("shelf.js"), urls.static("queue.js")))
     return layout(title, body, ctx, scripts=scripts)
 
 
@@ -633,6 +636,20 @@ def pdf_viewer_page(ctx: Ctx, title: str, *, raw_url: str, download_url: str, ba
     return _viewer(ctx, title, back_url, tools=tools, stage=stage, foot=foot, classes="pl-pdf",
                    stage_class="pl-pdf-stage", data=(("src", raw_url), ("progress", progress_url), ("download", download_url)),
                    module_scripts=(ctx.urls.static("viewer-pdf.mjs"),))
+
+
+def shell_page(ctx: Ctx, start_url: str) -> str:
+    """The outer page: the pluteus bar, a slim player strip and the whole site in a frame below. The audio lives here, so it keeps
+    playing while the frame goes from page to page (folders, readers). Pages shown in the frame hide their own bar (scheme.js)."""
+    def btn(ident: str, label: str, icon: str) -> str:
+        return ("<button type='button' class='pl-vol-btn' id='%s' aria-label='%s'><span class='pl-icon pl-i-%s'></span></button>"
+                % (ident, label, icon))
+    strip = ("<div class='pl-shell-player' id='sp' hidden>%s%s%s<span class='pl-shell-title' id='sp-title'></span>"
+             "<span class='pl-muted' id='sp-pos'></span>%s<div class='pl-shell-prog'><i id='sp-bar'></i></div></div>"
+             % (btn("sp-prev", "Previous", "prev"), btn("sp-play", "Play", "play"), btn("sp-next", "Next", "next"),
+                "<button type='button' class='pl-vol-btn' id='sp-close' aria-label='Close the player'>&times;</button>"))
+    frame = ("<iframe class='pl-shell-frame' id='shell-frame' title='Pluteus' src='%s' allow='fullscreen; autoplay'></iframe>" % escape(start_url))
+    return layout("Pluteus", strip + frame, ctx, body_class="pl-shell-page", scripts=(ctx.urls.static("shell.js"),), shell=False)
 
 
 def radio_page(ctx: Ctx, title: str, *, stations: list, download_url: str, text_url: str, back_url: str) -> str:

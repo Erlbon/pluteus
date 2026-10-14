@@ -924,6 +924,40 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
             headers["Content-Security-Policy"] = "sandbox; default-src 'none'; style-src 'unsafe-inline'"
         return FileResponse(info.path, media_type=mime, headers=headers)       # no filename: displayed, not downloaded
 
+    @guarded("web")
+    async def shell(request: Request, user):
+        """The outer page with the player and the site in a frame. ?go= is where the frame starts: a path on this site only."""
+        go = request.query_params.get("go", "")
+        ok = (go.startswith(urls.base + "/") and not go.startswith(urls.base + "//") and not go.startswith(urls.shell())
+              and chr(92) not in go and all(c >= " " for c in go))
+        return HTMLResponse(web.shell_page(ctx_for(user), go if ok else urls.home()))
+
+    @guarded("web")
+    async def queue(request: Request, user):
+        """Every audio file of a folder and the folders below it, in play order, for the player in the shell."""
+        root = request.path_params["root"]
+        parts = _parts(request.path_params.get("path", ""))
+
+        def build():
+            found, visited = [], [0]
+
+            def walk(here: tuple, depth: int):
+                if depth > 6 or visited[0] >= 600 or len(found) >= 2000:
+                    return
+                visited[0] += 1
+                entries = lib.list_dir(user, root, here, True, False)
+                for e in entries:
+                    if not e.is_dir and kinds.kind_of(e.name) == "audio" and len(found) < 2000:
+                        found.append({"title": os.path.splitext(e.name)[0], "url": urls.raw(root, e.parts),
+                                      "view": urls.view(root, e.parts), "folder": lib.display_name(here[-1]) if here else root})
+                for e in entries:
+                    if e.is_dir:
+                        walk(e.parts, depth + 1)
+            walk(parts, 0)
+            return found, len(found) >= 2000 or visited[0] >= 600
+        found, truncated = await run_in_threadpool(build)
+        return JSONResponse({"items": found, "truncated": truncated})
+
     @guarded("media")
     async def subs(request: Request, user):
         """Subtitle number i of a video (a .srt or .vtt next to it), as WebVTT. Chosen by number, never by a name."""
@@ -1325,6 +1359,9 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
         Route("/raw/{root}/{path:path}", raw),
         Route("/cover/{root}/{path:path}", cover),
         Route("/subs/{root}/{path:path}", subs),
+        Route("/shell", shell),
+        Route("/api/queue/{root}/{path:path}", queue),
+        Route("/api/queue/{root}", queue),
         Route("/zip/{root}/{path:path}", zip_entry),
         Route("/cbz/{root}/{path:path}", cbz_page),
         Route("/thumb/{root}/{path:path}", thumb),

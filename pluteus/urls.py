@@ -48,6 +48,10 @@ class Urls:
     def cover(self, root: str, parts) -> str:
         return self._build("cover", root, parts)
 
+    def shell(self) -> str:
+        """The outer page that keeps the player going while the site is shown in a frame."""
+        return self.base + "/shell"
+
     def subs(self, root: str, parts, index: int) -> str:
         """Subtitle number `index` of a video, as WebVTT."""
         return "%s?i=%d" % (self._build("subs", root, parts), index)

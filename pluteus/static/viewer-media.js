@@ -54,6 +54,8 @@
       }
     });
 
+  /* a queue playing in the shell gives way when this page's own player starts */
+  media.addEventListener("play", function () { try { if (window.parent !== window && window.parent.plShell) window.parent.plShell.pause(); } catch (e) { /* ignore */ } });
   media.addEventListener("play", function () { clearInterval(timer); timer = setInterval(function () { send(false); }, 5000); });
   media.addEventListener("pause", function () { clearInterval(timer); if (!media.ended) send(false); });
   document.addEventListener("visibilitychange", function () { if (document.visibilityState === "hidden" && !media.paused) send(false, true); });
