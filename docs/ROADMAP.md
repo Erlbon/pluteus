@@ -156,10 +156,39 @@ as `.m3u` files in the upload folder (`Playlists/`), one way; the Subsonic playl
 `updatePlaylist`, `deletePlaylist`) so Tempo and Android Auto get them; hand-dropped `.m3u` files with relative paths opening as playlists;
 a visible queue list (see, reorder, remove).
 
-## 4. Smaller items
+## 4. Notes in folders (Markdown)
+
+**One sentence:** short notes about a band or an author, and documentation, live as ordinary `.md` files next to the files they describe;
+pluteus shows them on the folder page, in the music player and to Subsonic apps. Filesystem-first: no index, no database, no editor needed
+(any text editor works). The owner's use: mainly notes and documentation, short notes on an author or a band.
+
+pluteus already renders Markdown safely (raw HTML escaped, links and images only inside the library); this item adds the places where it is shown
+and a few notebook conveniences.
+
+**Round 1 (about 15 to 20 minutes, a mockup of the folder page first):**
+1. **Folder notes:** a folder shows a note about itself. At the top, beside the cover: `artist.md` (also `artist.txt`, `artist.nfo`, the file
+   names Kodi and Plex use), `author.md`, `about.md`. At the bottom, GitHub style: `README.md` (also `readme.md`, `index.md`). The first match wins
+   in each place; nothing is shown when there is none.
+2. **The music player and the book pages link to the note:** an "About the artist" link when the artist's folder has one.
+3. **Subsonic:** `getArtistInfo2` and `getArtistInfo` answer with the biography from the artist note (plain text of the first paragraphs),
+   so Tempo and other apps show it. No online look-up, on purpose.
+4. **Heading anchors and a table of contents** in rendered Markdown (a contents list for long documents, copyable heading links).
+5. **Wiki links** `[[Page name]]`: resolved by file name inside the library (the same folder first, then upwards, then the whole folder tree
+   below the top of the library, limited), no index. A name that is not found is shown as plain text.
+6. **Front matter** (`---` block with `title:` and `tags:`): read for the page title and hidden from the page.
+
+**Round 2 (medium):** **edit in the browser** for `.md` and `.txt` files in a user's own upload folder (an Edit button, a text area, Save; library
+files stay read-only; the same same-site checks as every other write).
+
+**Later, if wanted:** coloured code blocks (a small bundled script), read-only Jupyter notebooks (`.ipynb`: cells and outputs shown, nothing run).
+
+**Not planned because it needs an index (decided against):** full-text search, backlinks, tag pages. A file-name search inside a folder is possible.
+
+**Audiences:** notes follow the same folder markers as everything else (a note inside an `.adult` folder is as hidden as the folder).
+
+## 5. Smaller items
 
 - Subsonic: recently played (`getAlbumList2` type recent) and resume across devices (`getPlayQueue`, `savePlayQueue`) from the saved positions.
-- Artist information: `artist.md` / `artist.txt` / `artist.nfo` text on the folder page and in `getArtistInfo2`; artist links in the player.
 - The player bar merged into the pluteus bar on wide screens (the mockup: option B wide, option A on phones).
 - A TV mode for the web pages (large buttons, arrow-key navigation) for a browser on a TV; Kodi over WebDAV covers most of it meanwhile.
 - A smoke test of the packaged exe in the release workflow; a Docker image on a registry.
