@@ -27,6 +27,7 @@ CREATE TABLE IF NOT EXISTS progress (
     PRIMARY KEY (username, root, path));
 CREATE INDEX IF NOT EXISTS progress_recent ON progress (username, updated DESC);
 CREATE TABLE IF NOT EXISTS prefs (username TEXT PRIMARY KEY, data TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS playqueue (username TEXT PRIMARY KEY, data TEXT NOT NULL, updated REAL NOT NULL);
 CREATE TABLE IF NOT EXISTS dismissed (
     username TEXT NOT NULL, root TEXT NOT NULL, path TEXT NOT NULL, at REAL NOT NULL,
     PRIMARY KEY (username, root, path));
@@ -156,6 +157,23 @@ class StateDB:
                          "ORDER BY p.updated DESC LIMIT ?", (username, limit))
         return [{"root": r[0], "path": r[1], "locator": r[2], "percent": r[3], "updated": r[4]} for r in rows]
 
+    # ---- the play queue a music app saved (Subsonic savePlayQueue): ONE row per user, replaced each time, so another device can resume -------
+    def playqueue_put(self, username: str, data: dict, now=None) -> None:
+        self._write("INSERT OR REPLACE INTO playqueue VALUES (?,?,?)",
+                    (username, json.dumps(data, separators=(",", ":")), time.time() if now is None else now))
+
+    def playqueue_get(self, username: str):
+        row = self._one("SELECT data, updated FROM playqueue WHERE username=?", (username,))
+        if not row:
+            return None
+        try:
+            return {**json.loads(row[0]), "updated": row[1]}
+        except ValueError:
+            return None
+
+    def playqueue_delete(self, username: str) -> int:
+        return self._write("DELETE FROM playqueue WHERE username=?", (username,))
+
     def dismiss_progress(self, username: str, root: str, path: str, now=None) -> None:
         """Take a file off the home page list. Its saved position is kept; it comes back when it is opened again."""
         now = time.time() if now is None else now
@@ -222,6 +240,9 @@ class StateDB:
         for (name,) in self._all("SELECT DISTINCT username FROM streams"):             # stored streams of a user that is gone: the same rule
             if name not in existing:
                 self.streams_delete_user(name)
+        for (name,) in self._all("SELECT username FROM playqueue"):
+            if name not in existing:
+                self.playqueue_delete(name)
         return len(gone)
 
     def appkey_users(self) -> dict:

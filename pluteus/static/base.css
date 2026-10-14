@@ -151,11 +151,12 @@ a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible
 /* ---- forms and buttons ---- */
 .pl-field { display: block; margin: 10px 0; }
 .pl-field span { display: block; font-size: 13px; color: var(--pl-dim); margin-bottom: 3px; }
-.pl-field input[type=text], .pl-field input[type=password], .pl-field select {
+.pl-field input[type=text], .pl-field input[type=password], .pl-field input:not([type]), .pl-field select, .pl-field textarea {
   width: 100%; padding: 8px 12px; font: inherit; color: var(--pl-fg);
   border: var(--pl-field-border); border-radius: var(--pl-field-radius);
   background: var(--pl-field-bg); box-shadow: var(--pl-field-shadow);
 }
+.pl-field textarea { box-sizing: border-box; resize: vertical; line-height: 1.45; font-family: Consolas, "Courier New", monospace; font-size: 15px; }
 .pl-btn {
   font: inherit; padding: 6px 14px; cursor: pointer; color: var(--pl-btn-fg);
   border: var(--pl-btn-border); border-radius: var(--pl-btn-radius);
@@ -487,6 +488,9 @@ body.pl-shell-page { display: flex; flex-direction: column; height: 100vh; heigh
 .pl-shell-player { position: relative; display: flex; align-items: center; gap: 8px; padding: 6px 12px; background: var(--pl-card);
   border-bottom: 1px solid var(--pl-line); }
 .pl-shell-player[hidden] { display: none; }
+/* wide screens: the player lives inside the pluteus bar (shell.js moves it there) and takes the room the spacer had */
+.pl-shell-player.pl-merged { flex: 1 1 0; min-width: 0; margin: 0 10px; padding: 0 6px; background: none; border: 0; }
+.pl-shell-player.pl-merged:not([hidden]) ~ .pl-spacer { flex: 0 0 0; }
 .pl-shell-player .pl-icon { color: var(--pl-accent); width: 22px; height: 22px; }
 .pl-shell-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
 .pl-now-playing { margin-top: 8px; font-size: 16px; font-weight: 600; color: var(--pl-accent); text-align: center; overflow-wrap: anywhere; }
@@ -609,3 +613,18 @@ body.pl-reader-page, .pl-reader-stage { overscroll-behavior: contain; }
 .pl-fieldset { border: 1px solid var(--pl-line); border-radius: 10px; margin: 10px 0; padding: 6px 12px; }
 .pl-check { display: inline-flex; align-items: center; gap: 6px; margin: 4px 14px 4px 0; }
 .pl-admin details > summary { cursor: pointer; color: var(--pl-accent); }
+
+/* TV mode (scheme.js sets html.pl-tv for a browser that asked for it; tvnav.js moves the focus with the remote's arrow keys): bigger text and
+   targets, and a focus ring that can be seen from the sofa */
+html.pl-tv { font-size: 125%; }
+html.pl-tv body { line-height: 1.5; }
+html.pl-tv :is(a, button, input, select, textarea, [tabindex]):focus-visible,
+html.pl-tv :is(a, button, input, select, textarea, [tabindex]):focus {
+  outline: 4px solid var(--pl-accent); outline-offset: 3px; border-radius: 8px; }
+html.pl-tv .pl-btn, html.pl-tv .pl-reader-btn, html.pl-tv .pl-vol-btn { min-height: 56px; min-width: 56px; font-size: 1.05em; }
+html.pl-tv .pl-row .pl-title, html.pl-tv .pl-folder .pl-title, html.pl-tv .pl-file .pl-title { min-height: 64px; padding-top: 18px; padding-bottom: 18px; }
+html.pl-tv .pl-dl { min-width: 64px; min-height: 64px; }
+html.pl-tv .pl-tile a { padding: 6px; }
+html.pl-tv .pl-bar { padding-top: 12px; padding-bottom: 12px; }
+html.pl-tv .pl-bar a, html.pl-tv .pl-bar .pl-btn { padding: 12px 16px; }
+html.pl-tv .pl-shell-player .pl-vol-btn { width: 56px; height: 56px; }

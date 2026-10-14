@@ -117,3 +117,10 @@ def test_the_player_queue_links_each_track_to_the_nearest_note(lib):
     assert items and all(i["page"] == "/browse/music/Kaizers" and i["linkText"] == "About" for i in items)       # albums below inherit the artist's note
     solo = c.get("/api/queue/music/Solo", headers=AUTH).json()["items"]
     assert solo and "page" not in solo[0]
+
+
+def test_wiki_links_work_in_a_folders_note_too(lib):
+    (lib / "Kaizers" / "artist.md").write_text("See [[history]] and [[nothing]].\n", encoding="utf-8")
+    (lib / "Kaizers" / "history.md").write_text("x", encoding="utf-8")
+    html = page(make(lib))
+    assert "href='/view/music/Kaizers/history.md'" in html and "[[" not in html and ">nothing<" not in html and "nothing" in html

@@ -11,6 +11,19 @@
   audio.preload = "auto";
   audio.playsInline = true;
   var el = function (id) { return document.getElementById(id); };
+  /* on a wide screen the player sits inside the pluteus bar (one row); on a phone it stays a strip under it */
+  var header = document.querySelector("header.pl-bar"), spacer = header && header.querySelector(".pl-spacer");
+  var wide = window.matchMedia ? window.matchMedia("(min-width: 1000px)") : null;
+  function place() {
+    if (!header || !spacer || !wide) return;
+    if (wide.matches) {
+      if (strip.parentNode !== header) { strip.classList.add("pl-merged"); header.insertBefore(strip, spacer); }
+    } else if (strip.parentNode === header) {
+      strip.classList.remove("pl-merged"); header.parentNode.insertBefore(strip, header.nextSibling);
+    }
+  }
+  if (wide) { if (wide.addEventListener) wide.addEventListener("change", place); else if (wide.addListener) wide.addListener(place); }
+  place();
   var playBtn = el("sp-play"), titleEl = el("sp-title"), posEl = el("sp-pos"), barEl = el("sp-bar"), linkEl = el("sp-link"), logoEl = el("sp-logo");
 
   /* ---- the player ---- */

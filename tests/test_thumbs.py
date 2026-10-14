@@ -220,3 +220,16 @@ def test_a_camera_sized_jpeg_is_allowed_but_a_big_png_is_not():
     photo = jpeg(size=(8000, 6000))                                                  # 48 million pixels, small as a JPEG
     assert thumbs.scaled(photo, 240) not in (None, False)
     assert thumbs.scaled(png((9, 9, 9), size=(6000, 6000)), 240) is False             # a PNG over the limit is still refused
+
+
+def test_the_per_folder_choices_can_be_forgotten(client):
+    c, _ = client
+    origin = {**AUTH, "Origin": "http://testserver"}
+    c.post("/settings", data={"theme": "default", "icons": "gold", "view": "list", "view_scope": "folder"}, headers=origin)
+    assert "pl-grid" in c.get("/browse/lib/A?view=grid", headers={**AUTH, **HTML}).text
+    assert "pl-grid" in c.get("/browse/lib/A", headers={**AUTH, **HTML}).text                           # A has a choice of its own
+    assert "Forget my choices for single folders" in c.get("/settings", headers={**AUTH, **HTML}).text
+    r = c.post("/settings", data={"theme": "default", "icons": "gold", "view": "list", "view_scope": "folder", "reset_views": "1"}, headers=origin,
+               follow_redirects=False)
+    assert r.status_code == 303
+    assert "pl-grid" not in c.get("/browse/lib/A", headers={**AUTH, **HTML}).text                       # back to the general choice

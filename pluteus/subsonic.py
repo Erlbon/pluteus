@@ -5,7 +5,8 @@ Turned on with `subsonic = true` in [server]. The API lives under /rest/NAME(.vi
 folder browsing (getIndexes / getMusicDirectory), the tag-style browsing most apps use (getArtists / getArtist / getAlbum,
 read as Artist folder / Album folder / songs), album lists, a simple search, cover art, stream and download. Everything else
 that an app may ask for at start-up (playlists, genres, ...) is answered with an empty result. Stars are the user's
-Favourites shelf (star, unstar, getStarred2, and `starred` on the items), and lyrics come as OpenSubsonic songLyrics.
+Favourites shelf (star, unstar, getStarred2, and `starred` on the items), and lyrics come as OpenSubsonic songLyrics. A saved play queue
+(savePlayQueue / getPlayQueue, one per user) lets another device resume, and `recent` albums come from the saved positions.
 
 Login: every user may have ONE app key (made on the admin page). It works as an OpenSubsonic API key (`apiKey`), as the
 password in the salted-token login (`u`, `t`, `s`) and as the legacy `p` password. The real password is also accepted as `p`.
@@ -41,7 +42,7 @@ MAX_ALBUMS = 3000
 RADIO_FOLDER = "radio"          # a top-level folder of station files (.m3u): not an artist, left out of the music lists
 _XML_BAD = re.compile("[\x00-\x08\x0b\x0c\x0e-\x1f]")
 _ALBUM_CACHE_SECONDS = 120
-UNKNOWN_LISTS = {"starred", "highest", "frequent", "recent", "byYear", "byGenre"}
+UNKNOWN_LISTS = {"starred", "highest", "frequent", "byYear", "byGenre"}
 
 
 class ApiError(Exception):
@@ -163,6 +164,7 @@ class Subsonic:
             "startscan": self.scan_status, "star": self.star, "unstar": self.unstar, "getstarred": self.starred,
             "getstarred2": self.starred2, "getlyricsbysongid": self.lyrics_by_id, "getinternetradiostations": self.radio_stations,
             "getartistinfo2": self.artist_info2, "getartistinfo": self.artist_info,
+            "getplayqueue": self.get_play_queue, "saveplayqueue": self.save_play_queue,
         }
         self.empty = {
             "getplaylists": "playlists", "getlyrics": "lyrics", "getgenres": "genres",
@@ -170,10 +172,9 @@ class Subsonic:
             "getalbuminfo": "albumInfo", "getalbuminfo2": "albumInfo", "gettopsongs": "topSongs",
             "getsimilarsongs": "similarSongs", "getsimilarsongs2": "similarSongs2", "getpodcasts": "podcasts",
             "getbookmarks": "bookmarks", "getshares": "shares",
-            "getplayqueue": "playQueue", "getsongsbygenre": "songsByGenre", "getvideos": "videos",
+            "getsongsbygenre": "songsByGenre", "getvideos": "videos",
         }
-        self.nothing = {"scrobble", "setrating", "updatenowplaying", "savebookmark", "deletebookmark",
-                        "saveplayqueue"}
+        self.nothing = {"scrobble", "setrating", "updatenowplaying", "savebookmark", "deletebookmark"}
 
     # ---- entry point ---------------------------------------------------------------------------------------------------
     async def handle(self, request) -> Response:
@@ -703,9 +704,70 @@ class Subsonic:
         self._mark_stars(user, root, [item])
         return {"song": item}
 
+    def _recent_albums(self, user) -> list:
+        """[(root, folder entry)]: the folders of the audio files this user has a saved position in (the web player keeps one), newest first.
+        Nothing is logged for this: it is the same list as "continue" on the home page."""
+        out, seen = [], set()
+        for row in self.state.recent_progress(user.name, 300):
+            parts = tuple(row["path"].split("/"))
+            if len(parts) < 2 or kinds.kind_of(parts[-1]) != "audio" or not self.lib.has_root(user, row["root"]):
+                continue
+            key = (row["root"], parts[:-1])
+            if key in seen:
+                continue
+            seen.add(key)
+            out.append((row["root"], SimpleNamespace(parts=parts[:-1], name=parts[-2], mtime=row["updated"])))
+        return out
+
+    # ---- the play queue (resume on another device): one saved queue per user, replaced by every savePlayQueue ------------------------
+    def save_play_queue(self, user, p):
+        ids = []
+        for ident in p.get("_ids", [])[:500]:
+            try:
+                root, parts = read_id(ident)
+            except ApiError:
+                continue
+            if parts and self.lib.has_root(user, root) and kinds.kind_of(parts[-1]) == "audio":
+                ids.append(ident)
+        current = p.get("current", "")
+        try:
+            position = max(0, min(int(p.get("position", "0")), 10 ** 10))
+        except ValueError:
+            position = 0
+        if not ids:
+            self.state.playqueue_delete(user.name)                    # an empty save clears it
+            return {}
+        self.state.playqueue_put(user.name, {"ids": ids, "current": current if current in ids else ids[0], "position": position,
+                                             "by": re.sub(r"[^\w .-]", "", p.get("c", ""))[:40]})
+        return {}
+
+    def get_play_queue(self, user, p):
+        saved = self.state.playqueue_get(user.name)
+        if not saved:
+            return {"playQueue": {}}
+        entries = []
+        for ident in saved["ids"]:
+            try:
+                root, parts = read_id(ident)
+                info = self.lib.file_info(user, root, parts, True)
+            except (ApiError, NotFound, PathError, OSError):
+                continue                                              # a file that is gone or no longer visible drops out
+            entry = SimpleNamespace(parts=parts, name=info.name, path=info.path, size=info.size, mtime=info.mtime)
+            item = self._song(root, entry, self.meta.song_tags(entry))
+            self._mark_stars(user, root, [item])
+            entries.append(item)
+        if not entries:
+            return {"playQueue": {}}
+        current = saved["current"] if any(e["id"] == saved["current"] for e in entries) else entries[0]["id"]
+        return {"playQueue": {"entry": entries, "current": current, "position": saved["position"], "username": user.name,
+                              "changed": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(clamp_time(saved["updated"]))),
+                              "changedBy": saved.get("by", "")}}
+
     def _sorted_albums(self, user, kind: str) -> list:
         if kind in UNKNOWN_LISTS:                                    # no play counts, stars, years or genres are kept: an honest empty list
             return []
+        if kind == "recent":
+            return self._recent_albums(user)
         albums = list(self._all_albums(user))
         if kind == "random":
             random.shuffle(albums)

@@ -116,3 +116,17 @@ def test_the_subfolder_switch_in_settings_limits_play_all_and_shuffle(client):
     assert titles("/api/queue/music/Artist") == ["single"]
     c.post("/settings", content="queue_subfolders=yes", headers=origin)
     assert len(titles("/api/queue/music/Artist")) == 4
+
+
+def test_tv_mode_is_a_per_browser_switch_with_its_own_script_and_the_player_merges_on_wide_screens(client):
+    c, alice, _ = client
+    settings = c.get("/settings", headers={**alice, **HTML}).text
+    assert "TV mode" in settings and "/shell?tv=1" in settings and "/shell?tv=0" in settings           # links, no script on the page
+    scheme = c.get("/static/scheme.js").text
+    assert "pluteus-tv" in scheme and "pl-tv" in scheme and "tvnav.js" in scheme
+    tv = c.get("/static/tvnav.js")
+    assert tv.status_code == 200 and "plTvEnter" in tv.text and "pl-reader-page" in tv.text           # the readers keep their own keys
+    assert "html.pl-tv" in c.get("/static/base.css").text
+    shell = c.get("/static/shell.js").text
+    assert "min-width: 1000px" in shell and "pl-merged" in shell
+    assert "pl-merged" in c.get("/static/base.css").text

@@ -652,13 +652,14 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
         renderer as any .md page; a file that is too big, binary or unreadable is skipped."""
         files = {e.name.lower(): e for e in entries if not e.is_dir}
         overlay = root != UPLOADS_ROOT and lib.uploads_enabled(user)
+        finder = wiki_finder(user, root, parts)
 
         def one(names) -> tuple:
             for wanted in names if overlay else ():
                 got = notes.read(lib, user, root, parts, wanted)
                 if got:
                     try:
-                        return markdown.render(got[0], urls, root, parts), wanted
+                        return markdown.render(got[0], urls, root, parts, wiki=finder), wanted
                     except markdown.TooLarge:
                         continue
             for wanted in names:
@@ -670,7 +671,7 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
                     raw, truncated = textview.read_head(info.path, markdown.MAX_RENDER_BYTES)
                     if truncated or textview.looks_binary(raw):
                         continue
-                    return markdown.render(textview.decode(raw, name=entry.name)[0], urls, root, parts), wanted
+                    return markdown.render(textview.decode(raw, name=entry.name)[0], urls, root, parts, wiki=finder), wanted
                 except (markdown.TooLarge, NotFound, PathError, OSError):
                     continue
             return "", ""
@@ -761,7 +762,7 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
             return page("", text, vers, where, error=notes.MESSAGES["name"], status=400)
         if action == "preview":
             try:
-                shown = await run_in_threadpool(markdown.render, text, urls, root, parts)
+                shown = await run_in_threadpool(markdown.render, text, urls, root, parts, wiki_finder(user, root, parts))
             except markdown.TooLarge:
                 return page(name, text, vers, where, error="That note is too large to preview.", status=400)
             return page(name, text, vers, where, preview=shown)
@@ -857,6 +858,8 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
                 prefs["view"] = form["view"]
             if form.get("view_scope") in ("all", "folder"):
                 prefs["view_scope"] = form["view_scope"]
+            if form.get("reset_views") == "1":                      # every folder follows the general choice again
+                prefs.pop("view_folders", None)
             if form.get("extras") in ("show", "hide"):
                 prefs["player_extras"] = form["extras"] == "show"
             if form.get("tv_sound") in ("keep", "stop"):

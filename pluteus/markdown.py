@@ -204,13 +204,13 @@ def render_full(text: str, urls, root: str, folder: tuple, *, toc: bool = True, 
     return Rendered(html, meta, title)
 
 
-def render(text: str, urls, root: str, folder: tuple) -> str:
+def render(text: str, urls, root: str, folder: tuple, wiki=None) -> str:
     """HTML for a short Markdown text (a folder's note): front matter hidden, no anchors or contents. Raises TooLarge for text the
     renderer should not be asked to handle."""
     if len(text.encode("utf-8", "ignore")) > MAX_RENDER_BYTES:
         raise TooLarge("larger than %d KB" % (MAX_RENDER_BYTES // 1024))
-    md = mistune.create_markdown(renderer=_Renderer(Resolver(urls, root, folder)),
-                                 plugins=["table", "strikethrough", "task_lists", "url"])
+    md = mistune.create_markdown(renderer=_Renderer(Resolver(urls, root, folder), wiki=wiki),
+                                 plugins=["table", "strikethrough", "task_lists", "url", _wiki_plugin])
     try:
         return md(front_matter(text)[1])
     except RecursionError:

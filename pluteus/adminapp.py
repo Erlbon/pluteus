@@ -386,6 +386,7 @@ def create_admin_app(main_app) -> Starlette:
             model.remove_user(name)
             state.delete_appkey(name)                     # a new user with the same name must not inherit the key
             state.streams_delete_user(name)               # ... nor the stored logins and headers for protected streams
+            state.playqueue_delete(name)                  # ... nor the play queue a music app saved
             auth.forget_user(name)
             return "removed"
         return await change(request, user, action)

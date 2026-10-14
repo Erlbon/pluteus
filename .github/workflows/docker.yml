@@ -1,0 +1,62 @@
+name: Docker image
+
+# Builds the Docker image and (only when asked) publishes it to the GitHub Container Registry as ghcr.io/<owner>/pluteus:<version> and :latest.
+# Manual on purpose: Actions > Docker image > Run workflow. "Publish" off = build and smoke test only. A package published from a private
+# repository starts out private; make it public under the package's settings only if you want others to pull it.
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing tag to build, e.g. v0.9.8 (must equal v + the version in pluteus/__init__.py)"
+        required: true
+      publish:
+        description: "Publish the image to ghcr.io"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  image:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      TAG: ${{ github.event.inputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.tag }}
+      - name: Check the tag against the version
+        run: |
+          version=$(python3 -c "import re,pathlib; print(re.search(r'__version__\s*=\s*.([0-9.]+).', pathlib.Path('pluteus/__init__.py').read_text()).group(1))")
+          [ "$TAG" = "v$version" ] || { echo "Tag $TAG does not match version $version"; exit 1; }
+          echo "VERSION=$version" >> "$GITHUB_ENV"
+          echo "IMAGE=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/pluteus" >> "$GITHUB_ENV"
+      - name: Build (this machine's architecture) and smoke test
+        run: |
+          docker build -t pluteus:smoke .
+          docker run --rm pluteus:smoke python -m pluteus --version
+          docker run --rm pluteus:smoke python -m pluteus hash-password --help > /dev/null
+      - uses: docker/setup-qemu-action@v3
+        if: ${{ github.event.inputs.publish == 'true' }}
+      - uses: docker/setup-buildx-action@v3
+        if: ${{ github.event.inputs.publish == 'true' }}
+      - uses: docker/login-action@v3
+        if: ${{ github.event.inputs.publish == 'true' }}
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      - name: Build for amd64 and arm64 and push
+        if: ${{ github.event.inputs.publish == 'true' }}
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            ${{ env.IMAGE }}:${{ env.VERSION }}
+            ${{ env.IMAGE }}:latest

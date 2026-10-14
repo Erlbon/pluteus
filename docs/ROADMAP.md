@@ -233,8 +233,6 @@ music and books layouts (the comics layout is recorded; "780 - Music" suggests D
 
 ## 5. Smaller items
 
-- Subsonic: recently played (`getAlbumList2` type recent) and resume across devices (`getPlayQueue`, `savePlayQueue`) from the saved positions.
-- The player bar merged into the pluteus bar on wide screens (the mockup: option B wide, option A on phones).
-- A TV mode for the web pages (large buttons, arrow-key navigation) for a browser on a TV; Kodi over WebDAV covers most of it meanwhile.
-- A smoke test of the packaged exe in the release workflow; a Docker image on a registry.
-- A way to forget the per-folder List / Covers choices.
+Done in 0.9.8: Subsonic recently played (from the saved positions, nothing new is logged) and resume (`savePlayQueue`, `getPlayQueue`); the player bar merged into the pluteus bar on wide screens; a TV mode for the web pages (large buttons, remote arrow keys; Kodi over WebDAV still covers most of it); a way to forget the per-folder List / Covers choices; a manual Docker image workflow (`docker.yml`, publishes only when ticked). The release workflow already smoke tests the packaged exe, and the Linux build, on every tag.
+
+Still open: a TV mode that has been tried on a real TV browser (the keys are checked in a desktop browser only); Subsonic "resume" from the web player's saved positions (the saved queue only comes from music apps).

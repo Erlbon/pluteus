@@ -19,6 +19,17 @@
   catch (e) { /* storage blocked: the system setting still works */ }
   if (saved === "dark" || saved === "light") root.setAttribute("data-scheme", saved);
 
+  /* TV mode: for a browser on a TV (large buttons, the remote's arrow keys). ?tv=1 on any address turns it on for this browser, ?tv=0 off. */
+  var TV = "pluteus-tv", asked = location.search.match(/[?&]tv=([01])/);
+  try {
+    if (asked) { if (asked[1] === "1") localStorage.setItem(TV, "1"); else localStorage.removeItem(TV); }
+    if (localStorage.getItem(TV) === "1") {
+      root.classList.add("pl-tv");
+      var me = document.currentScript, nav = document.createElement("script");
+      if (me && me.src) { nav.src = me.src.replace(/scheme[.]js.*$/, "tvnav.js"); nav.defer = true; document.head.appendChild(nav); }
+    }
+  } catch (e) { /* storage blocked: no TV mode */ }
+
   /* The shell: a signed-in page opened on its own moves into the shell page (the player lives there and keeps playing while the
      site is shown in its frame); a page that is already in the frame hides its own bar, the shell has one. ?noshell=1 opts out. */
   var shell = root.getAttribute("data-shell");

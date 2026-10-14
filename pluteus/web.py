@@ -949,6 +949,8 @@ def settings_page(ctx: Ctx, themes: list, saved: bool = False, stations: bool = 
                ("<label class='pl-field'><span>Folders are shown as</span><select name='view'>%s</select></label>"
                 "<label class='pl-field'><span>A List or Covers choice on a folder page holds for</span><select name='view_scope'>"
                 "<option value='all'%s>Every folder</option><option value='folder'%s>That folder only (the choice above is the start)</option></select></label>"
+                "<p><button class='pl-btn' type='submit' name='reset_views' value='1' data-confirm='Forget every List or Covers choice you made for a single folder?'>"
+                "Forget my choices for single folders</button></p>"
                 % (view_opts, " selected" if ctx.view_scope == "all" else "", " selected" if ctx.view_scope == "folder" else "")) if ctx.thumbs else "",
                extras_opts,
                "".join("<option value='%s'%s>%s</option>" % (k, " selected" if (k == "keep") == ctx.tv_sound else "", label)
@@ -960,4 +962,10 @@ def settings_page(ctx: Ctx, themes: list, saved: bool = False, stations: bool = 
                 % (escape(ctx.urls.stations("radio")), escape(ctx.urls.stations("tv")),
                    (" <a class='pl-btn' href='%s'>My streams</a>" % escape(ctx.urls.my_streams())) if streams else "")) if stations else "",
                escape(ctx.urls.home())))
+    body = body.replace("<p><a href='%s'>&larr; Back to the library</a></p></main>" % escape(ctx.urls.home()),
+                        "<section class='pl-card'><h2>TV mode</h2><p class='pl-muted'>For a browser on a TV: larger buttons, and the arrow keys of the remote "
+                        "move between them (Enter presses, Back goes back). It is kept in this browser only, so your phone is not changed.</p>"
+                        "<p><a class='pl-btn' target='_top' href='%s?tv=1'>Turn on for this device</a> "
+                        "<a class='pl-btn' target='_top' href='%s?tv=0'>Turn off</a></p></section>"
+                        "<p><a href='%s'>&larr; Back to the library</a></p></main>" % (escape(ctx.urls.shell()), escape(ctx.urls.shell()), escape(ctx.urls.home())), 1)
     return layout("Settings", body, ctx)
