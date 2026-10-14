@@ -30,7 +30,9 @@
     if (!item) return;
     strip.hidden = false;
     document.body.classList.add("pl-shell-playing");
-    titleEl.textContent = item.title + (item.folder ? " – " + item.folder : "") + (item.viaRelay ? " · via the server" : "");
+    // a radio station that tells what it plays now (ICY title): "Artist – Title · Station"; otherwise "Station – Live radio"
+    titleEl.textContent = (item.nowText ? item.nowText + " · " + item.title : item.title + (item.folder ? " – " + item.folder : ""))
+      + (item.viaRelay ? " · via the server" : "");
     posEl.textContent = item.live ? "live" : (index + 1) + " / " + queue.length;
     logoEl.hidden = !item.logo;                           // a station or channel with a logo: it shows at the left of the title
     if (item.logo) logoEl.src = item.logo;
@@ -38,7 +40,10 @@
     if (item.page) { linkEl.href = item.page; linkEl.textContent = item.linkText || "Picture"; }
     barEl.style.width = "0";
     if ("mediaSession" in navigator && typeof MediaMetadata !== "undefined") {
-      try { navigator.mediaSession.metadata = new MediaMetadata({ title: item.title, album: item.folder || "", artist: "Pluteus" }); } catch (e) { /* ignore */ }
+      try {
+        navigator.mediaSession.metadata = new MediaMetadata({ title: item.nowTitle || item.nowText || item.title,
+                                                              album: item.nowText ? item.title : (item.folder || ""), artist: item.nowArtist || "Pluteus" });
+      } catch (e) { /* ignore */ }
     }
   }
   function pauseFrameMedia() {              // a song or movie playing in the page itself gives way to the queue
@@ -78,15 +83,35 @@
       go();
     }
   }
+  /* what a radio station plays now: asked of the server (which reads the station's ICY title) every 20 seconds while a station plays */
+  var nowTimer = null, nowSeq = 0;
+  function stopNow() { clearInterval(nowTimer); nowTimer = null; nowSeq++; }
+  function pollNow() {
+    var item = queue[index];
+    if (!item || !item.now) return;
+    var seq = ++nowSeq;
+    fetch(item.now, { credentials: "same-origin" }).then(function (r) { return r.ok ? r.json() : {}; }).then(function (d) {
+      if (seq !== nowSeq || queue[index] !== item) return;                // another station or a stop came meanwhile
+      item.nowText = (d && d.text) || ""; item.nowArtist = (d && d.artist) || ""; item.nowTitle = (d && d.title) || "";
+      show(); paint();
+    }).catch(function () { /* no title: the bar stays as it is */ });
+  }
+  function startNow() {
+    stopNow();
+    var item = queue[index];
+    if (item && item.live && item.now) { item.nowText = ""; pollNow(); nowTimer = setInterval(pollNow, 20000); }
+  }
   function go(n) {
     if (n < 0 || n >= queue.length) return;
     index = n;
     show();
     pauseFrameMedia();
     load(queue[n]);
+    startNow();
     paint();
   }
   function stop() {
+    stopNow();
     releaseHls();
     audio.pause(); audio.removeAttribute("src"); audio.load();
     queue = []; index = -1;
@@ -111,9 +136,9 @@
   audio.addEventListener("timeupdate", function () {
     if (isFinite(audio.duration) && audio.duration > 0) barEl.style.width = (100 * audio.currentTime / audio.duration) + "%";
   });
-  function dropStream() { releaseHls(); audio.pause(); audio.removeAttribute("src"); audio.load(); paint(); }     // live: pause = leave the broadcast
+  function dropStream() { stopNow(); releaseHls(); audio.pause(); audio.removeAttribute("src"); audio.load(); paint(); }     // live: pause = leave the broadcast
   playBtn.addEventListener("click", function () {
-    if (live() && !audio.getAttribute("src") && !hls) { load(queue[index]); paint(); return; }          // joins the broadcast as it is now
+    if (live() && !audio.getAttribute("src") && !hls) { load(queue[index]); startNow(); paint(); return; }          // joins the broadcast as it is now
     if (audio.paused) { var p = audio.play(); if (p && p.catch) p.catch(function () { /* blocked */ }); }
     else if (live()) dropStream();
     else audio.pause();
@@ -154,6 +179,7 @@
     isPlaying: playingNow,
     position: function () { return audio.currentTime; },
     currentUrl: function () { return queue[index] ? queue[index].url : ""; },
+    nowText: function () { return queue[index] && queue[index].live ? (queue[index].nowText || "") : ""; },
     onState: function (fn) { listeners.push(fn); }
   };
 

@@ -729,7 +729,7 @@ def radio_page(ctx: Ctx, title: str, *, stations: list, download_url: str, text_
     art = "<img class='pl-cover-img pl-logo-img' src='%s' alt=''>" % escape(logo_url) if logo_url else "<div class='pl-cover-blank'>%s</div>" % ico("audio")
     stage = ("<div class='pl-media-box pl-player pl-radio'><div class='pl-cover'>%s</div>"
              "<div class='pl-track'><h1 class='pl-track-title' id='now'>%s</h1><div class='pl-track-by'>%s</div>"
-             "<div class='pl-chips'><span class='pl-chip'>Live radio</span></div></div>"
+             "<div class='pl-chips'><span class='pl-chip'>Live radio</span></div><div class='pl-now-playing' id='now-playing' hidden></div></div>"
              "<audio id='radio' controls preload='none' src='%s'><p>Your browser cannot play this stream.</p></audio>"
              "<div class='pl-transport'><span class='pl-play-wrap'><button class='pl-btn pl-play' id='play' type='button' aria-label='Play'>"
              "<span class='pl-icon pl-i-play'></span></button></span></div>"

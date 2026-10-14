@@ -1070,6 +1070,9 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
         stations = await run_in_threadpool(radio.read_file, info.path)
         if not 0 <= number < len(stations):
             raise NotFound("no such station")
+        if request.query_params.get("now") == "1":           # what the station is playing now (its ICY title); the audio is not carried
+            playing = await run_in_threadpool(relay.now_playing, stations[number][1], stations[number][0])
+            return JSONResponse(playing, headers={"Cache-Control": "no-store"})
         if not relay_limits.acquire(user.name):
             return PlainTextResponse("Too many streams are open through the server right now. Close one and try again.", 429,
                                      headers={"Retry-After": "10"})

@@ -20,8 +20,9 @@
     var logo = root.dataset.logo || "";                       // the picture next to the station file (a file with several stations: all share it)
     var back = location.pathname + location.search;           // the player bar links back to this page
     var relays = (root.dataset.relay || "").split("|");       // the address of each station through the server (empty when the relay is off)
-    var list = stations.length ? stations.map(function (b, i) { return { title: b.dataset.name, url: b.dataset.url, folder: "Live radio", live: true, logo: logo, page: back, linkText: "Station", relay: relays[i] || "" }; })
-                               : [{ title: name, url: url, folder: "Live radio", live: true, logo: logo, page: back, linkText: "Station", relay: relays[0] || "" }];
+    function now(i) { return relays[i] ? relays[i] + "&now=1" : ""; }                  // the address that tells what the station plays now
+    var list = stations.length ? stations.map(function (b, i) { return { title: b.dataset.name, url: b.dataset.url, folder: "Live radio", live: true, logo: logo, page: back, linkText: "Station", relay: relays[i] || "", now: now(i) }; })
+                               : [{ title: name, url: url, folder: "Live radio", live: true, logo: logo, page: back, linkText: "Station", relay: relays[0] || "", now: now(0) }];
     return list;
   }
   function shellPlaying() { return !!shell && shell.isPlaying() && shell.currentUrl() === url; }
@@ -35,6 +36,8 @@
   }
   function paint() {
     var icon = play.querySelector(".pl-icon");
+    var line = document.getElementById("now-playing");                  // what the station plays now, when it tells (needs the relay)
+    if (line) { var text = shell && shellPlaying() ? shell.nowText() : ""; line.textContent = text; line.hidden = !text; }
     if (shell) {
       if (icon) icon.className = "pl-icon " + (shellPlaying() ? "pl-i-pause" : "pl-i-play");
       play.setAttribute("aria-label", shellPlaying() ? "Stop" : "Play");

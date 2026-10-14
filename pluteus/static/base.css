@@ -482,6 +482,8 @@ body.pl-shell-page { display: flex; flex-direction: column; height: 100vh; heigh
 .pl-shell-player[hidden] { display: none; }
 .pl-shell-player .pl-icon { color: var(--pl-accent); width: 22px; height: 22px; }
 .pl-shell-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.pl-now-playing { margin-top: 8px; font-size: 16px; font-weight: 600; color: var(--pl-accent); text-align: center; overflow-wrap: anywhere; }
+.pl-now-playing[hidden] { display: none; }
 /* station and channel logos: shown on a light tile so dark logos stay readable on the dark themes */
 .pl-shell-logo { width: 26px; height: 26px; border-radius: 6px; object-fit: contain; background: #fff; padding: 2px; flex: none; }
 .pl-shell-logo[hidden] { display: none; }

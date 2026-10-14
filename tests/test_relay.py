@@ -12,6 +12,7 @@ from test_uploads import ORIGIN
 from pluteus import fetchimage, relay
 
 AUDIO = b"ID3" + bytes(range(256)) * 200            # about 50 KB of "audio"
+hits: list = []                                       # the paths the test radio server was asked for
 
 
 class Handler(http.server.BaseHTTPRequestHandler):
@@ -52,6 +53,22 @@ class Handler(http.server.BaseHTTPRequestHandler):
             self.send_response(302)
             self.send_header("Location", "/stream")
             self.end_headers()
+        elif self.path.startswith("/icy"):               # a station that sends the current title inside the stream when asked (ICY)
+            hits.append(self.path)
+            self.send_response(200)
+            self.send_header("Content-Type", "audio/mpeg")
+            if self.path != "/icy-none" and self.headers.get("Icy-MetaData") == "1":
+                self.send_header("icy-metaint", "1000000" if self.path == "/icy-huge" else "16")
+            self.end_headers()
+            titles = {"/icy": "Kaizers Orchestra - Ompa til du dør".encode("utf-8"), "/icy-latin": "Bjørn - Små Ting".encode("latin-1"),
+                      "/icy-station": b"Test Radio", "/icy-plain": b"Just a title", "/icy-empty": b""}
+            raw = titles.get(self.path, b"")
+            text = b"StreamTitle='" + raw + b"';StreamUrl='';" if raw else b""
+            block = text + b"\x00" * (-len(text) % 16)
+            try:
+                self.wfile.write(b"a" * 16 + bytes([len(block) // 16]) + block + b"b" * 5000)
+            except OSError:
+                pass
         elif self.path == "/slow":                       # a stream that stays open for a while (about 1.5 seconds), then ends
             self.send_response(200)
             self.send_header("Content-Type", "audio/ogg")
@@ -177,3 +194,54 @@ def test_the_limiter_counts_per_user_and_in_total():
 def test_only_plain_web_addresses_are_taken(url):
     with pytest.raises(relay.Refused):
         relay._split(url)
+
+
+# ---- now playing (ICY titles) ------------------------------------------------------------------------------------------------------
+@pytest.fixture(autouse=True)
+def fresh_cache():
+    relay._cache.clear()
+    hits.clear()
+
+
+def test_the_title_block_is_parsed():
+    block = b"StreamTitle='Don't Stop - Me Now';StreamUrl='http://x';" + b"\x00" * 7
+    assert relay.parse_stream_title(block) == "Don't Stop - Me Now"
+    assert relay.parse_stream_title("StreamTitle='Bjørn';".encode("latin-1")) == "Bjørn"                 # old stations send Latin-1
+    assert relay.parse_stream_title(b"StreamUrl='x';") == "" and relay.parse_stream_title(b"") == ""
+    assert relay.parse_stream_title(b"StreamTitle='a\x01b\nc';") == "a b c"                                           # control characters are removed
+    assert relay.split_title("Artist - Title") == {"text": "Artist - Title", "artist": "Artist", "title": "Title"}
+    assert relay.split_title("Just a title") == {"text": "Just a title"} and relay.split_title(" - x") == {"text": " - x"}
+
+
+def test_the_title_is_read_without_carrying_the_audio(station):
+    assert relay.now_playing(station + "/icy") == {"text": "Kaizers Orchestra - Ompa til du dør", "artist": "Kaizers Orchestra",
+                                                   "title": "Ompa til du dør"}
+    assert relay.now_playing(station + "/icy-latin")["artist"] == "Bjørn"
+    assert relay.now_playing(station + "/icy-plain") == {"text": "Just a title"}
+    assert relay.now_playing(station + "/icy-station", "Test Radio") == {}                                            # a station that repeats its own name
+    for path in ("/icy-empty", "/icy-none", "/icy-huge", "/page", "/gone", "/inside"):                                # nothing useful: empty, never an error
+        assert relay.now_playing(station + path) == {}, path
+    assert relay.now_playing("http://127.0.0.1:9/x") == {}
+
+
+def test_answers_are_kept_for_ten_seconds(station):
+    relay.now_playing(station + "/icy")
+    relay.now_playing(station + "/icy")
+    assert hits.count("/icy") == 1                                                                                    # one look-up for any number of listeners
+
+
+def test_the_page_asks_through_the_server_and_the_answer_is_json(cfg, tmp_path, station):
+    me, folder = signed_in(cfg, tmp_path, relay=True)
+    put(folder, "a.m3u", station + "/icy", station + "/icy-none")
+    got = me.get("/relay/uploads/Radio/a.m3u?i=0&now=1")
+    assert got.status_code == 200 and got.json()["title"] == "Ompa til du dør" and got.headers["cache-control"] == "no-store"
+    assert me.get("/relay/uploads/Radio/a.m3u?i=1&now=1").json() == {}
+    assert me.get("/relay/uploads/Radio/a.m3u?i=5&now=1").status_code == 404
+    page = me.get("/view/uploads/Radio/a.m3u", headers=HTML).text
+    assert "id='now-playing' hidden" in page
+
+
+def test_now_playing_is_off_with_the_relay_and_for_other_files(cfg, tmp_path, station):
+    me, folder = signed_in(cfg, tmp_path)
+    put(folder, "a.m3u", station + "/icy")
+    assert me.get("/relay/uploads/Radio/a.m3u?i=0&now=1").status_code == 404
