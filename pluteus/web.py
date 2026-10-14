@@ -22,6 +22,7 @@ class Ctx:
     extras: bool = True          # the speed and sleep controls in the audio/video player
     tv_sound: bool = True        # the sound of a live TV channel goes on in the shell's player when its page is left
     view_scope: str = "all"      # the List / Covers choice on a folder page holds for "all" folders or is kept per "folder"
+    queue_subfolders: bool = True    # Play all and Shuffle include the folders below the one you are in
     view: str = "list"           # how a folder is shown: "list" (rows) or "grid" (covers)
     thumbs: bool = False         # thumbnails are switched on (thumbnails = true): the cover view and its switches exist
 
@@ -854,6 +855,8 @@ def settings_page(ctx: Ctx, themes: list, saved: bool = False, stations: bool = 
             "%s"
             "<label class='pl-field'><span>Speed and sleep controls in the music player</span><select name='extras'>%s</select></label>"
             "<label class='pl-field'><span>Live TV: when I leave the channel page</span><select name='tv_sound'>%s</select></label>"
+            "<label class='pl-field'><span>Play all and Shuffle on a folder</span><select name='queue_subfolders'>"
+            "<option value='yes'%s>Include the folders below it</option><option value='no'%s>Only the files in that folder</option></select></label>"
             "<button class='pl-btn pl-btn-primary' type='submit'>Save</button></form>%s"
             "<p><a href='%s'>&larr; Back to the library</a></p></main>"
             % (note, escape(ctx.urls.settings()), opts, icon_opts,
@@ -864,6 +867,7 @@ def settings_page(ctx: Ctx, themes: list, saved: bool = False, stations: bool = 
                extras_opts,
                "".join("<option value='%s'%s>%s</option>" % (k, " selected" if (k == "keep") == ctx.tv_sound else "", label)
                        for k, label in (("keep", "Keep the sound playing in the player bar"), ("stop", "Stop it"))),
+               " selected" if ctx.queue_subfolders else "", "" if ctx.queue_subfolders else " selected",
                ("<section class='pl-card'><h2>Radio and TV</h2><p class='pl-muted'>Find stations and channels in public catalogues and save them "
                 "into your upload folder, where pluteus plays them (and shows them to music apps as radio).</p>"
                 "<p><a class='pl-btn' href='%s'>Find radio stations</a> <a class='pl-btn' href='%s'>Find TV channels</a></p></section>"

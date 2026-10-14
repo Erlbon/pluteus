@@ -84,3 +84,35 @@ def test_the_folder_page_offers_the_queue(client):
     c, alice, _ = client
     page = c.get("/browse/music/Artist", headers={**alice, **HTML}).text
     assert "data-queue='/api/queue/music/Artist'" in page and "queue.js" in page
+
+
+def test_shuffle_leaves_out_marked_folders_and_audiobooks_but_play_all_does_not(client, tmp_path):
+    c, alice, _ = client
+    music = tmp_path / "music" / "Artist"
+    (music / "Effects").mkdir()
+    (music / "Effects" / "boom.mp3").write_bytes(b"ID3" + b"\x00" * 50)
+    (music / "Effects" / "noshuffle.txt").write_text("", encoding="utf-8")
+    (music / "Dotted").mkdir()
+    (music / "Dotted" / "tick.mp3").write_bytes(b"ID3" + b"\x00" * 50)
+    (music / "Dotted" / ".noshuffle").write_text("", encoding="utf-8")
+    (music / "Album One" / "book.m4b").write_bytes(b"\x00" * 50)
+    titles = lambda url: sorted(i["title"] for i in c.get(url, headers=alice).json()["items"])                # noqa: E731
+    assert "book" in titles("/api/queue/music/Artist") and "tick" in titles("/api/queue/music/Artist")           # Play all: everything
+    mixed = titles("/api/queue/music/Artist?mix=1")
+    assert mixed == ["01 a", "01 c", "02 b", "single"]                                                         # no marked folder, no audiobook
+    assert titles("/api/queue/music/Artist/Effects?mix=1") == ["boom"]                                          # pressed inside it: allowed
+
+
+def test_the_subfolder_switch_in_settings_limits_play_all_and_shuffle(client):
+    c, alice, _ = client
+    origin = {**alice, "origin": "http://testserver", "content-type": "application/x-www-form-urlencoded"}
+    titles = lambda url: sorted(i["title"] for i in c.get(url, headers=alice).json()["items"])                # noqa: E731
+    assert titles("/api/queue/music/Artist") == ["01 a", "01 c", "02 b", "single"]
+    assert "<option value='yes' selected>" in c.get("/settings", headers={**alice, **HTML}).text
+    c.post("/settings", content="queue_subfolders=no", headers=origin)
+    assert titles("/api/queue/music/Artist") == ["single"] and titles("/api/queue/music/Artist?mix=1") == ["single"]
+    assert "<option value='no' selected>" in c.get("/settings", headers={**alice, **HTML}).text
+    c.post("/settings", content="queue_subfolders=junk", headers=origin)                                       # junk changes nothing
+    assert titles("/api/queue/music/Artist") == ["single"]
+    c.post("/settings", content="queue_subfolders=yes", headers=origin)
+    assert len(titles("/api/queue/music/Artist")) == 4

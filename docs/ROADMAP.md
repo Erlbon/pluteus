@@ -115,7 +115,7 @@ for the new quota, after or next to the relay.
   (for example 50). There is no index, so it is approximate: random folders, then random files inside them (the way the Subsonic "random
   songs" call already works), a handful of directory listings, capped. The existing queue list for a folder (`/api/queue/...`) learns to include
   video files when asked.
-- **Shuffle:** a button beside "Play all" on a folder page; the list is shuffled in the browser.
+- **Shuffle:** a button beside "Play all" on a folder page; the list is shuffled in the browser. **Done in 0.9.8** (with the subfolder switch in Settings, the `noshuffle` marker file in the three spellings, and `.m4b` left out); the minimum length and the audiences are still to do.
 - **The shell's player already uses a video element** (since the TV sound), so it can show a picture: when the current item is a video, a panel
   opens under the bar with the picture and the site below shifts down; a "sound only" toggle hides the picture, a full-screen button takes the
   panel full screen; when the next item is a song the panel closes by itself. On a phone the panel is the same, full width.

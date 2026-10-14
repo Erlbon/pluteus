@@ -74,6 +74,7 @@ RADIO_CSP = CSP.replace("default-src 'self';", "default-src 'self'; media-src 's
 IPTV_CSP = (RADIO_CSP.replace("media-src 'self' http: https:;", "media-src 'self' blob: http: https:;", 1)
             .replace("connect-src 'self';", "connect-src 'self' http: https:;", 1))
 NO_CACHE = {"Cache-Control": "no-cache"}
+NO_SHUFFLE_MARKERS = (".noshuffle", "noshuffle", "noshuffle.txt")      # an empty file with one of these names keeps a folder out of Shuffle
 
 
 _SECRET_QUERY = {"p", "apikey", "t", "s", "password", "token", "key", "secret"}
@@ -364,7 +365,8 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
                        thumbs=cfg.thumbnails,
                        extras=state.get_prefs(user.name).get("player_extras", True) is not False,
                        tv_sound=state.get_prefs(user.name).get("tv_sound", True) is not False,
-                       view_scope="folder" if state.get_prefs(user.name).get("view_scope") == "folder" else "all")
+                       view_scope="folder" if state.get_prefs(user.name).get("view_scope") == "folder" else "all",
+                       queue_subfolders=state.get_prefs(user.name).get("queue_subfolders", True) is not False)
 
     def unauthorized(request: Request, mode: str, wait: int) -> Response:
         if wait:
@@ -731,6 +733,8 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
                 prefs["player_extras"] = form["extras"] == "show"
             if form.get("tv_sound") in ("keep", "stop"):
                 prefs["tv_sound"] = form["tv_sound"] == "keep"
+            if form.get("queue_subfolders") in ("yes", "no"):
+                prefs["queue_subfolders"] = form["queue_subfolders"] == "yes"
             state.set_prefs(user.name, prefs)
             return RedirectResponse(urls.settings() + "?saved=1", 303)
         return HTMLResponse(web.settings_page(ctx_for(user), themes.names(), "saved" in request.query_params,
@@ -1102,19 +1106,34 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
 
     @guarded("web")
     async def queue(request: Request, user):
-        """Every audio file of a folder and the folders below it, in play order, for the player in the shell."""
+        """Every audio file of a folder and (unless the user switched it off in Settings) the folders below it, in play order, for the player
+        in the shell. With ?mix=1 (the Shuffle button) the list is for a random order and leaves out what a mix never includes: a folder below
+        the one you pressed Shuffle in that holds a no-shuffle marker file (it and everything below it), and .m4b audiobooks."""
         root = request.path_params["root"]
         parts = _parts(request.path_params.get("path", ""))
+        mix = request.query_params.get("mix") == "1"
+        max_depth = 6 if state.get_prefs(user.name).get("queue_subfolders", True) is not False else 0
+
+        def marked(here: tuple) -> bool:
+            try:
+                folder = lib.folder_path(user, root, here)
+            except (NotFound, PathError, OSError):
+                return False
+            return any(os.path.isfile(os.path.join(folder, name)) for name in NO_SHUFFLE_MARKERS)
 
         def build():
             found, visited = [], [0]
 
             def walk(here: tuple, depth: int):
-                if depth > 6 or visited[0] >= 600 or len(found) >= 2000:
+                if depth > max_depth or visited[0] >= 600 or len(found) >= 2000:
+                    return
+                if mix and depth > 0 and marked(here):
                     return
                 visited[0] += 1
                 entries = lib.list_dir(user, root, here, True, False)
                 for e in entries:
+                    if mix and e.name.lower().endswith(".m4b"):
+                        continue
                     if not e.is_dir and kinds.kind_of(e.name) == "audio" and len(found) < 2000:
                         found.append({"title": os.path.splitext(e.name)[0], "url": urls.raw(root, e.parts),
                                       "view": urls.view(root, e.parts), "folder": lib.display_name(here[-1]) if here else root})
