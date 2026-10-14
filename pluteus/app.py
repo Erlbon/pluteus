@@ -19,6 +19,7 @@ import threading
 import time
 from types import SimpleNamespace
 from pathlib import Path
+from html import escape as escape_attr
 from urllib.parse import parse_qs, quote, urlencode, urlsplit
 
 from python_multipart.exceptions import MultipartParseError
@@ -31,7 +32,7 @@ from starlette.responses import (FileResponse, HTMLResponse, JSONResponse, Plain
                                  RedirectResponse, Response, StreamingResponse)
 from starlette.routing import Route
 
-from . import cbz, kinds, markdown, mediainfo, opds, opds2, radio, subtitles, tabular, thumbs, textview, uploads, web, ziputil
+from . import cbz, kinds, markdown, mediainfo, opds, opds2, radio, stationsave, subtitles, tabular, thumbs, textview, uploads, web, ziputil
 from .auth import Authenticator
 from .bodies import read_limited
 from .cbz import CbzError
@@ -668,7 +669,8 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
                 prefs["player_extras"] = form["extras"] == "show"
             state.set_prefs(user.name, prefs)
             return RedirectResponse(urls.settings() + "?saved=1", 303)
-        return HTMLResponse(web.settings_page(ctx_for(user), themes.names(), "saved" in request.query_params))
+        return HTMLResponse(web.settings_page(ctx_for(user), themes.names(), "saved" in request.query_params,
+                                              stations=lib.uploads_enabled(user)))
 
     # ---- personal upload folder: upload, new folder, rename, delete -----------------------------------------------
     def flash_url(parts: tuple, **query) -> str:
@@ -940,6 +942,37 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
         if ext in kinds.SANDBOXED:
             headers["Content-Security-Policy"] = "sandbox; default-src 'none'; style-src 'unsafe-inline'"
         return FileResponse(info.path, media_type=mime, headers=headers)       # no filename: displayed, not downloaded
+
+    @guarded("web")
+    async def stations_page(request: Request, user):
+        """The radio picker or the TV picker (static/pickers): finds stations in a public catalogue and saves them into the user's
+        upload folder. Served here (not as a static file) so its addresses can be filled in and its own content policy set."""
+        kind = request.path_params["kind"]
+        if kind not in stationsave.KINDS or not lib.uploads_enabled(user):
+            raise NotFound("no such page")
+        text = (STATIC_DIR / "pickers" / (kind + "-picker.html")).read_text(encoding="utf-8")
+        for key, value in (("__STATIC__", urls.static("pickers/")), ("__VENDOR__", urls.static("vendor/")), ("__SAVE__", urls.stations_save()),
+                           ("__BROWSE__", urls.browse(UPLOADS_ROOT, (stationsave.KINDS[kind],))), ("__BACK__", urls.settings())):
+            text = text.replace(key, escape_attr(value))
+        csp = IPTV_CSP if kind == "tv" else RADIO_CSP.replace("connect-src 'self';", "connect-src 'self' https://*.api.radio-browser.info;", 1)
+        return HTMLResponse(text, headers={"Content-Security-Policy": csp})
+
+    @guarded("web")
+    async def stations_save(request: Request, user):
+        """Write the ticked stations as .m3u files into the user's upload folder (Radio/ or IPTV/)."""
+        if not lib.uploads_enabled(user):
+            raise NotFound("no upload folder")
+        raw = await read_limited(request, 400_000)
+        if raw is None:
+            return JSONResponse({"error": "That is too many at once."}, 413)
+        try:
+            data = json.loads(raw.decode("utf-8"))
+            result = await run_in_threadpool(stationsave.save, lib, cfg.upload_quota_mb, user, data)
+        except (ValueError, UnicodeDecodeError):
+            return JSONResponse({"error": "The request was not understood."}, 400)
+        except uploads.UploadError as e:
+            return JSONResponse({"error": "Not saved: %s." % web.UPLOAD_MESSAGES.get(e.code, "something went wrong")}, 400)
+        return JSONResponse(result)
 
     @guarded("web")
     async def shell(request: Request, user):
@@ -1377,6 +1410,8 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
         Route("/cover/{root}/{path:path}", cover),
         Route("/subs/{root}/{path:path}", subs),
         Route("/shell", shell),
+        Route("/stations/{kind}", stations_page),
+        Route("/api/stations", stations_save, methods=["POST"]),
         Route("/api/queue/{root}/{path:path}", queue),
         Route("/api/queue/{root}", queue),
         Route("/zip/{root}/{path:path}", zip_entry),

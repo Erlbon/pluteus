@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Find radio stations</title>
+<link rel="stylesheet" href="__STATIC__picker.css">
+<script src="__STATIC__../scheme.js"></script>
+</head>
+<body data-save="__SAVE__" data-browse="__BROWSE__" data-kind="radio">
+<main>
+  <p><a href="__BACK__">&larr; Settings</a></p>
+  <h1>Find radio stations</h1>
+  <p class="lead">Search the community directory <a href="https://www.radio-browser.info/" target="_blank" rel="noopener">radio-browser.info</a>, listen, tick the stations you want, and save them into your
+    upload folder as <code>.m3u</code> files (one per station, in <code>Radio</code>). pluteus opens each file in its radio player, and music apps see the folder as radio stations.
+    Your browser asks radio-browser.info for the list; pluteus only writes the files.</p>
+
+  <section class="card">
+    <div class="filters">
+      <label>Country <select id="country"><option value="">Any country</option></select></label>
+      <label>Genre / tag <input type="search" id="tag" list="tags" placeholder="jazz, news, rock ..."></label>
+      <datalist id="tags"></datalist>
+      <label>Name contains <input type="search" id="name" placeholder="NRK"></label>
+      <label>Sort by <select id="order"><option value="clickcount">Most listened</option><option value="votes">Most votes</option><option value="name">Name</option><option value="bitrate">Bitrate</option></select></label>
+      <label>Show up to <select id="limit"><option>50</option><option selected>100</option><option>250</option><option>500</option></select></label>
+      <label>Bitrate at least <select id="bitrate"><option value="0">Any</option><option value="64">64 kbps</option><option value="96">96 kbps</option><option value="128">128 kbps</option></select></label>
+    </div>
+    <div class="bar">
+      <label class="check"><input type="checkbox" id="https" checked> https only (needed on a secure site)</label>
+      <label class="check"><input type="checkbox" id="working" checked> working at the last check</label>
+      <label class="check"><input type="checkbox" id="nohls" checked> skip HLS (the radio player cannot play it)</label>
+      <span class="grow"></span>
+      <button class="primary" id="go">Search</button>
+    </div>
+    <div class="status" id="status"></div>
+  </section>
+
+  <section class="card" id="results" hidden>
+    <div class="bar" style="margin:0 0 6px">
+      <button id="all">Select all</button><button id="none">Select none</button>
+      <span class="status" id="count"></span>
+    </div>
+    <ul id="list"></ul>
+  </section>
+</main>
+
+<div class="save">
+  <div class="inner">
+    <span id="picked" class="status">Nothing ticked</span>
+    <span class="grow"></span>
+    <label class="check"><span>Subfolder</span><input type="text" id="sub" placeholder="optional, e.g. Norway"></label>
+    <label class="check"><input type="checkbox" id="overwrite"> overwrite existing</label>
+    <button class="primary" id="saveServer" disabled>Save to my Radio folder</button>
+    <button id="saveOne" disabled>Download as one list</button>
+  </div>
+  <div class="inner"><div class="log" id="log"></div></div>
+</div>
+<audio id="audio" preload="none"></audio>
+<script src="__STATIC__radio-picker.js"></script>
+</body>
+</html>

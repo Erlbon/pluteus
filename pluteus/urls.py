@@ -48,6 +48,13 @@ class Urls:
     def cover(self, root: str, parts) -> str:
         return self._build("cover", root, parts)
 
+    def stations(self, kind: str) -> str:
+        """The page that finds radio stations (kind radio) or TV channels (kind tv) and saves them into the upload folder."""
+        return "%s/stations/%s" % (self.base, kind)
+
+    def stations_save(self) -> str:
+        return self.base + "/api/stations"
+
     def shell(self) -> str:
         """The outer page that keeps the player going while the site is shown in a frame."""
         return self.base + "/shell"

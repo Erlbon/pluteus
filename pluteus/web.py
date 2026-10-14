@@ -805,7 +805,7 @@ VIEW_STYLES = (("list", "A list"), ("grid", "Covers (a picture for each book)"))
 EXTRAS_STYLES = (("show", "Show"), ("hide", "Hide"))
 
 
-def settings_page(ctx: Ctx, themes: list, saved: bool = False) -> str:
+def settings_page(ctx: Ctx, themes: list, saved: bool = False, stations: bool = False) -> str:
     opts = "".join("<option value='%s'%s>%s</option>"
                    % (escape(t), " selected" if t == ctx.theme else "", escape(t)) for t in themes)
     icon_opts = "".join("<option value='%s'%s>%s</option>" % (k, " selected" if k == ctx.icons else "", escape(label))
@@ -820,9 +820,14 @@ def settings_page(ctx: Ctx, themes: list, saved: bool = False) -> str:
             "<label class='pl-field'><span>File icons</span><select name='icons'>%s</select></label>"
             "%s"
             "<label class='pl-field'><span>Speed and sleep controls in the music player</span><select name='extras'>%s</select></label>"
-            "<button class='pl-btn pl-btn-primary' type='submit'>Save</button></form>"
+            "<button class='pl-btn pl-btn-primary' type='submit'>Save</button></form>%s"
             "<p><a href='%s'>&larr; Back to the library</a></p></main>"
             % (note, escape(ctx.urls.settings()), opts, icon_opts,
                ("<label class='pl-field'><span>Folders are shown as</span><select name='view'>%s</select></label>" % view_opts) if ctx.thumbs else "",
-               extras_opts, escape(ctx.urls.home())))
+               extras_opts,
+               ("<section class='pl-card'><h2>Radio and TV</h2><p class='pl-muted'>Find stations and channels in public catalogues and save them "
+                "into your upload folder, where pluteus plays them (and shows them to music apps as radio).</p>"
+                "<p><a class='pl-btn' href='%s'>Find radio stations</a> <a class='pl-btn' href='%s'>Find TV channels</a></p></section>"
+                % (escape(ctx.urls.stations("radio")), escape(ctx.urls.stations("tv")))) if stations else "",
+               escape(ctx.urls.home())))
     return layout("Settings", body, ctx)

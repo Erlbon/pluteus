@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Find TV channels</title>
+<link rel="stylesheet" href="__STATIC__picker.css">
+<script src="__STATIC__../scheme.js"></script>
+</head>
+<body data-save="__SAVE__" data-browse="__BROWSE__" data-kind="tv">
+<main>
+  <p><a href="__BACK__">&larr; Settings</a></p>
+  <h1>Find TV channels</h1>
+  <p class="lead">Browse the public channel catalogue of <a href="https://github.com/iptv-org/iptv" target="_blank" rel="noopener">iptv-org</a>, try a channel, tick the ones you want, and save
+    them into your upload folder as <code>.m3u</code> files (one per channel, in <code>IPTV</code>). pluteus plays an HLS channel in its video page.
+    Your browser reads the catalogue from iptv-org.github.io and the channels you try or test from their own servers; pluteus only writes the files.
+    Channels are listed by the catalogue as publicly available; they stay the property of their broadcasters.</p>
+
+  <div id="preview" class="card">
+    <video id="video" controls playsinline></video>
+    <div class="cap"><span id="capname"></span><span id="capmsg" class="status"></span></div>
+  </div>
+
+  <section class="card">
+    <div class="filters">
+      <label>Country <select id="country"><option value="">Any country</option></select></label>
+      <label>Category <select id="category"><option value="">Any category</option></select></label>
+      <label>Name contains <input type="search" id="name" placeholder="NRK"></label>
+      <label>Quality at least <select id="quality"><option value="0">Any</option><option value="360">360p</option><option value="480">480p</option><option value="576">576p</option><option value="720" selected>720p</option><option value="1080">1080p</option></select></label>
+    </div>
+    <div class="bar">
+      <label class="check"><input type="checkbox" id="https" checked> https only (needed on a secure site)</label>
+      <label class="check"><input type="checkbox" id="hls" checked> HLS (.m3u8) only</label>
+      <label class="check"><input type="checkbox" id="nogeo"> skip geo-blocked (only viewable inside their own country)</label>
+      <label class="check"><input type="checkbox" id="best" checked> one stream per channel (the best)</label>
+    </div>
+    <div class="bar">
+      <button class="primary" id="go" disabled>Loading the catalogue…</button>
+      <span class="status" id="status"></span>
+    </div>
+  </section>
+
+  <section class="card" id="results" hidden>
+    <div class="bar" style="margin:0 0 6px">
+      <button id="all">Tick all shown</button><button id="none">Tick none</button>
+      <button id="check" disabled>Test ticked</button>
+      <span class="status" id="count"></span>
+    </div>
+    <ul id="list"></ul>
+    <div class="bar"><button id="more" hidden>Show more</button></div>
+  </section>
+</main>
+
+<div class="save">
+  <div class="inner">
+    <span id="picked" class="status">Nothing ticked</span>
+    <span class="grow"></span>
+    <label class="check"><span>Subfolder</span><input type="text" id="sub" placeholder="optional, e.g. News"></label>
+    <label class="check"><input type="checkbox" id="bycountry"> a folder per country</label>
+    <label class="check"><input type="checkbox" id="overwrite"> overwrite existing</label>
+    <button class="primary" id="saveServer" disabled>Save to my IPTV folder</button>
+    <button id="saveOne" disabled>Download as one list</button>
+  </div>
+  <div class="inner"><div class="log" id="log"></div></div>
+</div>
+
+<script src="__VENDOR__hls.min.js"></script>
+<script src="__STATIC__tv-picker.js"></script>
+</body>
+</html>
