@@ -96,6 +96,11 @@
       failures = 0;
       if (queue.length) go(Math.max(0, Math.min(start || 0, queue.length - 1)));
     },
+    /* a song that was playing in the page being left carries on here, from where it was (a short gap while the file is opened again) */
+    takeOver: function (items, start, at) {
+      window.plShell.playQueue(items, start);
+      if (at > 0) audio.addEventListener("loadedmetadata", function () { try { audio.currentTime = at; } catch (e) { /* not seekable */ } }, { once: true });
+    },
     pause: function () { if (live()) dropStream(); else audio.pause(); },
     stop: stop,
     active: function () { return queue.length > 0; },

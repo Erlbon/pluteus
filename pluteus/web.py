@@ -535,7 +535,7 @@ def _clock(seconds: float) -> str:
 def media_viewer_page(ctx: Ctx, title: str, *, kind: str, raw_url: str, mime: str, download_url: str, back_url: str,
                       progress_url: str, prev_url, next_url, position: int, total: int, album: str = "",
                       tags: dict | None = None, cover_url: str = "", synced: list | None = None, chapters: list | None = None,
-                      bookmarks_url: str = "", extras: bool = True, subtitles: list | None = None) -> str:
+                      bookmarks_url: str = "", extras: bool = True, subtitles: list | None = None, queue_url: str = "") -> str:
     """The audio/video viewer. Audio gets a cover, the tags (title, artist, album, year, genre, track), a scrubber, big transport
     buttons and lyrics; video keeps the browser's own controls under the same information. Tags are untrusted text: escaped.
     viewer-media.js adds resume, auto-advance to the next file, the lyrics highlight and the lock-screen controls."""
@@ -620,7 +620,7 @@ def media_viewer_page(ctx: Ctx, title: str, *, kind: str, raw_url: str, mime: st
     return _viewer(ctx, bar_title, back_url, tools=tools, stage=stage, foot=foot, classes="pl-mediaview pl-" + tag,
                    stage_class="pl-media-stage",
                    data=(("progress", progress_url), ("kind", kind), ("prev", prev_url or ""), ("next", next_url or ""),
-                         ("title", heading), ("artist", artist), ("album", album_name), ("bookmarks", bookmarks_url),
+                         ("title", heading), ("artist", artist), ("album", album_name), ("bookmarks", bookmarks_url), ("queue", queue_url),
                          ("artwork", cover_url or ctx.urls.static("icon/icon-512.png"))),
                    scripts=(ctx.urls.static("viewer-media.js"),))
 

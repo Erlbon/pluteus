@@ -54,6 +54,23 @@
       }
     });
 
+  /* in the shell: a song playing here carries on in the shell's player when this page is left (the folder becomes the queue, so
+     next and previous go on through the album). The folder's list is fetched in advance; the hand-over happens as the page unloads. */
+  var shell = null, folder = null;
+  try { shell = window.parent !== window ? window.parent.plShell : null; } catch (e) { shell = null; }
+  if (shell && data.queue && data.kind === "audio") {
+    fetch(data.queue, { credentials: "same-origin" }).then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (d) { folder = d && d.items ? d.items : null; }).catch(function () { /* the hand-over then has the one song */ });
+    window.addEventListener("pagehide", function () {
+      if (media.paused || media.ended || !media.currentSrc) return;
+      var here = new URL(media.currentSrc, location.href).pathname, items = folder || [], index = -1;
+      for (var i = 0; i < items.length; i++) { if (new URL(items[i].url, location.href).pathname === here) { index = i; break; } }
+      if (index < 0) { items = [{ title: data.title || "", url: media.currentSrc, folder: data.album || "" }]; index = 0; }
+      var at = media.currentTime;
+      try { shell.takeOver(items, index, at); } catch (e) { /* the shell is gone */ }
+    });
+  }
+
   /* a queue playing in the shell gives way when this page's own player starts */
   media.addEventListener("play", function () { try { if (window.parent !== window && window.parent.plShell) window.parent.plShell.pause(); } catch (e) { /* ignore */ } });
   media.addEventListener("play", function () { clearInterval(timer); timer = setInterval(function () { send(false); }, 5000); });

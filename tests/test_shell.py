@@ -69,6 +69,12 @@ def test_the_queue_follows_the_users_access(client):
     assert c.get("/api/queue/music").status_code == 401
 
 
+def test_a_song_page_knows_its_folders_queue_for_the_hand_over(client):
+    c, alice, _ = client
+    page = c.get("/view/music/Artist/Album%20One/01%20a.mp3", headers={**alice, **HTML}).text
+    assert "data-queue='/api/queue/music/Artist/Album%20One'" in page and "viewer-media.js" in page
+
+
 def test_the_folder_page_offers_the_queue(client):
     c, alice, _ = client
     page = c.get("/browse/music/Artist", headers={**alice, **HTML}).text
