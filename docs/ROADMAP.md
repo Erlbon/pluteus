@@ -121,12 +121,15 @@ for the new quota, after or next to the relay.
   panel full screen; when the next item is a song the panel closes by itself. On a phone the panel is the same, full width.
 - **Subfolders:** Shuffle and Play all include the subfolders of the folder by default (as Play all does now: up to 6 levels and 2000 files, the
   button says "2000+" when cut off). A Settings switch, "Play all and Shuffle include subfolders", turns that off for both buttons.
-- **What a mix never includes (proposed, to be confirmed by the owner):** (1) a folder with an empty `.noshuffle` file in it, with everything
-  below it (still listed, still playable by hand and by Play all); (2) a library marked `shuffle = false` in the config; (3) files whose genre
-  tag is on a skip list, defaults: Audiobook, Podcast, Speech, Spoken Word, Sound Effects, SFX, Comedy, editable in Settings (tags are read only
-  for the files the mix picks, with spares, through the cached tag reader, never a scan of the library); (4) files shorter than a minimum
-  length, default 45 seconds (sound effects are short), 0 turns it off; (5) `.m4b` audiobooks, always. Open question to the owner: how the
-  sound effects library is arranged (a folder of its own, or scattered and only tagged).
+- **What a mix never includes (decided by the owner, 2026-10-14):** the **marker file** is the main way and the length and the type are the
+  safety nets behind it.
+  1. A folder with an empty **`.noshuffle`** file in it is left out of Shuffle and Random mix together with everything below it. It is still
+     listed, still playable by hand and by Play all. Anyone can make one (it is just a file), and it needs no tags and no settings.
+  2. **Shortest song to include:** files shorter than a minimum length are left out, default 45 seconds (sound effects are short); a Settings
+     value, 0 turns it off.
+  3. **Type:** `.m4b` audiobooks are never included.
+  Not chosen for now (kept as later options, nothing built): a genre skip list (Audiobook, Podcast, Speech, Sound Effects ...) and a
+  `shuffle = false` switch per library in the config.
 - **Limits to state in the documentation:** subtitles and saved position belong to a video's own page and do not carry over into the panel; a
   video the browser cannot decode (some MKV) is skipped with a note.
 - **Size:** about 20 to 25 minutes (server pick: medium, Shuffle button: small, the panel: medium, tests and real-signal checks: medium).
