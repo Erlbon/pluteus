@@ -98,3 +98,23 @@ def test_the_users_space_limit_applies(cfg, tmp_path):
     (big / "fill.bin").write_bytes(b"x" * (1024 * 1024))
     r = post(me, {"kind": "radio", "stations": [{"name": "Full", "url": "https://example.org/f"}]})
     assert r.status_code == 400 and "space" in r.json()["error"]
+
+
+def test_the_home_page_shows_radio_and_iptv_once_they_exist(up):
+    me, app, folder = up
+    home = lambda: me.get("/", headers=HTML).text                                                       # noqa: E731
+    assert "href='/browse/uploads/Radio'" not in home() and "href='/browse/uploads/IPTV'" not in home()  # nothing saved yet: no empty entries
+    post(me, {"kind": "radio", "stations": [{"name": "One", "url": "https://example.org/one"}]})
+    page = home()
+    assert "href='/browse/uploads/Radio'" in page and ">Radio</a>" in page and "href='/browse/uploads/IPTV'" not in page
+    post(me, {"kind": "tv", "stations": [{"name": "Chan", "url": "https://example.org/c.m3u8"}]})
+    assert "href='/browse/uploads/IPTV'" in home()
+    assert me.get("/browse/uploads/Radio", headers=HTML).status_code == 200                              # and the link opens the folder
+
+
+def test_users_without_an_upload_folder_see_no_station_shortcuts(cfg, tmp_path):
+    from test_login_web import make
+    client, app = make(cfg, tmp_path)
+    me = TestClient(app, follow_redirects=False)
+    me.post("/login", content="username=alice&password=pw-alice", headers={"content-type": "application/x-www-form-urlencoded", **ORIGIN})
+    assert "/browse/uploads/Radio" not in me.get("/", headers=HTML).text

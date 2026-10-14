@@ -140,10 +140,13 @@ def _shelf_box(title: str, items: list, movable: bool) -> str:
 
 
 def roots_page(roots: list, ctx: Ctx, recent: list | None = None, read_next: list | None = None,
-               favourites: list | None = None) -> str:
+               favourites: list | None = None, stations: list | None = None) -> str:
     items = "".join("<li class='pl-row'><a class='pl-root-link' href='%s'><span class='pl-kind'>%s</span>%s</a></li>"
                     % (escape(ctx.urls.browse(r.name)), UPLOADS_ICON if r.name == "uploads" else ROOT_ICON, escape(r.name))
                     for r in roots)
+    # the user's saved radio stations and TV channels (folders inside their upload folder) are shown at the top level too
+    items += "".join("<li class='pl-row'><a class='pl-root-link' href='%s'><span class='pl-kind'>%s</span>%s</a></li>"
+                     % (escape(href), kind_icon(kind), escape(label)) for label, href, kind in (stations or []))
     # Two boxes (cards): "Continue reading" (only when there is something) and "Browse", then the small print below them.
     # (the lists carry .pl-roots / .pl-recent and the boxes .pl-home-box, so a theme can restyle them)
     cont = ""

@@ -571,12 +571,25 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
                         "api": urls.shelf(shelf, row["root"], parts)})
         return out[:60]
 
+    def station_shortcuts(user) -> list:
+        """[(label, address, kind)] for the Radio and IPTV folders of the user's upload folder, once they exist (the pickers make them)."""
+        found = []
+        if lib.uploads_enabled(user):
+            for folder, kind in (("Radio", "audio"), ("IPTV", "video")):
+                try:
+                    lib.upload_dir(user, (folder,))
+                except (NotFound, PathError, OSError):
+                    continue
+                found.append((folder, urls.browse(UPLOADS_ROOT, (folder,)), kind))
+        return found
+
     @guarded("web")
     async def home(request: Request, user):
         recent = await run_in_threadpool(continue_reading, user)
         read_next = await run_in_threadpool(shelf_items, user, "next")
         favourites = await run_in_threadpool(shelf_items, user, "favourite")
-        return HTMLResponse(web.roots_page(lib.roots_for(user), ctx_for(user), recent, read_next, favourites))
+        stations = await run_in_threadpool(station_shortcuts, user)
+        return HTMLResponse(web.roots_page(lib.roots_for(user), ctx_for(user), recent, read_next, favourites, stations))
 
     @guarded("api")
     async def shelf(request: Request, user):

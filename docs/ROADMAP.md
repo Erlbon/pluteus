@@ -106,7 +106,6 @@ a visible queue list (see, reorder, remove).
 
 ## 3. Smaller items
 
-- Radio and IPTV shortcuts at the top of the home page (open the folders inside the upload folder).
 - Subsonic: recently played (`getAlbumList2` type recent) and resume across devices (`getPlayQueue`, `savePlayQueue`) from the saved positions.
 - Artist information: `artist.md` / `artist.txt` / `artist.nfo` text on the folder page and in `getArtistInfo2`; artist links in the player.
 - The player bar merged into the pluteus bar on wide screens (the mockup: option B wide, option A on phones).
