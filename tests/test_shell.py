@@ -34,6 +34,8 @@ def test_the_shell_frames_the_site_and_never_sends_itself_into_a_shell(client):
     assert "<iframe class='pl-shell-frame' id='shell-frame'" in page and "src='/'" in page
     assert "shell.js" in page and "id='sp-play'" in page
     assert "data-shell" not in page                                              # or it would redirect to itself forever
+    assert "name='shell-frame'" in page and "href='/settings' target='shell-frame'" in page and "class='pl-brand' href='/' target='shell-frame'" in page
+    assert "target='shell-frame'" not in c.get("/settings", headers={**alice, **HTML}).text      # an ordinary page keeps plain links
     assert c.get("/shell").status_code == 401
 
 

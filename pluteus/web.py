@@ -32,12 +32,14 @@ def layout(title: str, body: str, ctx: Ctx, *, head: str = "", scripts: tuple = 
     if ctx.theme != DEFAULT:
         css.append("<link rel='stylesheet' href='%s'>" % escape(u.theme(ctx.theme, "theme.css")))
     chrome = ""
+    # the shell's own bar: its page links open in the frame below, so the shell (and the music in it) is never reloaded
+    into_frame = "" if shell else " target='shell-frame'"
     if bar:
         who = nav = ""
         if ctx.user:
             # Laid out like the admin page's bar: brand, version and the page links on the left; contrast button, the link
             # to the admin page (an administrator on the local network only) and Sign out on the right.
-            nav = "<nav class='pl-admin-nav'><a class='pl-admin-tab' href='%s'>Settings</a></nav>" % escape(u.settings())
+            nav = "<nav class='pl-admin-nav'><a class='pl-admin-tab' href='%s'%s>Settings</a></nav>" % (escape(u.settings()), into_frame)
             # a new tab: the admin page is another site (its own port), so opening it here would stop a playing song
             # hidden until adminlink.js has found the admin page reachable from this browser: from the public address it is not,
             # and a link that opens an empty page looks silly
@@ -46,9 +48,9 @@ def layout(title: str, body: str, ctx: Ctx, *, head: str = "", scripts: tuple = 
                 scripts = scripts + (u.static("adminlink.js"),)
             who = (admin + "<form method='post' action='%s'><button class='pl-btn' type='submit'>Sign out<span class='pl-who'> (%s)</span></button></form>"
                    % (escape(u.logout()), escape(ctx.user)))
-        chrome = ("<header class='pl-bar'><a class='pl-brand' href='%s'>Pluteus</a> <span class='pl-muted pl-ver'>%s</span>%s"
+        chrome = ("<header class='pl-bar'><a class='pl-brand' href='%s'%s>Pluteus</a> <span class='pl-muted pl-ver'>%s</span>%s"
                   "<span class='pl-spacer'></span>%s%s</header>"
-                  % (escape(u.home()), escape(__version__), nav, scheme_button(), who))
+                  % (escape(u.home()), into_frame, escape(__version__), nav, scheme_button(), who))
     js = "".join("<script src='%s' defer></script>" % escape(s) for s in scripts)
     js += "".join("<script type='module' src='%s'></script>" % escape(s) for s in module_scripts)
     # scheme.js is NOT deferred: it must run before the first paint so a saved dark/light choice never flashes.
@@ -657,7 +659,8 @@ def shell_page(ctx: Ctx, start_url: str) -> str:
              "<span class='pl-muted' id='sp-pos'></span>%s<div class='pl-shell-prog'><i id='sp-bar'></i></div></div>"
              % (btn("sp-prev", "Previous", "prev"), btn("sp-play", "Play", "play"), btn("sp-next", "Next", "next"),
                 "<button type='button' class='pl-vol-btn' id='sp-close' aria-label='Close the player'>&times;</button>"))
-    frame = ("<iframe class='pl-shell-frame' id='shell-frame' title='Pluteus' src='%s' allow='fullscreen; autoplay'></iframe>" % escape(start_url))
+    frame = ("<iframe class='pl-shell-frame' id='shell-frame' name='shell-frame' title='Pluteus' src='%s' allow='fullscreen; autoplay'></iframe>"
+             % escape(start_url))
     return layout("Pluteus", strip + frame, ctx, body_class="pl-shell-page", scripts=(ctx.urls.static("shell.js"),), shell=False)
 
 
