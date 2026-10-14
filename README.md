@@ -5,7 +5,7 @@ OPDS app, download files, with per-user logins. Python, no Java, low memory, no 
 Built as a light replacement for Ubooquity, for people who keep their library as plain folders on disk
 (tested on about 10 TB of books and comics).
 
-**Status: 0.9.7, feature complete, in daily use, being tested on real devices before 1.0.** What comes after 1.0 (first the stream relay, then playlists) is in [docs/ROADMAP.md](docs/ROADMAP.md). Named after the *pluteus*, the sloping shelf or bookcase of a
+**Status: 0.9.8, feature complete, in daily use, being tested on real devices before 1.0.** What comes after 1.0 (the random mix, then playlists) is in [docs/ROADMAP.md](docs/ROADMAP.md). Named after the *pluteus*, the sloping shelf or bookcase of a
 medieval library. Pronounced "PLOO-tee-us".
 
 ## What you get

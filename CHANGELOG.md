@@ -2,7 +2,7 @@
 
 Release notes are taken from the section of the tagged version (`## 0.5.0 ...`).
 
-## Unreleased (for 0.9.8)
+## 0.9.8 - 2026-10-14
 - **The TV picker and the relay.** With `relay = true` the TV picker leaves "https only" off by default (a saved plain-http channel plays through the server), says so, and "Test ticked" marks a channel that a secure page cannot test, or that a server refuses to show to a web page, as "via the server?" instead of "fails" (the relay does not need that permission).
 - **Subsonic resume from the web player.** When no app has saved a queue (or the web player was used after it), `getPlayQueue` answers with the unfinished song you opened last in the web player, the rest of its folder after it, and the saved position. Nothing extra is stored.
 - **Admin Stop for TV channels.** The relay box lists each streaming HLS channel with a Stop button: its playlist and pieces are refused for two minutes, so the player gives up (audio streams already had Stop).
