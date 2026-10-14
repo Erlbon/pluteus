@@ -488,7 +488,7 @@ body.pl-shell-page { display: flex; flex-direction: column; height: 100vh; heigh
   background: var(--pl-accent); color: var(--pl-btn-primary-fg, #1a1405); }
 .pl-live-dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
 .pl-live-fill { flex: 1; }
-.pl-iptv .pl-transport { margin-top: 18px; }
+.pl-iptv .pl-transport { margin-top: 2px; }            /* the music and movie players keep room above the play button for the speed; a live channel has none */
 .pl-framed .pl-radio-scrub { display: none !important; }       /* in the shell the stream plays there, with the device's own volume */
 /* the radio player: the station list under the play button */
 .pl-js .pl-radio audio { display: none; }

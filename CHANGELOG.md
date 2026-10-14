@@ -2,6 +2,9 @@
 
 Release notes are taken from the section of the tagged version (`## 0.5.0 ...`).
 
+## Unreleased (for 0.9.7)
+- **Live channel player:** the round play button sits closer to the LIVE row. The music and movie players keep room above it for the playback speed; a live channel has no speed, so that gap was empty.
+
 ## 0.9.6 - 2026-10-14
 - **TV sound goes on when you leave the channel page:** in the shell, leaving a live channel hands it to the player bar as sound only (hls.js, at its lowest quality, loaded only when needed); the bar shows the channel with "live" and a **Picture** link that brings the picture back (the sound is then taken from the bar again, never doubled). The bar's play button leaves and rejoins the broadcast, and the close button stops it. It is on by default and has a switch in Settings (**Live TV: when I leave the channel page**: keep the sound in the player bar, or stop it). The shell page's content policy now also lets it reach stream servers (`connect-src`), like the channel page. Checked with a public HLS stream: the bar's position kept advancing after leaving the page, with no policy violations, and returning through the link stopped the bar and showed the picture.
 - **Live channel player, themed like the movie player:** the same pieces as the movie player: a row under the picture (a gold LIVE badge where the position bar is, then volume on wide screens and full screen) and the big round gold play button below it. A click on the picture plays or leaves the broadcast, a double click goes full screen, full screen takes the whole player, and the volume is the same remembered level. The round button leaves the broadcast and plays joins it again as it is now (a live stream has no position, so there is no bar and no skip). Without the script the video keeps the browser's own controls.
