@@ -6,10 +6,12 @@
   var frame = document.getElementById("shell-frame"), strip = document.getElementById("sp");
   if (!frame || !strip) return;
   var root = document.documentElement;
-  var audio = new Audio(), queue = [], index = -1, failures = 0;
+  /* one media element for everything; a (never shown) video element, so it can also play the sound of a TV channel */
+  var audio = document.createElement("video"), queue = [], index = -1, failures = 0, hls = null, hlsToken = 0, hlsLoading = null;
   audio.preload = "auto";
+  audio.playsInline = true;
   var el = function (id) { return document.getElementById(id); };
-  var playBtn = el("sp-play"), titleEl = el("sp-title"), posEl = el("sp-pos"), barEl = el("sp-bar");
+  var playBtn = el("sp-play"), titleEl = el("sp-title"), posEl = el("sp-pos"), barEl = el("sp-bar"), linkEl = el("sp-link");
 
   /* ---- the player ---- */
   function icon(button, name) { var i = button.querySelector(".pl-icon"); if (i) i.className = "pl-icon pl-i-" + name; }
@@ -30,6 +32,8 @@
     document.body.classList.add("pl-shell-playing");
     titleEl.textContent = item.title + (item.folder ? " – " + item.folder : "");
     posEl.textContent = item.live ? "live" : (index + 1) + " / " + queue.length;
+    linkEl.hidden = !item.page;                           // a TV channel: a link back to its picture
+    if (item.page) linkEl.href = item.page;
     barEl.style.width = "0";
     if ("mediaSession" in navigator && typeof MediaMetadata !== "undefined") {
       try { navigator.mediaSession.metadata = new MediaMetadata({ title: item.title, album: item.folder || "", artist: "Pluteus" }); } catch (e) { /* ignore */ }
@@ -38,17 +42,48 @@
   function pauseFrameMedia() {              // a song or movie playing in the page itself gives way to the queue
     try { frame.contentDocument.querySelectorAll("audio, video").forEach(function (m) { m.pause(); }); } catch (e) { /* not ready */ }
   }
+  /* the sound of a TV channel: hls.js (loaded when first needed) plays the stream, at its lowest quality, into the media element */
+  function releaseHls() { hlsToken++; if (hls) { try { hls.destroy(); } catch (e) { /* ignore */ } hls = null; } }
+  function needHls() {
+    if (window.Hls) return Promise.resolve();
+    if (!hlsLoading) hlsLoading = new Promise(function (resolve, reject) {
+      var s = document.createElement("script");
+      s.src = strip.dataset.hls; s.onload = resolve; s.onerror = function () { hlsLoading = null; reject(); };
+      document.head.appendChild(s);
+    });
+    return hlsLoading;
+  }
+  function failedLive(item) { titleEl.textContent = item.title + " – the stream did not start"; paint(); }
+  function load(item) {
+    releaseHls();
+    var go = function () { var p = audio.play(); if (p && p.catch) p.catch(function () { paint(); }); };
+    if (item.tv && /[.]m3u8(?:$|[?#])/i.test(item.url)) {
+      var token = hlsToken;
+      needHls().then(function () {
+        if (token !== hlsToken) return;                  // another item was started meanwhile
+        if (window.Hls && window.Hls.isSupported()) {
+          hls = new window.Hls({ enableWorker: false, lowLatencyMode: false });
+          hls.on(window.Hls.Events.MANIFEST_PARSED, function () { hls.autoLevelCapping = 0; go(); });
+          hls.on(window.Hls.Events.ERROR, function (e, d) { if (d && d.fatal) { releaseHls(); failedLive(item); } });
+          hls.loadSource(item.url);
+          hls.attachMedia(audio);
+        } else { audio.src = item.url; go(); }           // a browser that plays HLS itself
+      }, function () { failedLive(item); });
+    } else {
+      audio.src = item.url;
+      go();
+    }
+  }
   function go(n) {
     if (n < 0 || n >= queue.length) return;
     index = n;
     show();
     pauseFrameMedia();
-    audio.src = queue[n].url;
-    var p = audio.play();
-    if (p && p.catch) p.catch(function () { paint(); });
+    load(queue[n]);
     paint();
   }
   function stop() {
+    releaseHls();
     audio.pause(); audio.removeAttribute("src"); audio.load();
     queue = []; index = -1;
     strip.hidden = true;
@@ -69,12 +104,11 @@
   audio.addEventListener("timeupdate", function () {
     if (isFinite(audio.duration) && audio.duration > 0) barEl.style.width = (100 * audio.currentTime / audio.duration) + "%";
   });
-  function dropStream() { audio.pause(); audio.removeAttribute("src"); audio.load(); paint(); }     // live radio: pause = leave the broadcast
+  function dropStream() { releaseHls(); audio.pause(); audio.removeAttribute("src"); audio.load(); paint(); }     // live: pause = leave the broadcast
   playBtn.addEventListener("click", function () {
-    if (audio.paused) {
-      if (live() && !audio.getAttribute("src")) audio.src = queue[index].url;                        // joins the broadcast as it is now
-      var p = audio.play(); if (p && p.catch) p.catch(function () { /* blocked */ });
-    } else if (live()) dropStream();
+    if (live() && !audio.getAttribute("src") && !hls) { load(queue[index]); paint(); return; }          // joins the broadcast as it is now
+    if (audio.paused) { var p = audio.play(); if (p && p.catch) p.catch(function () { /* blocked */ }); }
+    else if (live()) dropStream();
     else audio.pause();
   });
   el("sp-prev").addEventListener("click", function () { if (!live() && audio.currentTime > 4) audio.currentTime = 0; else go(index - 1); });
@@ -95,6 +129,11 @@
       queue = (items || []).filter(function (i) { return i && typeof i.url === "string"; }).slice(0, 2000);
       failures = 0;
       if (queue.length) go(Math.max(0, Math.min(start || 0, queue.length - 1)));
+    },
+    /* a TV channel being left: its sound carries on here (item: title, url, folder, page = the address of its picture) */
+    keepTv: function (item) {
+      if (!item || typeof item.url !== "string") return;
+      window.plShell.playQueue([{ title: item.title, url: item.url, folder: item.folder || "Live TV", live: true, tv: true, page: item.page || "" }], 0);
     },
     /* a song that was playing in the page being left carries on here, from where it was (a short gap while the file is opened again) */
     takeOver: function (items, start, at) {

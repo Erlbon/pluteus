@@ -114,5 +114,17 @@
     });
   });
   url = stations.length ? stations[0].dataset.url : video.dataset.url;
+
+  /* in the shell, with "keep the sound" on: leaving this page hands the channel to the player bar as sound only (a link there brings
+     the picture back); coming back to the page takes it from the bar again, so the sound is never doubled */
+  var shell = null;
+  try { shell = window.parent !== window ? window.parent.plShell : null; } catch (e) { shell = null; }
+  if (shell && shell.currentUrl && shell.currentUrl() === url) { try { shell.stop(); } catch (e) { /* ignore */ } }
+  if (shell && video.dataset.keepSound === "1") {
+    window.addEventListener("pagehide", function () {
+      if (!wanted || !url) return;
+      try { shell.keepTv({ title: (now ? now.textContent : "") || "TV", url: url, folder: "Live TV", page: video.dataset.page || "" }); } catch (e) { /* the shell is gone */ }
+    });
+  }
   start();
 })();

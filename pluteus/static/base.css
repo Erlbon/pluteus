@@ -478,6 +478,8 @@ body.pl-shell-page { display: flex; flex-direction: column; height: 100vh; heigh
 .pl-shell-player[hidden] { display: none; }
 .pl-shell-player .pl-icon { color: var(--pl-accent); width: 22px; height: 22px; }
 .pl-shell-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.pl-shell-link { white-space: nowrap; font-size: 13px; font-weight: 600; border: 1px solid var(--pl-accent); border-radius: 999px; padding: 2px 12px; text-decoration: none; }
+.pl-shell-link[hidden] { display: none; }
 .pl-shell-prog { position: absolute; left: 0; right: 0; bottom: 0; height: 2px; }
 .pl-shell-prog i { display: block; height: 2px; width: 0; background: var(--pl-accent); }
 .pl-play-all { margin: 8px 0; }

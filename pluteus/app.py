@@ -362,7 +362,8 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
         return web.Ctx(urls, user.name, theme_for(user.name), readers=True, admin_link=current_admin_link.get(),
                        icons=icons_for(user.name), view=(view or view_for(user.name)) if cfg.thumbnails else "list",
                        thumbs=cfg.thumbnails,
-                       extras=state.get_prefs(user.name).get("player_extras", True) is not False)
+                       extras=state.get_prefs(user.name).get("player_extras", True) is not False,
+                       tv_sound=state.get_prefs(user.name).get("tv_sound", True) is not False)
 
     def unauthorized(request: Request, mode: str, wait: int) -> Response:
         if wait:
@@ -667,6 +668,8 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
                 prefs["view"] = form["view"]
             if form.get("extras") in ("show", "hide"):
                 prefs["player_extras"] = form["extras"] == "show"
+            if form.get("tv_sound") in ("keep", "stop"):
+                prefs["tv_sound"] = form["tv_sound"] == "keep"
             state.set_prefs(user.name, prefs)
             return RedirectResponse(urls.settings() + "?saved=1", 303)
         return HTMLResponse(web.settings_page(ctx_for(user), themes.names(), "saved" in request.query_params,
@@ -858,8 +861,9 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
         if not stations:
             return None
         page = web.iptv_page if radio.looks_like_tv(head[0], stations) else web.radio_page
+        extra = {"page_url": urls.view(root, parts)} if page is web.iptv_page else {}
         html = page(ctx_for(user), info.name, stations=stations, download_url=urls.download(root, parts),
-                    text_url=urls.view(root, parts) + "?as=text", back_url=urls.browse(root, parts[:-1]))
+                    text_url=urls.view(root, parts) + "?as=text", back_url=urls.browse(root, parts[:-1]), **extra)
         return html, (IPTV_CSP if page is web.iptv_page else RADIO_CSP)
 
     def view_page(user, root: str, parts: tuple, info, kind: str, as_text: bool):
@@ -980,8 +984,9 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
         go = request.query_params.get("go", "")
         ok = (go.startswith(urls.base + "/") and not go.startswith(urls.base + "//") and not go.startswith(urls.shell())
               and chr(92) not in go and all(c >= " " for c in go))
-        # the player in the shell plays radio streams from other servers: this page may load media from anywhere (nothing else)
-        return HTMLResponse(web.shell_page(ctx_for(user), go if ok else urls.home()), headers={"Content-Security-Policy": RADIO_CSP})
+        # the player in the shell plays radio streams, and the sound of a TV channel (hls.js, loaded when needed), from other servers:
+        # this page may load media and reach stream servers (nothing else)
+        return HTMLResponse(web.shell_page(ctx_for(user), go if ok else urls.home()), headers={"Content-Security-Policy": IPTV_CSP})
 
     @guarded("web")
     async def queue(request: Request, user):

@@ -20,6 +20,7 @@ class Ctx:
     icons: str = "gold"          # the file-type icon style: gold (outlines), aurora (outlines, a colour each) or color (filled tiles)
     admin_link: str = ""         # address of the admin page, for an administrator on the local network; else empty
     extras: bool = True          # the speed and sleep controls in the audio/video player
+    tv_sound: bool = True        # the sound of a live TV channel goes on in the shell's player when its page is left
     view: str = "list"           # how a folder is shown: "list" (rows) or "grid" (covers)
     thumbs: bool = False         # thumbnails are switched on (thumbnails = true): the cover view and its switches exist
 
@@ -655,16 +656,18 @@ def shell_page(ctx: Ctx, start_url: str) -> str:
     def btn(ident: str, label: str, icon: str) -> str:
         return ("<button type='button' class='pl-vol-btn' id='%s' aria-label='%s'><span class='pl-icon pl-i-%s'></span></button>"
                 % (ident, label, icon))
-    strip = ("<div class='pl-shell-player' id='sp' hidden>%s%s%s<span class='pl-shell-title' id='sp-title'></span>"
+    strip = ("<div class='pl-shell-player' id='sp' data-hls='%s' hidden>%s%s%s<span class='pl-shell-title' id='sp-title'></span>"
+             "<a class='pl-shell-link' id='sp-link' target='shell-frame' href='#' hidden>Picture</a>"
              "<span class='pl-muted' id='sp-pos'></span>%s<div class='pl-shell-prog'><i id='sp-bar'></i></div></div>"
-             % (btn("sp-prev", "Previous", "prev"), btn("sp-play", "Play", "play"), btn("sp-next", "Next", "next"),
+             % (escape(ctx.urls.static("vendor/hls.min.js")), btn("sp-prev", "Previous", "prev"), btn("sp-play", "Play", "play"),
+                btn("sp-next", "Next", "next"),
                 "<button type='button' class='pl-vol-btn' id='sp-close' aria-label='Close the player'>&times;</button>"))
     frame = ("<iframe class='pl-shell-frame' id='shell-frame' name='shell-frame' title='Pluteus' src='%s' allow='fullscreen; autoplay'></iframe>"
              % escape(start_url))
     return layout("Pluteus", strip + frame, ctx, body_class="pl-shell-page", scripts=(ctx.urls.static("shell.js"),), shell=False)
 
 
-def iptv_page(ctx: Ctx, title: str, *, stations: list, download_url: str, text_url: str, back_url: str) -> str:
+def iptv_page(ctx: Ctx, title: str, *, stations: list, download_url: str, text_url: str, back_url: str, page_url: str = "") -> str:
     """A live channel (or several) from a station file: the picture and sound play in a video element; HLS goes through the vendored
     hls.js (iptv.js) where the browser cannot play it itself. The addresses are written by the owner of the library."""
     name = title.rsplit(".", 1)[0] if "." in title else title
@@ -683,8 +686,9 @@ def iptv_page(ctx: Ctx, title: str, *, stations: list, download_url: str, text_u
     transport = ("<div class='pl-transport'><span class='pl-play-wrap'><button class='pl-btn pl-play' id='play' type='button' aria-label='Play'>"
                  "<span class='pl-icon pl-i-play'></span></button></span></div>")
     stage = ("<div class='pl-media-box pl-player pl-videobox pl-iptv'><div class='pl-track'><h1 class='pl-track-title' id='now'>%s</h1></div>"
-             "<div class='pl-videowrap'><video id='tv' controls playsinline data-url='%s'></video></div>%s%s%s"
-             "<div class='pl-toast' id='status' hidden></div></div>" % (escape(heading), escape(first_url), live_row, transport, listing))
+             "<div class='pl-videowrap'><video id='tv' controls playsinline data-url='%s' data-page='%s'%s></video></div>%s%s%s"
+             "<div class='pl-toast' id='status' hidden></div></div>"
+             % (escape(heading), escape(first_url), escape(page_url), " data-keep-sound='1'" if ctx.tv_sound else "", live_row, transport, listing))
     tools = _download_link(download_url) + _reader_scheme()
     foot = "<a href='%s'>Show as text</a>" % escape(text_url)
     scripts = (ctx.urls.static("vendor/hls.min.js"), ctx.urls.static("iptv.js"))
@@ -830,11 +834,14 @@ def settings_page(ctx: Ctx, themes: list, saved: bool = False, stations: bool = 
             "<label class='pl-field'><span>File icons</span><select name='icons'>%s</select></label>"
             "%s"
             "<label class='pl-field'><span>Speed and sleep controls in the music player</span><select name='extras'>%s</select></label>"
+            "<label class='pl-field'><span>Live TV: when I leave the channel page</span><select name='tv_sound'>%s</select></label>"
             "<button class='pl-btn pl-btn-primary' type='submit'>Save</button></form>%s"
             "<p><a href='%s'>&larr; Back to the library</a></p></main>"
             % (note, escape(ctx.urls.settings()), opts, icon_opts,
                ("<label class='pl-field'><span>Folders are shown as</span><select name='view'>%s</select></label>" % view_opts) if ctx.thumbs else "",
                extras_opts,
+               "".join("<option value='%s'%s>%s</option>" % (k, " selected" if (k == "keep") == ctx.tv_sound else "", label)
+                       for k, label in (("keep", "Keep the sound playing in the player bar"), ("stop", "Stop it"))),
                ("<section class='pl-card'><h2>Radio and TV</h2><p class='pl-muted'>Find stations and channels in public catalogues and save them "
                 "into your upload folder, where pluteus plays them (and shows them to music apps as radio).</p>"
                 "<p><a class='pl-btn' href='%s'>Find radio stations</a> <a class='pl-btn' href='%s'>Find TV channels</a></p></section>"

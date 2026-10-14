@@ -67,6 +67,22 @@ def test_a_channel_file_opens_the_video_page_with_its_own_policy(client):
     assert c.get("/static/vendor/hls.min.js").status_code in (200, 401)
 
 
+def test_the_tv_sound_switch_in_settings(client):
+    c, auth = client
+    (c.folder / "Channel.m3u").write_text(TV, encoding="utf-8")
+    page = lambda: c.get("/view/radio/Channel.m3u", headers={**auth, **HTML}).text           # noqa: E731
+    assert "data-keep-sound='1'" in page() and "data-page='/view/radio/Channel.m3u'" in page()          # on by default
+    assert "<option value='keep' selected>" in c.get("/settings", headers={**auth, **HTML}).text
+    form = {**auth, "origin": "http://testserver", "content-type": "application/x-www-form-urlencoded"}
+    c.post("/settings", content="tv_sound=stop", headers=form)
+    assert "data-keep-sound" not in page()
+    assert "<option value='stop' selected>" in c.get("/settings", headers={**auth, **HTML}).text
+    c.post("/settings", content="tv_sound=keep", headers=form)
+    assert "data-keep-sound='1'" in page()
+    c.post("/settings", content="tv_sound=junk", headers=form)                                    # anything else is ignored
+    assert "data-keep-sound='1'" in page()
+
+
 def test_a_station_file_opens_the_radio_player(client):
     c, auth = client
     r = c.get("/view/radio/NRK.m3u", headers={**auth, **HTML})
