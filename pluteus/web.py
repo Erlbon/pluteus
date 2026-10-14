@@ -674,10 +674,17 @@ def iptv_page(ctx: Ctx, title: str, *, stations: list, download_url: str, text_u
                % "".join("<button type='button' class='pl-station%s' data-url='%s' data-name='%s'>%s</button>"
                          % (" pl-now" if i == 0 else "", escape(url), escape(label or name), escape(label or "%s %d" % (name, i + 1)))
                          for i, (label, url) in enumerate(stations))) if len(stations) > 1 else ""
-    stage = ("<div class='pl-media-box pl-player pl-videobox pl-iptv'><div class='pl-track'><h1 class='pl-track-title' id='now'>%s</h1>"
-             "<div class='pl-chips'><span class='pl-chip'>Live</span></div></div>"
-             "<div class='pl-videowrap'><video id='tv' controls playsinline data-url='%s'></video></div>%s"
-             "<div class='pl-toast' id='status' hidden></div></div>" % (escape(heading), escape(first_url), listing))
+    # the same pieces as the movie player: a row under the picture (here the LIVE badge in place of the position bar, then the volume
+    # and full screen) and the big round play button; without the script the video keeps the browser's own controls
+    live_row = ("<div class='pl-scrub pl-live-row'><span class='pl-live'><span class='pl-live-dot'></span>LIVE</span><span class='pl-live-fill'></span>"
+                "<span class='pl-vol'><button type='button' id='mute' class='pl-vol-btn' aria-label='Mute'><span class='pl-icon pl-i-volume'></span></button>"
+                "<input type='range' id='volume' min='0' max='100' value='100' aria-label='Volume'></span>"
+                "<button type='button' id='fs' class='pl-vol-btn pl-fs-btn' aria-label='Full screen'><span class='pl-icon pl-i-fullscreen'></span></button></div>")
+    transport = ("<div class='pl-transport'><span class='pl-play-wrap'><button class='pl-btn pl-play' id='play' type='button' aria-label='Play'>"
+                 "<span class='pl-icon pl-i-play'></span></button></span></div>")
+    stage = ("<div class='pl-media-box pl-player pl-videobox pl-iptv'><div class='pl-track'><h1 class='pl-track-title' id='now'>%s</h1></div>"
+             "<div class='pl-videowrap'><video id='tv' controls playsinline data-url='%s'></video></div>%s%s%s"
+             "<div class='pl-toast' id='status' hidden></div></div>" % (escape(heading), escape(first_url), live_row, transport, listing))
     tools = _download_link(download_url) + _reader_scheme()
     foot = "<a href='%s'>Show as text</a>" % escape(text_url)
     scripts = (ctx.urls.static("vendor/hls.min.js"), ctx.urls.static("iptv.js"))

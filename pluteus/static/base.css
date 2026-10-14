@@ -481,6 +481,12 @@ body.pl-shell-page { display: flex; flex-direction: column; height: 100vh; heigh
 .pl-shell-prog { position: absolute; left: 0; right: 0; bottom: 0; height: 2px; }
 .pl-shell-prog i { display: block; height: 2px; width: 0; background: var(--pl-accent); }
 .pl-play-all { margin: 8px 0; }
+/* the live player: the movie player's row, with a LIVE badge where the position bar is */
+.pl-live { display: inline-flex; align-items: center; gap: 6px; border-radius: 999px; padding: 2px 11px; font-size: 12px; font-weight: 700; letter-spacing: .05em;
+  background: var(--pl-accent); color: var(--pl-btn-primary-fg, #1a1405); }
+.pl-live-dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+.pl-live-fill { flex: 1; }
+.pl-iptv .pl-transport { margin-top: 18px; }
 .pl-framed .pl-radio-scrub { display: none !important; }       /* in the shell the stream plays there, with the device's own volume */
 /* the radio player: the station list under the play button */
 .pl-js .pl-radio audio { display: none; }
