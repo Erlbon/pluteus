@@ -3,6 +3,7 @@
 Release notes are taken from the section of the tagged version (`## 0.5.0 ...`).
 
 ## Unreleased (for 0.9.6)
+- **Player title:** the title at the top left of the music player reads like a library path: `Band – Album (year) – 05 Title`, with the year and the track number only when the tags have them. It used to read `Title – Band – Album`.
 - **Shell:** a song playing in a music page now carries on when you leave the page: the shell's player takes it over from the same second (a short gap while the file is opened again) and the folder becomes the queue, so next and previous go on through the album. Before, only "Play all" and radio kept playing; a song started in its own page stopped when you left it. (Audiobook positions are saved up to the moment you leave.)
 
 ## 0.9.5 - 2026-10-14

@@ -616,7 +616,12 @@ def media_viewer_page(ctx: Ctx, title: str, *, kind: str, raw_url: str, mime: st
             % (_nav_link("prev", "prev", "Previous file", prev_url), position, total,
                _nav_link("next", "next", "Next file", next_url)))
     tools = _download_link(download_url) + _reader_scheme()
-    bar_title = " – ".join(x for x in (heading, artist, album_name) if x)
+    # the top-left title reads like a library path: Band – Album (year) – 05 Title (year and track number only when the tags have them)
+    year = str(tags.get("year") or "")
+    album_part = album_name + (" (%s)" % year if album_name and year.isdigit() else "")
+    track = tags.get("track")
+    title_part = ("%02d %s" % (track, heading)) if isinstance(track, int) and track > 0 else heading
+    bar_title = " – ".join(x for x in (artist, album_part, title_part) if x)
     return _viewer(ctx, bar_title, back_url, tools=tools, stage=stage, foot=foot, classes="pl-mediaview pl-" + tag,
                    stage_class="pl-media-stage",
                    data=(("progress", progress_url), ("kind", kind), ("prev", prev_url or ""), ("next", next_url or ""),

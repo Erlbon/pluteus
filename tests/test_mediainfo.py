@@ -77,6 +77,14 @@ def test_cover_route_needs_a_login_and_refuses_other_files(music):
     assert client.get("/cover/music/Album/notes.txt", headers=auth).status_code == 404
 
 
+def test_the_player_title_reads_band_album_year_track_title(music):
+    client, auth = make_client(music)
+    page = client.get("/view/music/Album/spark.mp3", headers={**auth, **HTML}).text
+    assert "title='Kaizers Orchestra – Ompa til du dør (2001) – 05 Spark På Leggen'>Kaizers Orchestra – Ompa til du dør (2001) – 05 Spark På Leggen</div>" in page
+    plain = client.get("/view/music/Album/plain.mp3", headers={**auth, **HTML}).text           # no tags: the folder as the album, no empty dashes
+    assert "<div class='pl-reader-title' title='Album – plain'>Album – plain</div>" in plain
+
+
 def test_folder_cover_is_the_fallback(music):
     (music / "Album" / "cover.jpg").write_bytes(JPEG)
     client, auth = make_client(music)
