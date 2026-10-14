@@ -199,10 +199,18 @@ things up online, on purpose; the filling happens around it:
    Lidarr and MusicBrainz Picard write them: biography, genres, years), Calibre's `metadata.opf` (book description), the description inside an EPUB,
    the `ComicInfo.xml` summary inside a CBZ (cbzredactor writes it). Shown as the folder's "about" text when there is no note of our own. Order on
    a folder page: the user's own `artist.md` first (overlay, then the library's), then an `.nfo` or `.opf` or ComicInfo summary, then nothing.
-2. **A separate filler tool, outside the server** (in the Redactor family, same conventions: progress dialogs, a yes/no review page, never a
-   spreadsheet): scans a library for folders without notes, fetches from open sources (MusicBrainz and Wikipedia for bands, Open Library, Wikipedia and
-   the local ISFDB database for authors) and writes a **draft** `artist.md` or `author.md` with `status: draft` in its front matter, for the owner
-   to review and then publish. It can also set the audience (kids) where the sources say so. Nothing unreviewed looks final.
+2. **The filler lives in the Redactor apps (owner, 2026-10-14: the redactors are the right tools), not in a new tool.** The note format is
+   specified here (item 3); a shared writer in `redactor_common` (the package all four apps already depend on, pinned by tag) holds the front
+   matter schema, the rules for which note name goes at which level of a library, a safe writer that never overwrites an existing note, and
+   `status: draft` on everything it creates, plus the converters from OPF, NFO and ComicInfo to Markdown. Each app then creates the notes for its own
+   kind of content, using the lookups it already has: **mp3redactor** writes `artist.md` and `album.md` (music), **epubredactor** writes `author.md`
+   and per-book notes (Open Library and the local ISFDB database), **cbzredactor** writes `series.md` (the comic and manga sources it already
+   uses), **videoredactor** writes notes for films and music videos. Same conventions as the rest of those apps: progress dialogs, a yes/no review
+   page (never a spreadsheet), no Ctrl+Alt shortcuts, a version bump and changelog entry in the same commit, the `redactor_common` pin bumped in
+   each app. Each app's CLI (inside its one exe) can do a whole library in a batch, the review comes afterwards. Drafts carry `status: draft`;
+   nothing unreviewed looks final. It can also set the audience (kids) where the sources say so.
+   **Build order:** the format description, the shared module, mp3redactor first (artist notes are the clearest case), then the others one at a
+   time.
 3. **A one-page description of the note format** (`docs/notes-format.md`): plain YAML front matter (title, years, genres, links, audience, status)
    at the top of a Markdown file, compatible with Obsidian and Jekyll, so other tools can write it without any pluteus code. A document, not a
    project.
@@ -210,6 +218,14 @@ things up online, on purpose; the filling happens around it:
 **Later, if wanted:** coloured code blocks (a small bundled script), read-only Jupyter notebooks (`.ipynb`: cells and outputs shown, nothing run).
 
 **Not planned because it needs an index (decided against):** full-text search, backlinks, tag pages. A file-name search inside a folder is possible.
+
+**Library layout guide (owner, 2026-10-14: with a few files per folder, the folder structure matters more):** `docs/library-layout.md` says
+which note sits at which level: music `Artist/artist.md` and `Artist/Album/album.md`; books (Genre, Sub-genre, Author) `author.md` at the author
+level and short `about.md` notes at genre level; comics `series.md` in each series folder and `about.md` for a publisher or lineage folder and for
+the underscore grouping folders (`_Crossovers` ...), which also settles what `_` means. The note names `album.md` and `series.md` are added to the
+recognised names. The owner's existing read-only structure checker (yes/no review page, renames only with a yes and with undo) is extended to
+report where the layout deviates and where a folder at a note level still has no note. To be confirmed by the owner before it is written: the
+music and books layouts (the comics layout is recorded; "780 - Music" suggests Dewey numbering).
 
 **Audiences:** notes follow the same folder markers as everything else (a note inside an `.adult` folder is as hidden as the folder).
 
