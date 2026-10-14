@@ -50,21 +50,25 @@ public. See "Out of scope".
    with no title (a station that sends none, or between songs) the bar stays as today, station name and "Live radio". The same text goes to the
    radio page and the lock screen, and it changes live as the song changes.
 7. **Fallback, not default:** the player tries the direct address first and uses the relay only when the stream cannot be played directly (CORS,
-   mixed content) or the entry says "always relay" (credentials, headers). Radio that works directly does not pass through the server.
+   mixed content) or the entry carries a login or header (decision 5). Radio that works directly does not pass through the server.
 8. **Visible to the owner:** the admin page lists relayed streams now running, who, how long, how much; a switch turns the relay off
    completely (off by default, like Subsonic and WebDAV); the Services box shows its state.
 9. **Honest failure:** every refusal has a one-sentence reason shown to the user.
 
-### Decisions the owner has to make before it starts
+### Decisions (made by the owner, 2026-10-14)
 
-- **Who may relay?** Every signed-in user, only users with an upload folder, or only chosen users. (Suggested: users with an upload folder, plus a
-  per-user switch on the admin page.)
-- **Bandwidth ceiling:** how much of the server's upload may relays use, per user and in total.
-- **Terms of other people's streams:** relaying a subscription stream to more than its owner can break the provider's terms. Suggested rule:
-  credentials are strictly per user and a stored entry can be played only by the user who stored it.
-- **Encryption key:** generated in the data folder (simple, survives restarts, lost with the data folder) or given by the owner in the config.
-- **Auto fallback or explicit:** whether the player may switch to the relay by itself when a direct stream fails (suggested: yes for streams
-  without credentials, with a visible "via the server" label).
+1. **Who may use the relay:** users with an upload folder (the same people who can use the pickers). Not the shared anonymous user. A per-user
+   switch on the admin page is not needed for now.
+2. **Bandwidth:** limit the number of streams at once, per user and in total, with the numbers set in the config (suggested defaults: 2 per
+   user, 6 in total). No daily byte ceiling for now (step R5 can add one later).
+3. **Stored logins and headers:** only the user who stored an entry can use it. No sharing with other users, no entries stored by the admin for
+   everyone; the admin cannot read or use another user's entry.
+4. **Encryption key:** either. If the config names a key (a `relay_key` setting) it is used; otherwise pluteus creates one in the data folder.
+   Consequences to build in: the key's fingerprint is kept next to the stored entries so that a changed key is noticed and reported ("these
+   entries were stored with another key and cannot be opened") and never silently breaks playback; the documentation says to back up the data
+   folder (or keep the config key) because entries cannot be recovered without the key.
+5. **When a stream goes through the relay:** automatically when the direct stream fails, for streams without a login, with a visible "via the
+   server" label. Entries with a login or a header always use the relay. Nothing else passes through the server.
 
 ### How it would be built, in order
 
