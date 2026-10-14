@@ -309,6 +309,9 @@ a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible
 .pl-md-stage, .pl-table-stage, .pl-zip-stage { overflow: auto; }
 .pl-markdown { max-width: 52rem; margin: 0 auto; padding: 18px 16px 48px; line-height: 1.6; overflow-wrap: anywhere; }
 .pl-markdown h1, .pl-markdown h2 { border-bottom: 1px solid var(--pl-line); padding-bottom: .25em; }
+.pl-note { margin: 14px 0; padding: 2px 18px; border: 1px solid var(--pl-line); border-radius: 12px; background: var(--pl-card); }
+.pl-note-bottom { margin-top: 26px; }
+.pl-note > :first-child { margin-top: 12px; } .pl-note > :last-child { margin-bottom: 12px; }
 .pl-markdown pre { overflow: auto; padding: 12px; border: 1px solid var(--pl-line); border-radius: 6px; }
 .pl-markdown code { font-family: Consolas, "Courier New", monospace; font-size: .92em; }
 .pl-markdown :not(pre) > code { padding: .1em .35em; border: 1px solid var(--pl-line); border-radius: 4px; }

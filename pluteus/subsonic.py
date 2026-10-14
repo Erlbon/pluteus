@@ -28,7 +28,7 @@ from xml.sax.saxutils import escape, quoteattr
 from starlette.concurrency import run_in_threadpool
 from starlette.responses import FileResponse, PlainTextResponse, Response
 
-from . import __version__, kinds, mediainfo, radio
+from . import __version__, kinds, mediainfo, radio, textview
 from .auth import verify_password
 from .bodies import read_limited
 from .fs import NotFound, PathError, clamp_time
@@ -116,6 +116,22 @@ def render(body: dict, fmt: str) -> Response:
     return Response(xml, media_type="text/xml", headers={"Cache-Control": "no-store"})
 
 
+_MD_IMAGE = re.compile(r"!\[[^\]]*\]\([^)]*\)")
+_MD_LINK = re.compile(r"\[([^\]]+)\]\([^)]*\)")
+_MD_LEAD = re.compile(r"^\s{0,3}(?:#{1,6}\s+|>\s?|[-*+]\s+|\d+[.)]\s+)")
+_MD_MARKS = re.compile(r"(\*\*|__|\*|_|`|~~)")
+
+
+def plain_text(markdown_text: str, limit: int = 4000) -> str:
+    """A Markdown note as plain paragraphs for an app that shows a biography: no headings marks, links or emphasis, at most `limit` characters."""
+    out = []
+    for line in markdown_text.replace("\r\n", "\n").split("\n"):
+        line = _MD_LEAD.sub("", _MD_LINK.sub(r"\1", _MD_IMAGE.sub("", line)))
+        out.append(_MD_MARKS.sub("", line).strip())
+    text = re.sub(r"\n{3,}", "\n\n", "\n".join(out)).strip()
+    return text[:limit].rstrip()
+
+
 def _now_iso() -> str:
     """A timestamp for `starred`: the Favourites shelf keeps no star time a client could use, and apps only look for the field."""
     return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
@@ -143,10 +159,11 @@ class Subsonic:
             "download": self.download, "getuser": self.user_info, "getscanstatus": self.scan_status,
             "startscan": self.scan_status, "star": self.star, "unstar": self.unstar, "getstarred": self.starred,
             "getstarred2": self.starred2, "getlyricsbysongid": self.lyrics_by_id, "getinternetradiostations": self.radio_stations,
+            "getartistinfo2": self.artist_info2, "getartistinfo": self.artist_info,
         }
         self.empty = {
             "getplaylists": "playlists", "getlyrics": "lyrics", "getgenres": "genres",
-            "getnowplaying": "nowPlaying", "getartistinfo": "artistInfo", "getartistinfo2": "artistInfo2",
+            "getnowplaying": "nowPlaying",
             "getalbuminfo": "albumInfo", "getalbuminfo2": "albumInfo", "gettopsongs": "topSongs",
             "getsimilarsongs": "similarSongs", "getsimilarsongs2": "similarSongs2", "getpodcasts": "podcasts",
             "getbookmarks": "bookmarks", "getshares": "shares",
@@ -446,6 +463,37 @@ class Subsonic:
 
     def radio_stations(self, user, p):
         return {"internetRadioStations": {"internetRadioStation": self._stations(user)}}
+
+    # ---- artist information: the note about the artist folder (artist.md / artist.txt / about.md), no online look-up ----------
+    _BIOGRAPHY_FILES = ("artist.md", "artist.txt", "about.md")
+
+    def _biography(self, user, p) -> str:
+        root, parts = read_id(p.get("id", ""))
+        if not parts:
+            return ""
+        files = {e.name.lower(): e for e in self.lib.list_dir(user, root, parts, True, False) if not e.is_dir}
+        for wanted in self._BIOGRAPHY_FILES:
+            entry = files.get(wanted)
+            if entry is None:
+                continue
+            try:
+                info = self.lib.file_info(user, root, parts + (entry.name,), True)
+                with open(info.path, "rb") as f:
+                    raw = f.read(65537)
+            except (NotFound, PathError, OSError):
+                continue
+            if len(raw) > 65536:
+                continue
+            return plain_text(textview.decode(raw, name=entry.name)[0])
+        return ""
+
+    def artist_info2(self, user, p):
+        text = self._biography(user, p)
+        return {"artistInfo2": {"biography": text} if text else {}}
+
+    def artist_info(self, user, p):
+        text = self._biography(user, p)
+        return {"artistInfo": {"biography": text} if text else {}}
 
     # ---- stars: the user's Favourites shelf, the same list as the heart in the web pages ------------------------------------
     def _is_dir(self, user, root: str, parts) -> bool:

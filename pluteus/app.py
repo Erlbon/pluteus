@@ -634,6 +634,30 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
         await run_in_threadpool(state.dismiss_progress, user.name, root, "/".join(parts))
         return RedirectResponse(urls.home(), 303)
 
+    NOTE_TOP = ("artist.md", "author.md", "about.md")          # a note about the folder itself: shown at the top (a band, an author)
+    NOTE_BOTTOM = ("readme.md", "index.md")                   # documentation: shown at the bottom, like on GitHub
+
+    def folder_notes(user, root: str, parts: tuple, entries) -> tuple:
+        """(top, bottom): the rendered Markdown of this folder's note files, or '' for each that is not there. The first file found
+        of each group wins. Rendered by the same safe renderer as any .md page; a file that is too big, binary or unreadable is skipped."""
+        files = {e.name.lower(): e for e in entries if not e.is_dir}
+
+        def one(names) -> str:
+            for wanted in names:
+                entry = files.get(wanted)
+                if entry is None:
+                    continue
+                try:
+                    info = lib.file_info(user, root, parts + (entry.name,), cfg.show_all_files)
+                    raw, truncated = textview.read_head(info.path, markdown.MAX_RENDER_BYTES)
+                    if truncated or textview.looks_binary(raw):
+                        continue
+                    return markdown.render(textview.decode(raw, name=entry.name)[0], urls, root, parts)
+                except (markdown.TooLarge, NotFound, PathError, OSError):
+                    continue
+            return ""
+        return one(NOTE_TOP), one(NOTE_BOTTOM)
+
     @guarded("web")
     async def browse(request: Request, user):
         root = request.path_params["root"]
@@ -659,6 +683,7 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
             except (NotFound, PathError, OSError):
                 return ""
         has_cover = await run_in_threadpool(folder_picture)
+        note_top, note_bottom = await run_in_threadpool(folder_notes, user, root, parts, entries) if page == 1 else ("", "")
         asked = request.query_params.get("view", "")
         asked = asked if asked in ("list", "grid") else ""
         shown_view = asked
@@ -682,7 +707,8 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
         return HTMLResponse(web.listing_page(
             root, parts, shown, page, pages, len(entries), ctx_for(user, shown_view), metas, progress, sort=sort, desc=desc,
             writable=root == UPLOADS_ROOT, flash=web.flash_text(request.query_params),
-            cover_url=urls.cover(root, parts) if (has_cover and parts) else "", view_asked=asked, shelves=flags))
+            cover_url=urls.cover(root, parts) if (has_cover and parts) else "", view_asked=asked, shelves=flags,
+            note_top=note_top, note_bottom=note_bottom))
 
     @guarded("web")
     async def settings(request: Request, user):

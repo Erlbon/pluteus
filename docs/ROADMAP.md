@@ -165,6 +165,8 @@ pluteus shows them on the folder page, in the music player and to Subsonic apps.
 pluteus already renders Markdown safely (raw HTML escaped, links and images only inside the library); this item adds the places where it is shown
 and a few notebook conveniences.
 
+**Status:** the first slice is done in 0.9.8: items 1 (folder notes at the top and bottom, from `artist.md`, `author.md`, `about.md`, `README.md`, `index.md`) and 3 (the Subsonic biography from `artist.md`, `artist.txt`, `about.md`). Still to do: the player link (2), anchors and contents (4), wiki links (5), front matter (6), the editor with the overlay (7), `artist.nfo` and the other recognised names (`album.md`, `series.md`), and rounds 2 and 3.
+
 **Round 1 (about 15 to 20 minutes, a mockup of the folder page first):**
 1. **Folder notes:** a folder shows a note about itself. At the top, beside the cover: `artist.md` (also `artist.txt`, `artist.nfo`, the file
    names Kodi and Plex use), `author.md`, `about.md`. At the bottom, GitHub style: `README.md` (also `readme.md`, `index.md`). The first match wins

@@ -3,6 +3,8 @@
 Release notes are taken from the section of the tagged version (`## 0.5.0 ...`).
 
 ## Unreleased (for 0.9.8)
+- **Folder notes (first slice of the notes item):** a folder page shows a note about the folder itself, as rendered Markdown by the same safe renderer as any `.md` page: **`artist.md`, `author.md` or `about.md`** (the first found) at the top, and **`README.md` or `index.md`** at the bottom, like GitHub. Only on the first page of a folder; a file that is too big, binary or unreadable is skipped. Nothing is shown when there is none. Write them with any editor; the folder markers apply as always.
+- **Subsonic artist biography:** `getArtistInfo2` and `getArtistInfo` answer with the text of the artist folder's `artist.md`, `artist.txt` or `about.md` (Markdown marks removed, at most 4000 characters), so Tempo and other apps show it. No online look-up. Empty when there is no note, as before.
 - **DOS-style ASCII art (`.nfo`, `.diz`, `.asc`):** when such a file is not UTF-8, the viewer now reads it in the old DOS character set (code page 437) instead of guessing Windows-1252, so the block and box-drawing characters of scene art show as drawn (the footer says `cp437 (DOS)`); the lines are set tight so the blocks join up. A UTF-8 `.nfo` (the kind Kodi writes) and every other file keep their old behaviour. Also behind "show as text anyway".
 
 ## 0.9.7 - 2026-10-14

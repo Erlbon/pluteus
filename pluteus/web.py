@@ -259,7 +259,7 @@ def _sort_bar(here: str, sort: str, desc: bool, view: str = "") -> str:
 def listing_page(root: str, parts: tuple, entries: list, page: int, pages: int, total: int, ctx: Ctx,
                  metas: dict | None = None, progress: dict | None = None,
                  sort: str = "name", desc: bool = False, writable: bool = False, flash: str = "", cover_url: str = "",
-                 view_asked: str = "", shelves: dict | None = None) -> str:
+                 view_asked: str = "", shelves: dict | None = None, note_top: str = "", note_bottom: str = "") -> str:
     metas = metas or {}
     progress = progress or {}
     shelves = shelves or {}
@@ -329,10 +329,16 @@ def listing_page(root: str, parts: tuple, entries: list, page: int, pages: int, 
     body = ("<main class='pl-main' data-queue='%s'><div class='pl-crumbs'>%s</div>%s<h1>%s</h1><div class='pl-muted'>%d items &middot; "
             "<a href='%s'>OPDS</a></div>%s%s<ul class='%s'>%s</ul>%s</main>"
             % (escape(urls.api("queue", root, parts)), " / ".join(crumbs), picture, escape(title), total, escape(urls.opds(root, parts)),
-               note + forms, bar + pager, "pl-list pl-grid" if grid else "pl-list", "".join(tiles if grid else rows), pager))
+               _note_box(note_top, "top") + note + forms, bar + pager, "pl-list pl-grid" if grid else "pl-list", "".join(tiles if grid else rows),
+               pager + _note_box(note_bottom, "bottom")))
     scripts = (((urls.static("uploads.js"),) if writable else ()) + ((urls.static("grid.js"),) if grid else ())
                + (urls.static("shelf.js"), urls.static("queue.js")))
     return layout(title, body, ctx, scripts=scripts)
+
+
+def _note_box(html: str, where: str) -> str:
+    """A folder's own note (rendered Markdown, already made safe by the renderer) at the top or the bottom of its page."""
+    return "<section class='pl-note pl-note-%s pl-markdown'>%s</section>" % (where, html) if html else ""
 
 
 COVER_KINDS = ("epub", "comic", "audio", "image")
