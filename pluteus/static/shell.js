@@ -14,7 +14,7 @@
   /* ---- the player ---- */
   function icon(button, name) { var i = button.querySelector(".pl-icon"); if (i) i.className = "pl-icon pl-i-" + name; }
   var listeners = [];                        // pages in the frame that want to know when the player changes (the radio page)
-  function playingNow() { return !audio.paused && !audio.ended; }
+  function playingNow() { return !audio.paused && !audio.ended && !audio.error; }
   function paint() {
     var playing = playingNow();
     icon(playBtn, playing ? "pause" : "play");
@@ -60,8 +60,8 @@
   audio.addEventListener("playing", function () { failures = 0; show(); paint(); });
   audio.addEventListener("ended", function () { if (!live() && index + 1 < queue.length) go(index + 1); else paint(); });
   audio.addEventListener("error", function () {         // a file that will not play: on to the next (not forever); a live stream just stops
-    var item = queue[index];                             // an error left over from a source that was just replaced is not this file's
-    if (!item || !audio.getAttribute("src") || audio.currentSrc !== new URL(item.url, location.href).href) { paint(); return; }
+    var item = queue[index];                             // an error left over from a source that was just replaced is gone (audio.error is reset)
+    if (!item || !audio.error || !audio.getAttribute("src")) { paint(); return; }
     if (live()) { titleEl.textContent = queue[index].title + " – the stream did not start"; paint(); return; }
     if (++failures > 5) { paint(); return; }
     if (index + 1 < queue.length) go(index + 1);
@@ -105,6 +105,7 @@
     stop: stop,
     active: function () { return queue.length > 0; },
     isPlaying: playingNow,
+    position: function () { return audio.currentTime; },
     currentUrl: function () { return queue[index] ? queue[index].url : ""; },
     onState: function (fn) { listeners.push(fn); }
   };

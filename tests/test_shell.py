@@ -33,6 +33,8 @@ def test_the_shell_frames_the_site_and_never_sends_itself_into_a_shell(client):
     page = c.get("/shell", headers={**alice, **HTML}).text
     assert "<iframe class='pl-shell-frame' id='shell-frame'" in page and "src='/'" in page
     assert "shell.js" in page and "id='sp-play'" in page
+    csp = c.get("/shell", headers={**alice, **HTML}).headers["content-security-policy"]
+    assert "media-src 'self' http: https:" in csp and "connect-src 'self';" in csp   # the shell plays radio streams; nothing else is opened up
     assert "data-shell" not in page                                              # or it would redirect to itself forever
     assert "name='shell-frame'" in page and "href='/settings' target='shell-frame'" in page and "class='pl-brand' href='/' target='shell-frame'" in page
     assert "target='shell-frame'" not in c.get("/settings", headers={**alice, **HTML}).text      # an ordinary page keeps plain links

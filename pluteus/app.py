@@ -980,7 +980,8 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
         go = request.query_params.get("go", "")
         ok = (go.startswith(urls.base + "/") and not go.startswith(urls.base + "//") and not go.startswith(urls.shell())
               and chr(92) not in go and all(c >= " " for c in go))
-        return HTMLResponse(web.shell_page(ctx_for(user), go if ok else urls.home()))
+        # the player in the shell plays radio streams from other servers: this page may load media from anywhere (nothing else)
+        return HTMLResponse(web.shell_page(ctx_for(user), go if ok else urls.home()), headers={"Content-Security-Policy": RADIO_CSP})
 
     @guarded("web")
     async def queue(request: Request, user):
