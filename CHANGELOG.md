@@ -2,6 +2,10 @@
 
 Release notes are taken from the section of the tagged version (`## 0.5.0 ...`).
 
+## Unreleased (for 0.9.4)
+- **Movie player on a phone:** the five buttons (-, rewind, play, fast-forward, +) are a little smaller on a narrow screen, so they fit and the page no longer scrolls sideways.
+- **Movie player, full screen:** a wide picture turns the phone sideways while it is full screen (where the browser allows it), and the picture leaves room for the controls when the phone is held sideways.
+
 ## 0.9.3 - 2026-10-14
 - **Update check:** with `update_check = true` the first check now starts when the admin server starts, not when the Status page is first opened, so the dot is ready.
 - **EPUB reader, scrolling layout:** the mouse wheel over the book now scrolls it (the browser did not pass a wheel turn over the book's own page on to the box that scrolls it, so pluteus forwards it). The page-by-page layout is unchanged.

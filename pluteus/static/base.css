@@ -456,6 +456,18 @@ html[data-icons="aurora"] .pl-ico-upload  { color: light-dark(#1f7ae0, #7cc8ff);
 .pl-videobox .pl-scrub { width: 100%; }
 .pl-videobox:fullscreen { width: 100vw; max-width: none; height: 100vh; padding: 12px 16px; justify-content: center; background: var(--pl-bg); box-sizing: border-box; }
 .pl-videobox:fullscreen video { max-height: 68vh; }
+/* a phone turned sideways: the picture takes what the controls leave, so nothing scrolls */
+@media (orientation: landscape) and (max-height: 520px) {
+  .pl-videobox:fullscreen { padding: 6px 16px; gap: 4px; }
+  .pl-videobox:fullscreen video { max-height: calc(100vh - 140px); }
+  .pl-videobox:fullscreen .pl-transport { margin-top: 4px; }
+}
+/* a narrow phone: the five buttons must fit the width, or the page scrolls sideways */
+@media (max-width: 480px) {
+  .pl-transport { gap: 8px; }
+  .pl-transport .pl-btn { min-width: 52px; }
+  .pl-play-wrap { margin: 0 2px; }
+}
 .pl-fs-btn { margin-left: 4px; }
 .pl-js .pl-transport { display: flex; }
 .pl-transport .pl-btn { min-height: 52px; min-width: 72px; justify-content: center; border-radius: 14px; display: inline-flex; align-items: center; gap: 6px; }

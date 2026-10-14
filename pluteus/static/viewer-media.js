@@ -106,11 +106,23 @@
     /* a movie: a click on the picture plays or pauses, a double click goes full screen, and the full-screen button takes the whole
        player (picture and controls) full screen; an iPhone can only do the picture, with the browser's own controls */
     var fsButton = document.getElementById("fs"), box = document.querySelector(".pl-videobox");
+    /* a wide picture on a phone: turn the screen sideways while full screen (it is released again on leaving; browsers that cannot do this skip it) */
+    function turnSideways() {
+      try {
+        if (media.videoWidth > media.videoHeight && screen.orientation && screen.orientation.lock) {
+          screen.orientation.lock("landscape").catch(function () { /* not allowed here */ });
+        }
+      } catch (e) { /* no orientation API */ }
+    }
+    document.addEventListener("fullscreenchange", function () {
+      if (document.fullscreenElement) return;
+      try { if (screen.orientation && screen.orientation.unlock) screen.orientation.unlock(); } catch (e) { /* ignore */ }
+    });
     function toggleFullscreen() {
       if (!box) return;
       var inside = document.fullscreenElement || document.webkitFullscreenElement;
       if (inside) { (document.exitFullscreen || document.webkitExitFullscreen).call(document); return; }
-      if (box.requestFullscreen) box.requestFullscreen().catch(function () { /* refused */ });
+      if (box.requestFullscreen) box.requestFullscreen().then(turnSideways).catch(function () { /* refused */ });
       else if (box.webkitRequestFullscreen) box.webkitRequestFullscreen();
       else if (media.webkitEnterFullscreen) media.webkitEnterFullscreen();
     }
