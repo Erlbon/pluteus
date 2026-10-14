@@ -30,15 +30,23 @@ def looks_binary(raw: bytes) -> bool:
     return odd / len(sample) > 0.10
 
 
-def decode(raw: bytes, truncated: bool = False, force: bool = False):
-    """(text, encoding name). Tries the BOM, then UTF-8, then Windows-1252, then Latin-1 (which cannot fail).
+DOS_ART = (".nfo", ".diz", ".asc")        # scene and BBS files: ASCII art in the old DOS character set (code page 437)
+
+
+def is_dos_art(name: str) -> bool:
+    return name.lower().endswith(DOS_ART)
+
+
+def decode(raw: bytes, truncated: bool = False, force: bool = False, name: str = ""):
+    """(text, encoding name). Tries the BOM, then UTF-8, then (for .nfo, .diz and .asc files) DOS code page 437, where the block and
+    line characters of the art live, then Windows-1252, then Latin-1 (which cannot fail).
     force=True (the 'show as text anyway' button) never raises and marks undecodable bytes with U+FFFD."""
-    for bom, name in _BOMS:
+    for bom, bom_name in _BOMS:
         if raw.startswith(bom):
-            body = raw[len(bom):] if name == "utf-8-sig" else raw
-            cut = len(body) - (len(body) % (4 if "32" in name else 2)) if name != "utf-8-sig" and truncated else len(body)
+            body = raw[len(bom):] if bom_name == "utf-8-sig" else raw
+            cut = len(body) - (len(body) % (4 if "32" in bom_name else 2)) if bom_name != "utf-8-sig" and truncated else len(body)
             try:
-                return body[:cut].decode(name, errors="replace" if (force or truncated) else "strict"), name
+                return body[:cut].decode(bom_name, errors="replace" if (force or truncated) else "strict"), bom_name
             except UnicodeDecodeError:
                 break
     data = raw
@@ -53,6 +61,8 @@ def decode(raw: bytes, truncated: bool = False, force: bool = False):
             return data.decode("utf-8"), "utf-8"
         except UnicodeDecodeError:
             pass
+    if is_dos_art(name):                           # high bytes that are not UTF-8: DOS art, not accented letters (cp437 decodes every byte)
+        return data.decode("cp437"), "cp437 (DOS)"
     if force:
         return data.decode("utf-8", errors="replace"), "utf-8 (damaged bytes shown as �)"
     try:

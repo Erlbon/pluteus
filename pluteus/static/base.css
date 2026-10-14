@@ -243,6 +243,7 @@ a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible
   font: 13px/1.5 ui-monospace, "Cascadia Mono", Menlo, Consolas, monospace; color: var(--pl-fg); background: var(--pl-book-bg);
 }
 .pl-text.pl-wrap { white-space: pre-wrap; overflow-wrap: anywhere; }
+.pl-text.pl-art { line-height: 1.1; font-family: "Cascadia Mono", Consolas, "DejaVu Sans Mono", "Lucida Console", ui-monospace, monospace; }     /* block characters join up */
 .pl-media-stage { display: flex; align-items: center; justify-content: center; padding: 16px; background: var(--pl-bg); overflow: auto; }
 .pl-media-box { width: min(100%, 900px); display: flex; flex-direction: column; gap: 14px; align-items: center; }
 .pl-media-title { font-weight: 600; text-align: center; overflow-wrap: anywhere; }

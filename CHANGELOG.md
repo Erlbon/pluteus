@@ -2,6 +2,9 @@
 
 Release notes are taken from the section of the tagged version (`## 0.5.0 ...`).
 
+## Unreleased (for 0.9.8)
+- **DOS-style ASCII art (`.nfo`, `.diz`, `.asc`):** when such a file is not UTF-8, the viewer now reads it in the old DOS character set (code page 437) instead of guessing Windows-1252, so the block and box-drawing characters of scene art show as drawn (the footer says `cp437 (DOS)`); the lines are set tight so the blocks join up. A UTF-8 `.nfo` (the kind Kodi writes) and every other file keep their old behaviour. Also behind "show as text anyway".
+
 ## 0.9.7 - 2026-10-14
 - **Tidier station folders:** the picture beside a station file (`NRK P3.png` next to `NRK P3.m3u`) is no longer listed as a file of its own, in `Radio`, `IPTV` or any folder; it is the station's cover. A picture with no station file of that name still shows. In the upload folder, renaming or deleting a station file takes its picture along, so nothing is left behind that you could no longer see or remove.
 - **Radio and IPTV on the home page:** once you have saved a station or a channel, **Radio** and **IPTV** appear in the Browse list next to your libraries and open the folders inside your upload folder (nothing is shown until the folder exists, and not to users without an upload folder). The files stay where they are.

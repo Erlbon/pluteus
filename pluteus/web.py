@@ -507,7 +507,8 @@ def text_viewer_page(ctx: Ctx, title: str, *, text: str, encoding: str, size: in
              "<button class='pl-reader-btn' id='size-down' type='button' title='Smaller text' aria-label='Smaller text'>A&minus;</button>"
              "<button class='pl-reader-btn' id='size-up' type='button' title='Larger text' aria-label='Larger text'>A+</button>"
              "<button class='pl-reader-btn' id='wrap-btn' type='button' title='Wrap long lines' aria-label='Wrap long lines'>Wrap</button>")
-    stage = "<pre class='pl-text' id='text' tabindex='0'>%s</pre>" % escape(text)
+    art = " pl-art" if title.lower().endswith((".nfo", ".diz", ".asc")) else ""         # DOS art: tight lines so the blocks join up
+    stage = "<pre class='pl-text%s' id='text' tabindex='0'>%s</pre>" % (art, escape(text))
     foot = "<span>%s &middot; %s &middot; %d lines%s</span>" % (escape(encoding), _size(size), lines, note)
     return _viewer(ctx, title, back_url, tools=tools, stage=stage, foot=foot, classes="pl-textview",
                    scripts=(ctx.urls.static("viewer-text.js"),))

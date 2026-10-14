@@ -861,7 +861,7 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
         binary = textview.looks_binary(raw)
         if binary and not forced:
             return None
-        text, encoding = textview.decode(raw, truncated, force=binary or forced)
+        text, encoding = textview.decode(raw, truncated, force=binary or forced, name=info.name)
         return web.text_viewer_page(ctx_for(user), info.name, text=text, encoding=encoding, size=info.size,
                                     shown=len(raw), truncated=truncated, download_url=urls.download(root, parts),
                                     back_url=urls.browse(root, parts[:-1]), forced=binary or forced)
