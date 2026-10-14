@@ -31,7 +31,7 @@ from starlette.responses import (FileResponse, HTMLResponse, JSONResponse, Plain
                                  RedirectResponse, Response, StreamingResponse)
 from starlette.routing import Route
 
-from . import cbz, kinds, markdown, mediainfo, opds, opds2, subtitles, tabular, thumbs, textview, uploads, web, ziputil
+from . import cbz, kinds, markdown, mediainfo, opds, opds2, radio, subtitles, tabular, thumbs, textview, uploads, web, ziputil
 from .auth import Authenticator
 from .bodies import read_limited
 from .cbz import CbzError
@@ -67,6 +67,8 @@ SAFE_METHODS = {"GET", "HEAD", "OPTIONS", "PROPFIND"}       # PROPFIND (WebDAV) 
 CSP = ("default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline' blob:; img-src 'self' data: blob:; "
        "font-src 'self' data: blob:; connect-src 'self'; frame-src 'self' blob:; object-src 'none'; "
        "base-uri 'self'; form-action 'self'; frame-ancestors 'self'")
+# the radio page plays streams from other servers (the addresses come from files in the library), so only it may load media from anywhere
+RADIO_CSP = CSP.replace("default-src 'self';", "default-src 'self'; media-src 'self' http: https:;", 1)
 NO_CACHE = {"Cache-Control": "no-cache"}
 
 
@@ -833,6 +835,15 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
         return web.zip_page(ctx, info.name, root=root, parts=parts, entries=entries, total=total, comment=comment,
                             size=info.size, download_url=download, back_url=back)
 
+    def radio_view(user, root: str, parts: tuple, info):
+        """The radio player for a .m3u / .pls / .url file that holds at least one http(s) stream; None for any other file."""
+        head = decoded_head(info)
+        stations = radio.parse(head[0]) if head else []
+        if not stations:
+            return None
+        return web.radio_page(ctx_for(user), info.name, stations=stations, download_url=urls.download(root, parts),
+                              text_url=urls.view(root, parts) + "?as=text", back_url=urls.browse(root, parts[:-1]))
+
     def view_page(user, root: str, parts: tuple, info, kind: str, as_text: bool):
         ctx, back, download = ctx_for(user), urls.browse(root, parts[:-1]), urls.download(root, parts)
         if not as_text and kind == "markdown":
@@ -891,6 +902,10 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
         if kind in ("epub", "comic"):
             return RedirectResponse(urls.read(root, parts), 303)
         as_text = request.query_params.get("as") == "text"
+        if not as_text and kind == "text" and radio.is_radio_file(info.name):         # a station file opens in the radio player
+            page = await run_in_threadpool(radio_view, user, root, parts, info)
+            if page is not None:
+                return HTMLResponse(page, headers={"Content-Security-Policy": RADIO_CSP})
         page = await run_in_threadpool(view_page, user, root, parts, info, kind, as_text)
         return HTMLResponse(page)
 

@@ -634,6 +634,34 @@ def pdf_viewer_page(ctx: Ctx, title: str, *, raw_url: str, download_url: str, ba
                    module_scripts=(ctx.urls.static("viewer-pdf.mjs"),))
 
 
+def radio_page(ctx: Ctx, title: str, *, stations: list, download_url: str, text_url: str, back_url: str) -> str:
+    """The radio player for a station file: the stations are written by the owner of the library, the browser plays the stream
+    itself (an <audio> element; the page's CSP allows media from anywhere, see app.RADIO_CSP). radio.js does the rest."""
+    name = title.rsplit(".", 1)[0] if "." in title else title
+    first_name, first_url = stations[0]
+    heading = first_name or name
+    many = len(stations) > 1
+    listing = ("<div class='pl-stations' id='stations'>%s</div>"
+               % "".join("<button type='button' class='pl-station%s' data-url='%s' data-name='%s'>%s</button>"
+                         % (" pl-now" if i == 0 else "", escape(url), escape(label or name), escape(label or "%s %d" % (name, i + 1)))
+                         for i, (label, url) in enumerate(stations))) if many else ""
+    stage = ("<div class='pl-media-box pl-player pl-radio'><div class='pl-cover'><div class='pl-cover-blank'>%s</div></div>"
+             "<div class='pl-track'><h1 class='pl-track-title' id='now'>%s</h1><div class='pl-track-by'>%s</div>"
+             "<div class='pl-chips'><span class='pl-chip'>Live radio</span></div></div>"
+             "<audio id='radio' controls preload='none' src='%s'><p>Your browser cannot play this stream.</p></audio>"
+             "<div class='pl-transport'><span class='pl-play-wrap'><button class='pl-btn pl-play' id='play' type='button' aria-label='Play'>"
+             "<span class='pl-icon pl-i-play'></span></button></span></div>"
+             "<div class='pl-scrub pl-radio-scrub'><span class='pl-vol'><button type='button' id='mute' class='pl-vol-btn' aria-label='Mute'>"
+             "<span class='pl-icon pl-i-volume'></span></button><input type='range' id='volume' min='0' max='100' value='100' aria-label='Volume'></span></div>"
+             "%s<div class='pl-toast' id='status' hidden></div></div>"
+             % (ico("audio"), escape(heading), escape(name) if heading != name else "&nbsp;", escape(first_url), listing))
+    tools = _download_link(download_url) + _reader_scheme()
+    foot = "<a href='%s'>Show as text</a>" % escape(text_url)
+    return _viewer(ctx, title, back_url, tools=tools, stage=stage, foot=foot, classes="pl-mediaview pl-audio",
+                   stage_class="pl-media-stage", data=(("title", heading), ("artwork", ctx.urls.static("icon/icon-512.png"))),
+                   scripts=(ctx.urls.static("radio.js"),))
+
+
 def info_page(ctx: Ctx, title: str, *, rows: list, download_url: str, text_url: str, back_url: str, note: str = "") -> str:
     table = "".join("<tr><th>%s</th><td>%s</td></tr>" % (escape(k), escape(v)) for k, v in rows)
     stage = ("<div class='pl-info pl-card'><h1>%s</h1><table class='pl-info-table'>%s</table>%s"
