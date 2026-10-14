@@ -69,6 +69,9 @@ CSP = ("default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'sel
        "base-uri 'self'; form-action 'self'; frame-ancestors 'self'")
 # the radio page plays streams from other servers (the addresses come from files in the library), so only it may load media from anywhere
 RADIO_CSP = CSP.replace("default-src 'self';", "default-src 'self'; media-src 'self' http: https:;", 1)
+# the live-channel page also fetches the stream itself (hls.js, no worker) and plays it from a media source
+IPTV_CSP = (RADIO_CSP.replace("media-src 'self' http: https:;", "media-src 'self' blob: http: https:;", 1)
+            .replace("connect-src 'self';", "connect-src 'self' http: https:;", 1))
 NO_CACHE = {"Cache-Control": "no-cache"}
 
 
@@ -841,8 +844,10 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
         stations = radio.parse(head[0]) if head else []
         if not stations:
             return None
-        return web.radio_page(ctx_for(user), info.name, stations=stations, download_url=urls.download(root, parts),
-                              text_url=urls.view(root, parts) + "?as=text", back_url=urls.browse(root, parts[:-1]))
+        page = web.iptv_page if radio.looks_like_tv(head[0], stations) else web.radio_page
+        html = page(ctx_for(user), info.name, stations=stations, download_url=urls.download(root, parts),
+                    text_url=urls.view(root, parts) + "?as=text", back_url=urls.browse(root, parts[:-1]))
+        return html, (IPTV_CSP if page is web.iptv_page else RADIO_CSP)
 
     def view_page(user, root: str, parts: tuple, info, kind: str, as_text: bool):
         ctx, back, download = ctx_for(user), urls.browse(root, parts[:-1]), urls.download(root, parts)
@@ -903,9 +908,9 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
             return RedirectResponse(urls.read(root, parts), 303)
         as_text = request.query_params.get("as") == "text"
         if not as_text and kind == "text" and radio.is_radio_file(info.name):         # a station file opens in the radio player
-            page = await run_in_threadpool(radio_view, user, root, parts, info)
-            if page is not None:
-                return HTMLResponse(page, headers={"Content-Security-Policy": RADIO_CSP})
+            found = await run_in_threadpool(radio_view, user, root, parts, info)
+            if found is not None:
+                return HTMLResponse(found[0], headers={"Content-Security-Policy": found[1]})
         page = await run_in_threadpool(view_page, user, root, parts, info, kind, as_text)
         return HTMLResponse(page)
 

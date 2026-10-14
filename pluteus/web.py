@@ -652,6 +652,27 @@ def shell_page(ctx: Ctx, start_url: str) -> str:
     return layout("Pluteus", strip + frame, ctx, body_class="pl-shell-page", scripts=(ctx.urls.static("shell.js"),), shell=False)
 
 
+def iptv_page(ctx: Ctx, title: str, *, stations: list, download_url: str, text_url: str, back_url: str) -> str:
+    """A live channel (or several) from a station file: the picture and sound play in a video element; HLS goes through the vendored
+    hls.js (iptv.js) where the browser cannot play it itself. The addresses are written by the owner of the library."""
+    name = title.rsplit(".", 1)[0] if "." in title else title
+    first_name, first_url = stations[0]
+    heading = first_name or name
+    listing = ("<div class='pl-stations' id='stations'>%s</div>"
+               % "".join("<button type='button' class='pl-station%s' data-url='%s' data-name='%s'>%s</button>"
+                         % (" pl-now" if i == 0 else "", escape(url), escape(label or name), escape(label or "%s %d" % (name, i + 1)))
+                         for i, (label, url) in enumerate(stations))) if len(stations) > 1 else ""
+    stage = ("<div class='pl-media-box pl-player pl-videobox pl-iptv'><div class='pl-track'><h1 class='pl-track-title' id='now'>%s</h1>"
+             "<div class='pl-chips'><span class='pl-chip'>Live</span></div></div>"
+             "<div class='pl-videowrap'><video id='tv' controls playsinline data-url='%s'></video></div>%s"
+             "<div class='pl-toast' id='status' hidden></div></div>" % (escape(heading), escape(first_url), listing))
+    tools = _download_link(download_url) + _reader_scheme()
+    foot = "<a href='%s'>Show as text</a>" % escape(text_url)
+    scripts = (ctx.urls.static("vendor/hls.min.js"), ctx.urls.static("iptv.js"))
+    return _viewer(ctx, title, back_url, tools=tools, stage=stage, foot=foot, classes="pl-mediaview pl-video",
+                   stage_class="pl-media-stage", scripts=scripts)
+
+
 def radio_page(ctx: Ctx, title: str, *, stations: list, download_url: str, text_url: str, back_url: str) -> str:
     """The radio player for a station file: the stations are written by the owner of the library, the browser plays the stream
     itself (an <audio> element; the page's CSP allows media from anywhere, see app.RADIO_CSP). radio.js does the rest."""

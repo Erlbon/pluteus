@@ -40,7 +40,31 @@ def client(tmp_path):
     (folder / "Local.m3u").write_text("song.mp3\n", encoding="utf-8")
     cfg = parse_config({"roots": [{"name": "radio", "path": str(folder)}],
                         "users": [{"name": "alice", "password_hash": hash_password("pw", n=2 ** 4), "roots": ["*"]}]})
-    return TestClient(create_app(cfg)), basic("alice", "pw")
+    c = TestClient(create_app(cfg))
+    c.folder = folder
+    return c, basic("alice", "pw")
+
+
+TV = ('#EXTM3U\n#EXTINF:-1 tvg-id="x" tvg-logo="https://example.org/l.png" group-title="News, Weather",Channel One\n'
+      "https://example.org/one/index.m3u8\n")
+
+
+def test_channel_lists_and_hls_addresses_are_tv_and_plain_streams_are_radio():
+    assert radio.parse(TV) == [("Channel One", "https://example.org/one/index.m3u8")]          # a comma inside an attribute is not the name
+    assert radio.looks_like_tv(TV, radio.parse(TV))
+    assert radio.looks_like_tv("https://example.org/live/index.m3u8?x=1\n", radio.parse("https://example.org/live/index.m3u8?x=1\n"))
+    assert not radio.looks_like_tv(M3U, radio.parse(M3U))
+
+
+def test_a_channel_file_opens_the_video_page_with_its_own_policy(client):
+    c, auth = client
+    (c.folder / "Channel.m3u").write_text(TV, encoding="utf-8")
+    r = c.get("/view/radio/Channel.m3u", headers={**auth, **HTML})
+    assert "<video id='tv'" in r.text and "vendor/hls.min.js" in r.text and "iptv.js" in r.text and "id='radio'" not in r.text
+    csp = r.headers["content-security-policy"]
+    assert "connect-src 'self' http: https:" in csp and "media-src 'self' blob: http: https:" in csp
+    assert "connect-src 'self';" in c.get("/view/radio/Local.m3u", headers={**auth, **HTML}).headers["content-security-policy"]
+    assert c.get("/static/vendor/hls.min.js").status_code in (200, 401)
 
 
 def test_a_station_file_opens_the_radio_player(client):

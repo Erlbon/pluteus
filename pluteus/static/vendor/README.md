@@ -27,3 +27,13 @@ them, which allows WebAssembly only, not `eval`. `quickjs-eval.*` (PDF form scri
 Left out on purpose: `cmaps/` (1.5 MB, only needed for some CJK/legacy-encoded PDFs), the source maps and the full viewer
 UI. The minified files contain no `eval`; the worker has one `new Function` in a polyfill fallback that a current browser
 never reaches.
+
+## hls.js (live channels)
+
+Copied unchanged from the npm package (`dist/hls.min.js`), loaded only on the channel page (a station file with a video or HLS stream):
+
+| File | Package | Version | Licence | npm integrity (sha512) |
+|---|---|---|---|---|
+| hls.min.js | hls.js (dist/hls.min.js) | 1.7.3 | Apache-2.0 (LICENSE-hlsjs.txt) | MsPlx6yVW4Qv4C7mEVou4/gk/5cN2dVxOTnrNjPSmyH2f0Ln+/UkG10Ax1PE6OvrmTVPKgQYozTtBaPOuCzq7A== |
+
+The page runs it with `enableWorker: false` (no blob worker), so the content policy only needs `connect-src`, `media-src` and `blob:` for the media source on that one page.

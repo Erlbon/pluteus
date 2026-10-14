@@ -7,12 +7,20 @@ from __future__ import annotations
 
 import os
 import re
+from urllib.parse import urlsplit
 
 EXTENSIONS = (".m3u", ".m3u8", ".pls", ".url")
 MAX_STATIONS = 500
 MAX_URL = 2000
 _CONTROL = re.compile(r"[\x00-\x1f\x7f]")
 _PLS = re.compile(r"^(File|Title)(\d+)\s*=\s*(.*)$", re.IGNORECASE)
+
+
+def looks_like_tv(text: str, stations: list) -> bool:
+    """An HLS address (.m3u8) may carry a picture, and only the video page can play HLS: the file opens there. The video page also
+    plays a radio stream, but the radio page keeps playing while you browse, so plain streams stay with it. (IPTV attributes such
+    as tvg-id are no hint: radio lists carry them too.)"""
+    return any(urlsplit(url).path.lower().endswith(".m3u8") for _, url in stations)
 
 
 def is_radio_file(name: str) -> bool:
@@ -65,7 +73,7 @@ def parse(text: str) -> list:
         name = ""
         for line in lines:
             if line.upper().startswith("#EXTINF"):
-                name = _name(line.partition(",")[2])
+                name = _name(line.rpartition(",")[2]) if "," in line else ""            # IPTV attributes may hold commas; the name is last
             elif line and not line.startswith("#"):
                 if _address(line):
                     stations.append((name, _address(line)))
