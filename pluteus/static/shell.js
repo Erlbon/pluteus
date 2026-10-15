@@ -226,6 +226,11 @@
       if (p && p.catch) p.catch(function () { fsMode = ""; fsChanged(); });
       return true;
     },
+    setMode: function (mode) {                                   // already full screen: change the mode without leaving it
+      if (!frameFull()) return;
+      fsMode = mode === "cinema" ? "cinema" : "max";
+      fsChanged();
+    },
     exit: function () { (document.exitFullscreen || document.webkitExitFullscreen || function () {}).call(document); },
     onChange: function (fn) { fsListeners.push(fn); }
   };

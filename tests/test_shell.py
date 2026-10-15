@@ -146,3 +146,11 @@ def test_full_screen_belongs_to_the_shell_frame_so_the_next_file_stays_full_scre
         assert "plScreenModes" in js and "requestFullscreen" not in js and "shellFs" not in js, name
     css = c.get("/static/base.css", headers=auth).text
     assert ".pl-videobox.pl-maxed" in css and "position: fixed; inset: 0" in css
+
+
+def test_the_other_screen_button_switches_the_mode_instead_of_leaving_full_screen(client):
+    """Pressing Full screen while maximized (or the reverse) used to leave full screen. It switches the mode; only the same button leaves."""
+    c, auth = client[0], client[1]
+    common = c.get("/static/player-common.js", headers=auth).text
+    assert "current !== wanted" in common and "shellFs.setMode(wanted)" in common
+    assert "setMode: function" in c.get("/static/shell.js", headers=auth).text

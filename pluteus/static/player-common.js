@@ -6,6 +6,7 @@
    - Maximize ("max", button #mx): the whole player, controls under the picture, fills the screen.
    - In the shell the FRAME goes full screen (shell.js plShell.fullscreen), so the next file opened in it stays in the same mode; the page only
      paints it (pl-full / pl-maxed on the player box). Elsewhere the player box itself goes full screen and a new page starts normal.
+   Pressing the other button while full switches the mode and stays full screen; the same button again leaves.
    Usage: window.plVolume(media); var modes = window.plScreenModes(box, mediaElement, { onEnter: fn, active: fn }); modes.toggle(true|false); modes.mode(); modes.tapWokeControls().
    options.onEnter / options.onExit: called when a mode was entered / left (a phone turns sideways and back); options.active: false while the idle fade must not start (a paused movie). */
 (function () {
@@ -120,8 +121,12 @@
       wake();
     }
     function toggle(asCinema) {
-      if (mode()) { if (shellFs) shellFs.exit(); else (document.exitFullscreen || document.webkitExitFullscreen).call(document); return; }
-      var wanted = asCinema === false ? "max" : "cinema";
+      var wanted = asCinema === false ? "max" : "cinema", current = mode();
+      if (current && current !== wanted) {                         // the other button while full: switch to that mode, stay full screen
+        if (shellFs) shellFs.setMode(wanted); else { cinema = wanted === "cinema"; paint(); }
+        return;
+      }
+      if (current) { if (shellFs) shellFs.exit(); else (document.exitFullscreen || document.webkitExitFullscreen).call(document); return; }
       if (shellFs && shellFs.enter(wanted)) { if (options.onEnter) options.onEnter(); return; }
       cinema = wanted === "cinema";
       if (box.requestFullscreen) box.requestFullscreen().then(function () { if (options.onEnter) options.onEnter(); }).catch(function () { /* refused */ });
