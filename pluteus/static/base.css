@@ -634,3 +634,10 @@ html.pl-tv .pl-tile a { padding: 6px; }
 html.pl-tv .pl-bar { padding-top: 12px; padding-bottom: 12px; }
 html.pl-tv .pl-bar a, html.pl-tv .pl-bar .pl-btn { padding: 12px 16px; }
 html.pl-tv .pl-shell-player .pl-vol-btn { width: 56px; height: 56px; }
+
+/* a release in a discography list: the note names it, pluteus says whether the folders have it */
+.pl-markdown .pl-have, .pl-markdown .pl-missing { font-size: .78em; margin-left: .5em; padding: 1px 8px; border-radius: 999px; white-space: nowrap; vertical-align: .08em; }
+.pl-markdown .pl-have { border: 1px solid var(--pl-accent); color: var(--pl-accent); }
+.pl-markdown .pl-have::before { content: "\2713\00a0"; }
+.pl-markdown .pl-missing { border: 1px dashed var(--pl-dim); color: var(--pl-dim); font-style: italic; }
+.pl-notes-lazy { margin-top: 18px; }

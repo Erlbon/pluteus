@@ -68,14 +68,40 @@ class Resolver:
         return self.urls.raw(self.root, found[0])
 
 
+# Headings whose list items are releases of a band or artist: the note names them, pluteus says which ones the folders have (see release_key).
+RELEASE_HEADINGS = {"discography", "studio albums", "albums", "live albums", "live", "compilations", "compilation albums", "eps", "ep", "singles",
+                    "singles and eps", "eps and singles", "remix albums", "remixes", "soundtracks", "box sets", "video albums", "other releases", "releases"}
+
+
+def release_key(text: str) -> str:
+    """What a release title and an album folder name share: lower case, "&" as "and", a leading year and any (year) or [year] group left out,
+    everything that is not a letter or digit as one space. "Speak & Spell (1981)" and "[1981] - Speak And Spell" are the same key."""
+    text = re.sub(r"[(\[][^)\]]*[)\]]", " ", unescape(text).lower().replace("&", " and "))
+    text = re.sub(r"^\W*\d{4}\W+(?=\w)", "", text.strip())
+    return re.sub(r"[\W_]+", " ", text).strip()
+
+
 class _Renderer(mistune.HTMLRenderer):
-    def __init__(self, resolver: Resolver, anchors: bool = False, wiki=None):
+    def __init__(self, resolver: Resolver, anchors: bool = False, wiki=None, releases=None):
         super().__init__(escape=True)
         self.resolver, self.anchors, self.wiki = resolver, anchors, wiki
+        self.releases = releases                          # None, or a function key -> folder name / None: which releases the folders have
+        self.section = ""
         self.headings: list = []                           # (level, plain text, id) for the contents list
         self._ids: dict = {}
 
+    def list_item(self, text):
+        if self.releases is not None and self.section in RELEASE_HEADINGS:
+            title = _TAGS.sub("", text).strip()
+            key = release_key(re.sub(r"\s+[-–—]\s+.*$", "", title)) if title else ""
+            if key:
+                folder = self.releases(key)
+                badge = ("<span class='pl-have' title='%s'>in library</span>" % escape(folder, quote=True)) if folder else "<span class='pl-missing'>missing</span>"
+                text = text.rstrip("\n") + " " + badge
+        return super().list_item(text)
+
     def heading(self, text, level, **attrs):
+        self.section = re.sub(r"\s*[(\[][^)\]]*[)\]]\s*", " ", unescape(_TAGS.sub("", text))).strip().lower()
         if not self.anchors:
             return super().heading(text, level, **attrs)
         plain = _TAGS.sub("", text)
@@ -204,12 +230,12 @@ def render_full(text: str, urls, root: str, folder: tuple, *, toc: bool = True, 
     return Rendered(html, meta, title)
 
 
-def render(text: str, urls, root: str, folder: tuple, wiki=None) -> str:
+def render(text: str, urls, root: str, folder: tuple, wiki=None, releases=None) -> str:
     """HTML for a short Markdown text (a folder's note): front matter hidden, no anchors or contents. Raises TooLarge for text the
     renderer should not be asked to handle."""
     if len(text.encode("utf-8", "ignore")) > MAX_RENDER_BYTES:
         raise TooLarge("larger than %d KB" % (MAX_RENDER_BYTES // 1024))
-    md = mistune.create_markdown(renderer=_Renderer(Resolver(urls, root, folder), wiki=wiki),
+    md = mistune.create_markdown(renderer=_Renderer(Resolver(urls, root, folder), wiki=wiki, releases=releases),
                                  plugins=["table", "strikethrough", "task_lists", "url", _wiki_plugin])
     try:
         return md(front_matter(text)[1])

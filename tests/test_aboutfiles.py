@@ -1,5 +1,6 @@
 """The about text other tools write (artist.nfo, album.nfo, metadata.opf) as the fallback note of a folder."""
 from conftest import basic
+from notehelp import with_note
 from test_subsonic import body, call, lib, make  # noqa: F401
 
 from pluteus import aboutfiles, subsonic
@@ -32,13 +33,13 @@ def test_bad_or_hostile_files_give_nothing():
 def test_a_folder_without_a_note_shows_its_nfo_and_a_note_of_ours_wins(lib):
     (lib / "Kaizers" / "artist.nfo").write_text(ARTIST, encoding="utf-8")
     c = make(lib)
-    html = c.get("/browse/music/Kaizers", headers={**AUTH, **HTML}).text
+    html = with_note(c, "/browse/music/Kaizers", {**AUTH, **HTML})
     assert "A band from Stavanger." in html and "pl-note-top" in html
     (lib / "Kaizers" / "artist.md").write_text("Our own words\n", encoding="utf-8")
-    html = c.get("/browse/music/Kaizers", headers={**AUTH, **HTML}).text
+    html = with_note(c, "/browse/music/Kaizers", {**AUTH, **HTML})
     assert "Our own words" in html and "Stavanger" not in html
     (lib / "Solo" / "metadata.opf").write_text(OPF, encoding="utf-8")
-    assert "A long" in c.get("/browse/music/Solo", headers={**AUTH, **HTML}).text
+    assert "A long" in with_note(c, "/browse/music/Solo", {**AUTH, **HTML})
 
 
 def test_subsonic_uses_the_nfo_biography_when_there_is_no_note(lib):
@@ -59,9 +60,9 @@ def test_a_folder_with_one_book_shows_the_description_written_inside_it(lib):
         z.writestr("OEBPS/content.opf", opf)
     assert aboutfiles.from_book(str(book), "Tale.epub") == "A tale of ships."
     c = make(lib)
-    assert "A tale of ships." in c.get("/browse/music/Solo", headers={**AUTH, **HTML}).text
+    assert "A tale of ships." in with_note(c, "/browse/music/Solo", {**AUTH, **HTML})
     (lib / "Solo" / "Second.epub").write_bytes(b"not a zip")                                          # two books: nobody's description is the folder's
-    assert "A tale of ships." not in c.get("/browse/music/Solo", headers={**AUTH, **HTML}).text
+    assert "A tale of ships." not in with_note(c, "/browse/music/Solo", {**AUTH, **HTML})
 
 
 def test_a_comic_summary_and_bad_archives(tmp_path):

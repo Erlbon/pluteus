@@ -743,13 +743,18 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
         files = {e.name.lower(): e for e in entries if not e.is_dir}
         overlay = root != UPLOADS_ROOT and lib.uploads_enabled(user)
         finder = wiki_finder(user, root, parts)
+        have: dict = {}
+        for e in entries:                                            # the album folders next to the note: which releases the library has
+            if e.is_dir:
+                have.setdefault(markdown.release_key(e.name), e.name)
+        releases = have.get if have else None
 
         def one(names) -> tuple:
             for wanted in names if overlay else ():
                 got = notes.read(lib, user, root, parts, wanted)
                 if got:
                     try:
-                        return markdown.render(got[0], urls, root, parts, wiki=finder), wanted
+                        return markdown.render(got[0], urls, root, parts, wiki=finder, releases=releases), wanted
                     except markdown.TooLarge:
                         continue
             for wanted in names:
@@ -761,7 +766,7 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
                     raw, truncated = textview.read_head(info.path, markdown.MAX_RENDER_BYTES)
                     if truncated or textview.looks_binary(raw):
                         continue
-                    return markdown.render(textview.decode(raw, name=entry.name)[0], urls, root, parts, wiki=finder), wanted
+                    return markdown.render(textview.decode(raw, name=entry.name)[0], urls, root, parts, wiki=finder, releases=releases), wanted
                 except (markdown.TooLarge, NotFound, PathError, OSError):
                     continue
             return "", ""
@@ -884,6 +889,31 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
             return page(name, text, vers, where, error=notes.MESSAGES.get(e.code, notes.MESSAGES["write"]),
                         status=409 if e.code == "changed" else 400)
 
+    def note_candidate(user, root: str, parts: tuple, entries) -> bool:
+        """Whether this folder can have a note to show, from names only (nothing is opened): a note file, an .nfo or .opf, exactly one book, or a note
+        of the user's own."""
+        names = {e.name.lower() for e in entries if not e.is_dir}
+        if names & (set(NOTE_TOP) | set(NOTE_BOTTOM) | set(aboutfiles.FILES)):
+            return True
+        if sum(1 for n in names if n.endswith((".epub", ".cbz"))) == 1:
+            return True
+        return root != UPLOADS_ROOT and lib.uploads_enabled(user) and notes.has_overlay(lib, user, root, parts)
+
+    @guarded("web")
+    async def folder_note(request: Request, user):
+        """The note of a folder as the HTML boxes the folder page shows under its list (fetched by notes-lazy.js after the page is up)."""
+        root = request.path_params["root"]
+        parts = _parts(request.path_params.get("path", ""))
+        entries = await run_in_threadpool(lib.list_dir, user, root, parts, cfg.show_all_files, False)
+        entries = radio.hide_logos(entries)
+        top, bottom, top_name, bottom_name = await run_in_threadpool(folder_notes, user, root, parts, entries)
+        can_note = may_edit_notes(user, root)
+        html = (web._note_box(top, "top", urls.note(root, parts, top_name) if (can_note and top_name) else "")
+                + web._note_box(bottom, "bottom", urls.note(root, parts, bottom_name) if (can_note and bottom_name) else ""))
+        if not html and can_note:
+            html = "<p class='pl-muted'><a href='%s'>Add a note</a></p>" % escape_attr(urls.note(root, parts))
+        return JSONResponse({"html": html}, headers={"Cache-Control": "no-store"})
+
     @guarded("web")
     async def browse(request: Request, user):
         root = request.path_params["root"]
@@ -909,12 +939,12 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
             except (NotFound, PathError, OSError):
                 return ""
         has_cover = await run_in_threadpool(folder_picture)
-        note_top, note_bottom, top_name, bottom_name = (await run_in_threadpool(folder_notes, user, root, parts, entries) if page == 1
-                                                         else ("", "", "", ""))
+        # The note is NOT read here: the folder list must never wait for it (or for a slow drive). The page gets an empty place under the list and
+        # notes-lazy.js fetches the note afterwards. Only a cheap look at the names says whether there can be a note at all.
         can_note = may_edit_notes(user, root)
-        note_links = {"top": urls.note(root, parts, top_name) if (can_note and top_name) else "",
-                      "bottom": urls.note(root, parts, bottom_name) if (can_note and bottom_name) else "",
-                      "add": urls.note(root, parts) if (can_note and not top_name and page == 1) else ""}
+        maybe_note = page == 1 and await run_in_threadpool(note_candidate, user, root, parts, entries)
+        note_links = {"top": "", "bottom": "", "add": urls.note(root, parts) if (can_note and not maybe_note and page == 1) else ""}
+        note_lazy = urls.api("folder-note", root, parts) if maybe_note else ""
         asked = request.query_params.get("view", "")
         asked = asked if asked in ("list", "grid") else ""
         shown_view = asked
@@ -939,7 +969,7 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
             root, parts, shown, page, pages, len(entries), ctx_for(user, shown_view), metas, progress, sort=sort, desc=desc,
             writable=root == UPLOADS_ROOT, flash=web.flash_text(request.query_params),
             cover_url=urls.cover(root, parts) if (has_cover and parts) else "", view_asked=asked, shelves=flags,
-            note_top=note_top, note_bottom=note_bottom, note_links=note_links))
+            note_lazy=note_lazy, note_links=note_links))
 
     @guarded("web")
     async def settings(request: Request, user):
@@ -1159,54 +1189,71 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
             return None
         return textview.decode(raw, truncated)[0], len(raw), truncated
 
-    WIKI_DIRS = 300                                           # at most this many folders are listed to find one [[wiki link]]
-    WIKI_EXTENSIONS = ("", ".md", ".markdown", ".txt")
+    WIKI_DIRS = 120                                           # at most this many folders are listed, in all, to answer every [[wiki link]] of a page
+    WIKI_SECONDS = 4.0                                        # ... and at most this long (a slow network drive must not hold the page)
+    WIKI_EXTENSIONS = (".md", ".markdown", ".txt")
+
+    def wiki_key(text: str) -> str:
+        """What two spellings of a name share: lower case, the (year) and [tag] groups left out, everything that is not a letter or digit as one space.
+        "Violator (1990)", "violator" and "VIOLATOR!" are the same key."""
+        text = re.sub(r"[(\[][^)\]]*[)\]]", " ", text.lower())
+        return re.sub(r"[\W_]+", " ", text).strip()
 
     def wiki_finder(user, root: str, folder: tuple):
-        """name -> URL of the page [[name]] means, or None. By file name, no index: this folder first, then each folder above it, then the
-        folders below the top of the library (breadth first, a limited number of them). A folder of that name counts when no file does."""
-        found: dict = {}
-        listed = [0]
+        """name -> URL of the page or folder [[name]] means, or None. ONE index per page, built the first time a link needs it: this folder and
+        everything below it (breadth first, a limited number of folders and a limited time), then each folder above it, one listing each. A
+        file wins over a folder of the same name; names match ignoring case, a (year) and punctuation, so the album folder "Violator (1990)" is
+        [[Violator]]. Nothing is searched outside these places: the old search of the whole library from its top made a page with many links
+        take minutes on a slow drive."""
+        index: dict = {}
+        built = [False]
 
-        def look(where: tuple, wanted: set):
+        def add(entry) -> None:
+            if entry.is_dir:
+                target, rank = urls.browse(root, entry.parts), 1
+                names = [entry.name]
+            elif kinds.kind_of(entry.name) in ("markdown", "text") and entry.name.lower().endswith(WIKI_EXTENSIONS):
+                target, rank = urls.view(root, entry.parts), 0
+                names = [entry.name, entry.name.rsplit(".", 1)[0]]
+            else:
+                return
+            for name in names:
+                for key in (name.lower(), wiki_key(name)):
+                    if key and (key not in index or rank < index[key][0]):
+                        index[key] = (rank, target)
+
+        def listing(where: tuple):
             try:
-                entries = lib.list_dir(user, root, where, cfg.show_all_files)
+                return lib.list_dir(user, root, where, cfg.show_all_files, False)
             except (NotFound, PathError, OSError):
-                return None, []
-            listed[0] += 1
-            hit = folder_hit = None
-            for e in entries:
-                lower = e.name.lower()
-                if e.is_dir:
-                    if lower in wanted and folder_hit is None:
-                        folder_hit = e
-                elif lower in wanted and hit is None and kinds.kind_of(e.name) in ("markdown", "text"):
-                    hit = e
-            return (hit, folder_hit), [e for e in entries if e.is_dir]
+                return []
+
+        def build() -> None:
+            built[0] = True
+            deadline = time.monotonic() + WIKI_SECONDS
+            listed = 0
+            queue = [folder]
+            while queue and listed < WIKI_DIRS and time.monotonic() < deadline:       # this folder and below
+                entries = listing(queue.pop(0))
+                listed += 1
+                for e in entries:
+                    add(e)
+                    if e.is_dir:
+                        queue.append(e.parts)
+            for depth in range(len(folder) - 1, -1, -1):                               # then the folders above, one listing each
+                if time.monotonic() >= deadline:
+                    break
+                for e in listing(folder[:depth]):
+                    add(e)
 
         def find(name: str):
-            key = name.strip().lower()
-            if not key or "/" in key or "\\" in key or len(key) > 120:
+            name = (name or "").strip()
+            if not name or "/" in name or chr(92) in name or len(name) > 120:
                 return None
-            if key in found:
-                return found[key]
-            wanted = {key + ext for ext in WIKI_EXTENSIONS}
-            result = None
-            for depth in range(len(folder), -1, -1):                              # this folder, then upwards
-                got, _ = look(folder[:depth], wanted)
-                if got and (got[0] or got[1]):
-                    result = got[0] or got[1]
-                    break
-            if result is None:
-                queue = [()]
-                while queue and result is None and listed[0] < WIKI_DIRS:
-                    got, subs = look(queue.pop(0), wanted)
-                    if got and (got[0] or got[1]):
-                        result = got[0] or got[1]
-                    queue += [e.parts for e in subs]
-            url = None if result is None else (urls.browse(root, result.parts) if result.is_dir else urls.view(root, result.parts))
-            found[key] = url
-            return url
+            if not built[0]:
+                build()
+            hit = index.get(name.lower()) or index.get(wiki_key(name))
+            return hit[1] if hit else None
         return find
 
     def markdown_view(user, root: str, parts: tuple, info):
@@ -1688,6 +1735,10 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
                     return
                 visited[0] += 1
                 entries = lib.list_dir(user, root, here, True, False)
+                # this folder's listing already says whether it has a note: the "About" link needs no second listing of it (on a slow drive that
+                # second listing of every album folder doubled the time "Play all" took)
+                has_note[here] = (any(not e.is_dir and e.name.lower() in NOTE_TOP for e in entries)
+                                  or (root != UPLOADS_ROOT and lib.uploads_enabled(user) and notes.has_overlay(lib, user, root, here)))
                 for e in entries:
                     if mix and e.name.lower().endswith(".m4b"):
                         continue
@@ -2116,6 +2167,8 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
         Route("/stations/{kind}", stations_page),
         Route("/api/stations", stations_save, methods=["POST"]),
         Route("/api/stations/parse", stations_parse, methods=["POST"]),
+        Route("/api/folder-note/{root}", folder_note),
+        Route("/api/folder-note/{root}/{path:path}", folder_note),
         Route("/api/stations/missing", stations_missing),
         Route("/api/stations/logos", stations_logos, methods=["POST"]),
         Route("/api/queue/{root}/{path:path}", queue),

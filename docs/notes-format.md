@@ -55,10 +55,28 @@ Two additions, both optional:
 In a full page (not in a folder's note box) headings get an anchor (`#heading`, a link you can copy) and a document with four or more headings
 gets a contents list.
 
+## Discographies: the note names the releases, the folders say which ones the library has
+
+A band's note may list its releases as plain lines, under a heading such as **Discography**, **Studio albums**, **Live albums**, **Compilations**, **EPs**, **Singles**,
+**Remixes**, **Soundtracks** or **Releases** (a trailing "(all)" or "(selected)" in the heading is ignored):
+
+```markdown
+### Studio albums
+- Speak & Spell (1981)
+- A Broken Frame (1982)
+- Violator (1990)
+```
+
+When the page is shown, pluteus compares each title with the folder names *next to the note* (one listing, nothing else is searched) and adds a badge: **in library** or
+**missing**. Titles and folder names match ignoring case, a leading or trailing year (`[1981] - Speak And Spell`, `Speak & Spell (1981)`), brackets, punctuation, and `&` against
+`and`. The badge is computed live, so it stays right as albums are added or removed: **do not write "(in this library)" or a separate "in this library" list into the note**,
+it would only repeat what pluteus shows and go out of date. No links are needed or wanted in a note: the notes are text, the folders are the structure.
+
 ## For tools that write notes
 
 - Write UTF-8 with a `---` front matter block and put `status: draft` in it.
 - Never overwrite an existing note: write only where there is none.
+- List releases as plain `- Title (Year)` lines (see Discographies above): no `[[links]]`, no "in this library" annotations.
 - Use the file name for the level (see [library-layout.md](library-layout.md)).
 - Plain text under about 64 KB is the sweet spot; the editor in pluteus refuses more than that.
 

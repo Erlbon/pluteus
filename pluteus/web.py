@@ -260,7 +260,7 @@ def _sort_bar(here: str, sort: str, desc: bool, view: str = "") -> str:
 def listing_page(root: str, parts: tuple, entries: list, page: int, pages: int, total: int, ctx: Ctx,
                  metas: dict | None = None, progress: dict | None = None,
                  sort: str = "name", desc: bool = False, writable: bool = False, flash: str = "", cover_url: str = "",
-                 view_asked: str = "", shelves: dict | None = None, note_top: str = "", note_bottom: str = "", note_links: dict | None = None) -> str:
+                 view_asked: str = "", shelves: dict | None = None, note_lazy: str = "", note_links: dict | None = None) -> str:
     metas = metas or {}
     progress = progress or {}
     shelves = shelves or {}
@@ -332,9 +332,10 @@ def listing_page(root: str, parts: tuple, entries: list, page: int, pages: int, 
             "<a href='%s'>OPDS</a>%s</div>%s%s<ul class='%s'>%s</ul>%s</main>"
             % (escape(urls.api("queue", root, parts)), " / ".join(crumbs), picture, escape(title), total, escape(urls.opds(root, parts)),
                (" &middot; <a href='%s'>Add a note</a>" % escape(links["add"])) if links.get("add") else "",
-               _note_box(note_top, "top", links.get("top", "")) + note + forms, bar + pager, "pl-list pl-grid" if grid else "pl-list", "".join(tiles if grid else rows),
-               pager + _note_box(note_bottom, "bottom", links.get("bottom", ""))))
+               note + forms, bar + pager, "pl-list pl-grid" if grid else "pl-list", "".join(tiles if grid else rows),
+               pager + (("<div class='pl-notes-lazy' id='folder-notes' data-src='%s'></div>" % escape(note_lazy)) if note_lazy else "")))
     scripts = (((urls.static("uploads.js"),) if writable else ()) + ((urls.static("grid.js"),) if grid else ())
+               + ((urls.static("notes-lazy.js"),) if note_lazy else ())
                + (urls.static("shelf.js"), urls.static("queue.js")))
     return layout(title, body, ctx, scripts=scripts)
 

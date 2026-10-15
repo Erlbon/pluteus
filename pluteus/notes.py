@@ -66,6 +66,18 @@ def target(root: str, parts, name: str):
     return (where, file_name, False) if file_name and where else None
 
 
+def has_overlay(lib, user, root: str, parts) -> bool:
+    """Whether this user has any note of their own for this library folder (a look at one folder, nothing is read)."""
+    where = overlay_parts(root, parts)
+    if where is None:
+        return False
+    try:
+        folder = lib.upload_dir(user, where)
+        return any(os.path.isfile(longpath(os.path.join(folder, name))) for name in NOTE_NAMES)
+    except Exception:                                      # noqa: BLE001  no such folder: no note
+        return False
+
+
 def version_of(path: str) -> str:
     """Tells whether a file changed: '' when it is not there."""
     try:

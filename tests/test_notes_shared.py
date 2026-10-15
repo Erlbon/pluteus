@@ -9,6 +9,8 @@ from test_login_web import HTML, make
 from test_notes_edit import FORM, post, version_of
 from test_uploads import ORIGIN
 
+from notehelp import with_note
+
 from pluteus import notes
 from pluteus.config import parse_config, ConfigError
 from pluteus.config import Root
@@ -45,7 +47,7 @@ def test_a_shared_note_is_written_next_to_the_files_and_seen_by_everybody(shared
     r = post(me, name="author.md", text="# Shared\n\nFor all.\n", where="library", version="", action="save")
     assert r.status_code == 303
     assert (folder / "author.md").read_text(encoding="utf-8") == "# Shared\n\nFor all.\n"
-    assert "For all." in bob.get("/browse/books/Good%20Author", headers=HTML).text
+    assert "For all." in with_note(bob, "/browse/books/Good%20Author", HTML)
     editor = me.get(FOLDER + "?name=author.md&where=library", headers=HTML).text
     assert "For all." in editor and version_of(editor, "library") != ""
     stale = version_of(editor, "library")

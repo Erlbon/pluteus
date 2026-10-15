@@ -1,5 +1,6 @@
 """A folder's own note (artist.md, author.md, about.md at the top; README.md, index.md at the bottom) and the artist biography for Subsonic apps."""
 from conftest import basic
+from notehelp import with_note
 from pluteus import subsonic
 from test_subsonic import body, call, lib, make  # noqa: F401
 
@@ -10,23 +11,23 @@ NOTE = "# Kaizers Orchestra\n\nA band from **Stavanger**, [Ompa](Ompa/) and more
 
 
 def page(c, path="/browse/music/Kaizers", **kw):
-    return c.get(path, headers={**AUTH, **HTML}, **kw).text
+    return with_note(c, path, {**AUTH, **HTML})            # the folder page and the note that is fetched after it
 
 
-def test_the_artist_note_shows_at_the_top_and_the_readme_at_the_bottom(lib):
+def test_the_artist_note_shows_under_the_list_and_the_readme_after_it(lib):
     (lib / "Kaizers" / "artist.md").write_text(NOTE, encoding="utf-8")
     (lib / "Kaizers" / "README.md").write_text("## How this folder is kept\n\nRipped from CD.\n", encoding="utf-8")
     c = make(lib)
     html = page(c)
     top, bottom = html.index("class='pl-note pl-note-top"), html.index("class='pl-note pl-note-bottom")
     assert "<h1>Kaizers Orchestra</h1>" in html[top:bottom] and "<strong>Stavanger</strong>" in html[top:bottom]
-    assert "href='/browse/music/Kaizers/Ompa'" in html[top:bottom] or "/browse/music/Kaizers/Ompa" in html[top:bottom]      # a link inside the library works
-    assert "How this folder is kept" in html[bottom:] and html.index("<ul class='pl-list") > top
+    assert "/music/Kaizers/Ompa" in html[top:bottom]                                              # a link inside the library works
+    assert "How this folder is kept" in html[bottom:] and html.index("<ul class='pl-list") < top
 
 
 def test_the_first_note_file_of_each_group_wins_and_no_note_shows_no_box(lib):
     c = make(lib)
-    assert "pl-note" not in page(c, "/browse/music/Solo")
+    assert "pl-note pl-note-" not in page(c, "/browse/music/Solo")
     (lib / "Solo" / "about.md").write_text("About the single\n", encoding="utf-8")
     (lib / "Solo" / "author.md").write_text("Author wins over about\n", encoding="utf-8")
     (lib / "Solo" / "index.md").write_text("The index\n", encoding="utf-8")
@@ -45,9 +46,9 @@ def test_a_note_is_rendered_safely_and_a_bad_or_huge_one_is_skipped(lib):
     html = page(c, "/browse/music/Solo")
     assert "<script>alert(1)</script>" not in html and "evil.example" not in html and "javascript:" not in html
     (lib / "Solo" / "artist.md").write_bytes(b"x" * 300_000)                                  # too big: no box, the page still works
-    assert "pl-note" not in page(c, "/browse/music/Solo")
+    assert "pl-note pl-note-" not in page(c, "/browse/music/Solo")
     (lib / "Solo" / "artist.md").write_bytes(b"\x00\x01\x02\x03" * 50)                         # binary: skipped
-    assert "pl-note" not in page(c, "/browse/music/Solo")
+    assert "pl-note pl-note-" not in page(c, "/browse/music/Solo")
 
 
 def test_subsonic_gives_the_artist_note_as_the_biography(lib):

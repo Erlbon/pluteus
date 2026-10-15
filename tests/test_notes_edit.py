@@ -5,6 +5,8 @@ from urllib.parse import urlencode
 from starlette.testclient import TestClient
 from test_uploads import HTML, ORIGIN, up  # noqa: F401
 
+from notehelp import with_note
+
 from pluteus import notes
 
 FORM = {"content-type": "application/x-www-form-urlencoded", **ORIGIN}
@@ -23,7 +25,7 @@ def version_of(html, which="own"):
 
 def test_a_note_added_to_a_library_folder_is_kept_in_the_users_upload_folder(up):
     me, app, folder = up
-    page = me.get("/browse/books/Good%20Author", headers=HTML).text
+    page = with_note(me, "/browse/books/Good%20Author", HTML)
     assert "Add a note" in page and "pl-note-top" not in page
     editor = me.get(FOLDER, headers=HTML)
     assert editor.status_code == 200 and "<select name='name'>" in editor.text
@@ -31,18 +33,18 @@ def test_a_note_added_to_a_library_folder_is_kept_in_the_users_upload_folder(up)
     assert r.status_code == 303 and "ok=note" in r.headers["location"]
     saved = folder / "alice" / "Notes" / "books" / "Good Author" / "author.md"
     assert saved.read_text(encoding="utf-8") == "# Good Author\n\nWrote **sagas**.\n"
-    page = me.get("/browse/books/Good%20Author", headers=HTML).text
+    page = with_note(me, "/browse/books/Good%20Author", HTML)
     assert "<strong>sagas</strong>" in page and "Edit note" in page
 
 
 def test_an_existing_library_note_is_the_start_and_the_users_own_wins(up, tmp_path):
     me, app, folder = up
     (tmp_path / "books" / "Good Author" / "author.md").write_text("From the library\n", encoding="utf-8")
-    assert "From the library" in me.get("/browse/books/Good%20Author", headers=HTML).text
+    assert "From the library" in with_note(me, "/browse/books/Good%20Author", HTML)
     editor = me.get(FOLDER + "?name=author.md", headers=HTML).text
     assert "From the library" in editor and "starts from the note in the library" in editor
     post(me, name="author.md", text="My own words\n", version="", action="save")
-    html = me.get("/browse/books/Good%20Author", headers=HTML).text
+    html = with_note(me, "/browse/books/Good%20Author", HTML)
     assert "My own words" in html and "From the library" not in html
     assert (tmp_path / "books" / "Good Author" / "author.md").read_text(encoding="utf-8") == "From the library\n"      # the library is untouched
 
