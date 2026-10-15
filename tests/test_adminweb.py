@@ -474,8 +474,9 @@ def test_status_lists_the_services_and_names_the_line_that_switches_each_one(adm
     client, app, _ = admin
     html = client.get("/", headers=BOSS).text
     assert "<h2>Services</h2>" in html and "Subsonic (music apps, Android Auto)" in html
-    for line in ("subsonic = true", "webdav = true", "kosync = true", "thumbnails = true"):
-        assert line in html                                                                  # all off: each names its switch
+    for line in ("subsonic = not set in config.toml", "webdav = not set in config.toml", "kosync = not set in config.toml", "thumbnails = not set in config.toml"):
+        assert line in html                                                                  # all off: each names its switch, in the Address column
+    assert "&middot; <code>webdav = true</code>" not in html                                 # no longer squeezed into the State column
     assert html.count("pl-dot-off") >= 4 and "Web site and OPDS" in html
 
 
@@ -489,4 +490,4 @@ def test_services_that_are_on_show_their_address_and_the_key_count(tmp_path):
     html = client.get("/", headers=BOSS).text
     assert "1 of 3 users have a key" in html and "/pluteus/dav/" in html
     assert "subsonic = true" not in html.split("Subsonic (music apps")[1].split("</tr>")[0]       # on: no switch line shown
-    assert "kosync = true" in html and "a-key-123456" not in html                                 # a key is never shown
+    assert "kosync = not set in config.toml" in html and "a-key-123456" not in html               # a key is never shown

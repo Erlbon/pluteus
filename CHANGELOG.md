@@ -3,6 +3,7 @@
 Release notes are taken from the section of the tagged version (`## 0.5.0 ...`).
 
 ## Unreleased
+- **Admin Status, Services: a tidier box.** A service that is off shows just "off" in the State column and, in the Address column, what is missing in one line ("webdav = not set in config.toml"), instead of squeezing the setting into the State column.
 - **`[[Wiki links]]` are removed.** Notes hold text, not links to traverse: `[[double brackets]]` are now shown as they are, no folder is searched for them, and the code that did it is gone. (They came with 0.9.8; nothing used them, and a note full of them made a folder page slow.) A release in a discography is matched with the album folders by pluteus itself, with no link in the note.
 - **Apostrophes do not count when a release is matched with a folder:** "What's Up?" matches a folder called "Whats Up".
 - **Notes load after the folder list, and sit under it.** The folder page no longer opens the note (or looks for one) before it answers: it is built from the listing alone, with an empty place under the list, and `notes-lazy.js` fetches the note (`/api/folder-note/...`) and fills the place. A slow drive or a long note can no longer hold the folder list back. Folders that cannot have a note get no place and no fetch.

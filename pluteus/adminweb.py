@@ -164,8 +164,14 @@ def _services_box(services) -> str:
         if s["on"]:
             state = _light("ok", "on")
         else:
-            state = _light("off", "off") + " <span class='pl-muted'>&middot; <code>%s</code></span>" % escape(s["setting"])
-        address = ("<code>%s</code>" % escape(s["address"])) if (s["on"] and s["address"]) else "<span class='pl-muted'>&ndash;</span>"
+            state = _light("off", "off")
+        if s["on"] and s["address"]:
+            address = "<code>%s</code>" % escape(s["address"])
+        elif not s["on"] and s["setting"]:
+            # a service that is off says what is missing, in its own column, in one line: "webdav = not set in config.toml"
+            address = "<span class='pl-muted'><code>%s = not set in config.toml</code></span>" % escape(s["setting"].split("=")[0].strip())
+        else:
+            address = "<span class='pl-muted'>&ndash;</span>"
         keys = escape(s["keys"]) if (s["on"] and s["keys"]) else "<span class='pl-muted'>&ndash;</span>"
         rows.append([escape(s["name"]), state, address, keys])
     note = ("<p class='pl-muted'>Switch a service on with its line under <code>[server]</code> in <code>config.toml</code> and restart. "
