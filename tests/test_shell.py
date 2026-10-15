@@ -154,3 +154,16 @@ def test_the_other_screen_button_switches_the_mode_instead_of_leaving_full_scree
     common = c.get("/static/player-common.js", headers=auth).text
     assert "current !== wanted" in common and "shellFs.setMode(wanted)" in common
     assert "setMode: function" in c.get("/static/shell.js", headers=auth).text
+
+
+def test_the_back_arrow_steps_back_in_history_when_the_file_came_from_the_folder(client):
+    """The arrow was an ordinary link, so it added the folder as a NEW history entry and the browser's Back from the folder landed on the video again.
+    scheme.js now steps back when the file was opened from that folder; every reader and viewer builds the arrow with one helper."""
+    c, auth = client[0], client[1]
+    js = c.get("/static/scheme.js", headers=auth).text
+    assert "pluteus-from-folder" in js and "history.back()" in js and 'getElementById("back")' in js
+    page = c.get("/view/music/Artist/Album%20One/01%20a.mp3", headers={**auth, **HTML}).text
+    assert "id='back'" in page and page.count("id='back'") == 1
+    from pathlib import Path
+    web = (Path(__file__).parent.parent / "pluteus" / "web.py").read_text(encoding="utf-8")
+    assert web.count("id='back'") == 1 and web.count("_back_link(back_url)") == 3            # one copy of the arrow, used by the EPUB, comic and file viewers

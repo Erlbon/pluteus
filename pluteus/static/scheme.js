@@ -59,3 +59,26 @@
     });
   });
 })();
+
+/* The back arrow of a viewer or reader (#back, a link to the folder): when this file was opened from that folder, a click steps back in the
+   browser's history instead of adding the folder as a new entry, so the browser's Back from the folder does not land on the file again.
+   Moving between files REPLACES the history entry (see viewer-media.js), so the folder stays one step behind however many files were played.
+   Where the file came from is kept for the tab in sessionStorage; a page opened from anywhere else (the home list, an address) clears it and
+   the arrow is an ordinary link. */
+(function () {
+  var KEY = "pluteus-from-folder";
+  function pathOf(url) { try { return new URL(url, location.href).pathname; } catch (e) { return ""; } }
+  document.addEventListener("DOMContentLoaded", function () {
+    var back = document.getElementById("back");
+    if (!back || back.tagName !== "A") return;
+    var ref = document.referrer || "", came = "";
+    try { came = sessionStorage.getItem(KEY) || ""; } catch (e) { /* storage blocked: the arrow stays a plain link */ }
+    if (ref && pathOf(ref) === pathOf(back.href)) came = pathOf(back.href);                  // opened from the folder itself
+    else if (!ref || !/\/(?:view|read)\//.test(pathOf(ref))) came = "";                         // any other way in: the folder is not behind us
+    try { if (came) sessionStorage.setItem(KEY, came); else sessionStorage.removeItem(KEY); } catch (e) { /* ignore */ }
+    back.addEventListener("click", function (e) {
+      if (e.defaultPrevented || e.button || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+      if (came && came === pathOf(back.href) && history.length > 1) { e.preventDefault(); history.back(); }
+    });
+  });
+})();

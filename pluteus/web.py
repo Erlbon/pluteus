@@ -394,6 +394,13 @@ def _icon_button(ident: str, icon: str, label: str, extra: str = "") -> str:
             "<span class='pl-icon pl-i-%s'></span></button>" % (extra, ident, escape(label), escape(label), icon))
 
 
+def _back_link(url: str) -> str:
+    """The reader bar's arrow back to the folder (EPUB, comic and every file viewer). scheme.js turns a click into a step back in the browser's
+    history when the file was opened from that folder, so the folder's own entry is not added a second time."""
+    return ("<a class='pl-reader-btn' id='back' href='%s' title='Back to the folder' aria-label='Back to the folder'>"
+            "<span class='pl-icon pl-i-back'></span></a>" % escape(url))
+
+
 def _about_link(url: str) -> str:
     """The reader bar's link to the note about the author or series (the folder page that shows it); nothing when there is none."""
     return ("<a class='pl-reader-btn' id='about' href='%s' title='About the author or series' aria-label='About'>About</a>" % escape(url)) if url else ""
@@ -408,9 +415,7 @@ def epub_reader_page(ctx: Ctx, title: str, subtitle: str, *, book_url: str, prog
     body = (
         "<div class='pl-reader' id='reader' %s>"
         "<header class='pl-reader-bar'>"
-        "<a class='pl-reader-btn' id='back' href='%s' title='Back to the folder' aria-label='Back to the folder'>"
-        "<span class='pl-icon pl-i-back'></span></a>"
-        "%s<div class='pl-reader-title' title='%s'>%s</div>%s%s%s</header>"
+        "%s%s<div class='pl-reader-title' title='%s'>%s</div>%s%s%s</header>"
         "<div class='pl-reader-stage'><div id='viewer' style='position:absolute;inset:0'></div>"
         "<div class='pl-tap pl-tap-left' id='tap-prev'></div><div class='pl-tap pl-tap-right' id='tap-next'></div>"
         "<nav class='pl-menu' id='toc' hidden aria-label='Contents'><h2>Contents</h2><ul id='toc-list'></ul></nav>"
@@ -429,7 +434,7 @@ def epub_reader_page(ctx: Ctx, title: str, subtitle: str, *, book_url: str, prog
         "<div class='pl-toast' id='status'>Loading the book&hellip;</div></div>"
         "<footer class='pl-reader-foot'>%s<div class='pl-progress'><i id='bar'></i></div>"
         "<span id='pct'>&ndash;</span>%s</footer></div>"
-        % (data, escape(back_url),
+        % (data, _back_link(back_url),
            _icon_button("toc-btn", "menu", "Contents"), escape(subtitle), escape(title),
            _about_link(about_url) + "<button class='pl-reader-btn pl-scheme' type='button' title='Toggle dark / light' aria-label='Toggle dark / light'>"
            "<span class='pl-icon pl-i-contrast'></span></button>",
@@ -449,16 +454,14 @@ def comic_reader_page(ctx: Ctx, title: str, *, pages_url: str, count: int, progr
     body = (
         "<div class='pl-reader pl-comic' id='reader' %s>"
         "<header class='pl-reader-bar'>"
-        "<a class='pl-reader-btn' id='back' href='%s' title='Back to the folder' aria-label='Back to the folder'>"
-        "<span class='pl-icon pl-i-back'></span></a>"
-        "<div class='pl-reader-title' title='%s'>%s</div>%s%s%s</header>"
+        "%s<div class='pl-reader-title' title='%s'>%s</div>%s%s%s</header>"
         "<div class='pl-reader-stage pl-comic-stage pl-fit-page' id='stage'>"
         "<img class='pl-page' id='page' alt='' draggable='false'>"
         "<div class='pl-tap pl-tap-left' id='tap-prev'></div><div class='pl-tap pl-tap-right' id='tap-next'></div>"
         "<div class='pl-toast' id='status'>Loading&hellip;</div></div>"
         "<footer class='pl-reader-foot'>%s<div class='pl-progress' id='seek' title='Jump to a page'><i id='bar'></i></div>"
         "<span id='pct'>&ndash;</span>%s</footer></div>"
-        % (data, escape(back_url), escape(title), escape(title),
+        % (data, _back_link(back_url), escape(title), escape(title),
            _about_link(about_url) + "<button class='pl-reader-btn pl-scheme' type='button' title='Toggle dark / light' aria-label='Toggle dark / light'>"
            "<span class='pl-icon pl-i-contrast'></span></button>",
            _icon_button("fit-btn", "fit", "Zoom: fit page, fit width, 150%, 200%, 300% (keys + - 0 F)"),
@@ -491,11 +494,9 @@ def _viewer(ctx: Ctx, title: str, back_url: str, *, tools: str, stage: str, foot
     """The shared frame of every file viewer: the reader bar, a stage and a footer, all themed like the readers."""
     attrs = " ".join("data-%s='%s'" % (k, escape(str(v))) for k, v in data)
     body = ("<div class='pl-reader %s' id='reader' %s><header class='pl-reader-bar'>"
-            "<a class='pl-reader-btn' id='back' href='%s' title='Back to the folder' aria-label='Back to the folder'>"
-            "<span class='pl-icon pl-i-back'></span></a>"
-            "<div class='pl-reader-title' title='%s'>%s</div>%s</header>"
+            "%s<div class='pl-reader-title' title='%s'>%s</div>%s</header>"
             "<div class='pl-reader-stage %s'>%s</div><footer class='pl-reader-foot'>%s</footer></div>"
-            % (classes, attrs, escape(back_url), escape(title), escape(title), tools, stage_class, stage, foot))
+            % (classes, attrs, _back_link(back_url), escape(title), escape(title), tools, stage_class, stage, foot))
     return layout(title, body, ctx, bar=False, body_class="pl-reader-page", scripts=scripts,
                   module_scripts=module_scripts)
 
