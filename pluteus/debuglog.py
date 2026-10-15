@@ -76,7 +76,7 @@ def format_entry(entry: dict) -> str:
     """One readable line from the fields of a request (see app.AccessLog)."""
     parts = ["%s %s -> %s" % (entry.get("method", "-"), entry.get("target", "-"), entry.get("status", "-")),
              "from %s" % (entry.get("client") or "-")]
-    for label, key in (("took", "took"), ("answer", "answer"), ("http", "http"), ("via", "forwarded"), ("agent", "agent"), ("accept", "accept"), ("login", "login"), ("cookies", "cookies"), ("note", "note")):
+    for label, key in (("took", "took"), ("answer", "answer"), ("http", "http"), ("via", "forwarded"), ("agent", "agent"), ("accept", "accept"), ("login", "login"), ("cookies", "cookies"), ("other headers", "headers"), ("note", "note")):
         if entry.get(key):
             parts.append("%s: %s" % (label, entry[key]))
     return "; ".join(parts)

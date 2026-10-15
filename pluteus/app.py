@@ -118,7 +118,8 @@ class AccessLog:
         forwarded = ", ".join("%s=%s" % (k[2:], headers[k][:60]) for k in ("x-forwarded-for", "x-forwarded-proto", "x-forwarded-host") if k in headers)
         cookies = ", ".join(sorted({c.split("=", 1)[0].strip()[:20] for c in headers.get("cookie", "").split(";") if "=" in c})[:6])
         scheme = headers.get("authorization", "").split(" ", 1)[0][:12]
-        return {"method": scope.get("method", "-"), "target": target[:200], "status": status, "client": client[0] if client else "-",
+        names = ", ".join(sorted(h for h in headers if h not in ("host", "user-agent", "accept", "cookie", "authorization"))[:14])
+        return {"headers": names, "method": scope.get("method", "-"), "target": target[:200], "status": status, "client": client[0] if client else "-",
                 "forwarded": forwarded, "agent": headers.get("user-agent", "")[:120], "accept": headers.get("accept", "")[:80],
                 "login": note.get("login") or (("%s header (not checked)" % scheme) if scheme else ""),
                 "cookies": cookies, "note": note.get("note", "")}
@@ -266,7 +267,9 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
     thumb_gate = threading.BoundedSemaphore(3)
     backup_dir = os.path.join(cfg.data_dir, "backups") if cfg.data_dir else ""
     housekeeping_due = [0.0]
-    challenge = {"WWW-Authenticate": 'Basic realm="%s", charset="UTF-8"' % cfg.realm}
+    # Only the realm: some reader apps parse the challenge themselves and give up on the optional charset part (RFC 7617), and then never send
+    # a login. Every browser and app sends UTF-8 anyway, and the Latin-1 of older apps is read as well (auth.parse_basic).
+    challenge = {"WWW-Authenticate": 'Basic realm="%s"' % cfg.realm}
     cookie_path = cfg.base_path or "/"
 
     # ---- identity ---------------------------------------------------------------

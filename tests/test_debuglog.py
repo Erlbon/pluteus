@@ -111,3 +111,12 @@ def test_the_debug_pages_need_an_admin_and_a_same_site_post(tmp_path):
     assert admin.post("/debug/on", headers={**BOSS, "content-type": FORM["content-type"]}).status_code == 403          # no Origin
     assert not app.state.debuglog.active()
     assert site.get("/debug").status_code in (401, 404, 303)                                                        # not on the public site
+
+
+def test_the_challenge_has_only_a_realm_and_the_debug_line_lists_the_other_header_names(tmp_path):
+    admin, site, app = pair(tmp_path)
+    admin.post("/debug/on", headers={**BOSS, **FORM})
+    r = site.get("/opds", headers={"X-Odd-Login": "secret-value-1", "Accept-Language": "nb"})
+    assert r.status_code == 401 and r.headers["www-authenticate"] == 'Basic realm="pluteus"'
+    text = " ".join(t for _, t in app.state.debuglog.lines())
+    assert "other headers: " in text and "x-odd-login" in text and "accept-language" in text and "secret-value-1" not in text
