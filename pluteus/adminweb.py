@@ -10,12 +10,14 @@ from html import escape
 from . import __version__
 from .web import Ctx, _size, layout, scheme_button
 
-NAV = (("status", "/", "Status"), ("libraries", "/libraries", "Libraries"), ("security", "/security", "Security"), ("users", "/users", "Users"))
+NAV = (("status", "/", "Status"), ("libraries", "/libraries", "Libraries"), ("security", "/security", "Security"), ("users", "/users", "Users"),
+       ("debug", "/debug", "Debug"))
 FLASH = {
     "unlocked": "The lock is cleared.", "nothing": "There was nothing to clear.", "forgot": "That device is forgotten.",
     "signedout": "Signed out everywhere (sessions and known devices removed).",
     "libadded": "Library added. It is available now.", "libremoved": "Library removed. Nothing on disk was touched.",
-    "added": "User added.", "password": "Password changed.", "access": "Access saved.", "removed": "User removed.", "keyrevoked": "App key revoked.", "stopped": "That stream is stopped.",
+    "added": "User added.", "password": "Password changed.", "access": "Access saved.", "removed": "User removed.", "keyrevoked": "App key revoked.", "debugon": "Debug logging is on for 15 minutes.",
+    "debugoff": "Debug logging is off.", "debugcleared": "The debug lines are cleared.", "stopped": "That stream is stopped.",
 }
 
 
@@ -266,6 +268,30 @@ def libraries_page(ctx: Ctx, roots: list, can_browse: bool, can_edit: bool, flas
 
 
 # ---- security ---------------------------------------------------------------------------------------------------------------
+def debug_page(ctx: Ctx, always: bool, remaining: int, lines: list, flash: str = "") -> str:
+    """Debug logging: switch it on for a while, read what the site was asked, download it with the diagnostics."""
+    if always:
+        state = _light("warn", "on all the time (debug = true in the config)") + " <span class='pl-muted'>&middot; remove that line and restart to stop it</span>"
+        controls = ""
+    elif remaining:
+        state = _light("warn", "on, switches itself off in %s" % duration(remaining))
+        controls = _post("/debug/on", {}, "Another 15 minutes") + " " + _post("/debug/off", {}, "Switch off")
+    else:
+        state = _light("off", "off")
+        controls = _post("/debug/on", {}, "Switch on for 15 minutes")
+    controls += " " + _post("/debug/clear", {}, "Clear the lines") if lines else ""
+    note = ("<p class='pl-muted'>While it is on, every request to the site leaves one line here and in the log: the time, what was asked "
+            "(the names of query parameters, never their values), the answer, who asked (address, what the proxy said, the app's name), "
+            "and for a login what could be said about it: how long the name and password are, whether the name matches a user, why it was "
+            "refused. <strong>Never recorded:</strong> passwords, keys, cookie values, query values, file contents. Nothing is written to disk, "
+            "and a restart forgets the lines.</p>")
+    rows = [[escape(t), escape(text)] for t, text in lines[:200]]
+    table = _table(["Time", "Request"], rows, "Nothing recorded yet." if (always or remaining) else "Switch it on, try the thing that fails, then come back.")
+    download = ("<p><a class='pl-btn' href='/debug/download'>Download diagnostics</a> <span class='pl-muted'>"
+                "(version, settings summary and these lines, as one text file to send with a bug report)</span></p>")
+    return page(ctx, "Debug", "debug", _box("Debug logging", "<p>%s</p><p>%s</p>%s" % (state, controls, note)) + download + _box("What the site was asked", table), flash)
+
+
 def security_page(ctx: Ctx, locks: list, devices: list, sessions: dict, flash: str = "") -> str:
     lock_rows = []
     for r in locks:

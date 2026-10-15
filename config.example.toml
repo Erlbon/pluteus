@@ -18,6 +18,8 @@ page_size = 50              # entries per OPDS / web page
 # relay = false      # OFF by default. true: a radio station a browser cannot play directly (plain http on an https site, or a server that refuses the browser)
 #                    # goes through this server instead. Only for users with an upload folder; at most relay_streams_user streams per user and
 #                    # relay_streams_total in all are open at once (defaults 2 and 6). Uses the server's upload bandwidth.
+# debug = false      # OFF by default. true: debug logging is on ALL the time (every request gets a line in the log: what was asked, who asked, why a login was
+#                    refused; never passwords, keys or cookie values). For a short look, use the admin page, Debug, instead: it switches itself off after 15 minutes.
 # relay_streams_user = 2
 # relay_streams_total = 6
 # relay_key = "a long passphrase"   # encrypts the stored logins and headers (Settings > My streams). Without it pluteus makes a key in the data folder

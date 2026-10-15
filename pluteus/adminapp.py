@@ -425,6 +425,48 @@ def create_admin_app(main_app) -> Starlette:
         log.info("admin %s: relay stream %s stopped (%s)", user.name, number, "found" if found else "already gone")
         return done("/", "stopped" if found else "nothing")
 
+    # ---- debug logging (see debuglog.py) -----------------------------------------------------------------------------------
+    debug = st.debuglog
+
+    @guarded
+    async def debug_page(request, user):
+        return HTMLResponse(adminweb.debug_page(ctx, debug.always, debug.remaining(), debug.lines(), request.query_params.get("ok", "")))
+
+    @guarded
+    async def debug_on(request, user):
+        debug.enable()
+        log.info("admin %s: debug logging switched on", user.name)
+        return done("/debug", "debugon")
+
+    @guarded
+    async def debug_off(request, user):
+        debug.disable()
+        return done("/debug", "debugoff")
+
+    @guarded
+    async def debug_clear(request, user):
+        debug.clear()
+        return done("/debug", "debugcleared")
+
+    def diagnostics_text() -> str:
+        """Version, a summary of the settings (names and switches, no paths, keys or addresses) and the debug lines: for a bug report."""
+        lines = ["pluteus %s, python %s, %s" % (__version__, platform.python_version(), platform.platform()),
+                 "running for %s" % adminweb.duration(time.time() - st.started),
+                 "base_path=%r trust_proxy=%s cookie_secure=%s" % (cfg.base_path, cfg.trust_proxy, cfg.cookie_secure),
+                 "services: subsonic=%s webdav=%s kosync=%s thumbnails=%s relay=%s uploads=%s debug_config=%s"
+                 % (cfg.subsonic, cfg.webdav, cfg.kosync, cfg.thumbnails, cfg.relay, bool(cfg.uploads_dir), cfg.debug),
+                 "libraries: %s" % ", ".join(sorted(st.library.cfg.roots)),
+                 "users: %d, with an app key: %d" % (len(auth.users), len(state.appkey_users())),
+                 "debug logging: %s" % ("on (config)" if debug.always else ("on, %d s left" % debug.remaining() if debug.remaining() else "off")),
+                 "", "--- debug lines, oldest first ---"]
+        lines += ["%s  %s" % (t, text) for t, text in reversed(debug.lines())] or ["(none recorded)"]
+        return "\n".join(lines) + "\n"
+
+    @guarded
+    async def debug_download(request, user):
+        text = await run_in_threadpool(diagnostics_text)
+        return PlainTextResponse(text, headers={"Content-Disposition": 'attachment; filename="pluteus-diagnostics.txt"', "Cache-Control": "no-store"})
+
     @guarded
     async def relay_stop_channel(request, user):
         form = await form_of(request)
@@ -435,6 +477,8 @@ def create_admin_app(main_app) -> Starlette:
     routes = [
         Route("/relay/stop", relay_stop, methods=["POST"]),
         Route("/relay/stop-channel", relay_stop_channel, methods=["POST"]),
+        Route("/debug", debug_page), Route("/debug/on", debug_on, methods=["POST"]), Route("/debug/off", debug_off, methods=["POST"]),
+        Route("/debug/clear", debug_clear, methods=["POST"]), Route("/debug/download", debug_download),
         Route("/users/appkey", make_appkey, methods=["POST"]), Route("/users/appkey/revoke", revoke_appkey, methods=["POST"]),
         Route("/", status), Route("/logout", logout, methods=["POST"]), Route("/security", security),
         Route("/libraries", libraries), Route("/libraries/add", library_add, methods=["POST"]),

@@ -20,7 +20,7 @@ import time
 from types import SimpleNamespace
 from pathlib import Path
 from html import escape as escape_attr
-from urllib.parse import parse_qs, quote, urlencode, urlsplit
+from urllib.parse import parse_qs, parse_qsl, quote, urlencode, urlsplit
 
 from python_multipart.exceptions import MultipartParseError
 from starlette.applications import Starlette
@@ -32,7 +32,7 @@ from starlette.responses import (FileResponse, HTMLResponse, JSONResponse, Plain
                                  RedirectResponse, Response, StreamingResponse)
 from starlette.routing import Route
 
-from . import aboutfiles, cbz, kinds, markdown, mediainfo, notes, opds, opds2, radio, relay, stationsave, subtitles, tabular, thumbs, textview, uploads, vault, web, ziputil
+from . import aboutfiles, cbz, debuglog, kinds, markdown, mediainfo, notes, opds, opds2, radio, relay, stationsave, subtitles, tabular, thumbs, textview, uploads, vault, web, ziputil
 from .auth import Authenticator
 from .bodies import read_limited
 from .cbz import CbzError
@@ -101,13 +101,34 @@ class AccessLog:
     """One line per request (client, request, status) with secrets removed; replaces uvicorn's own access log, which prints the
     full query string."""
 
-    def __init__(self, app):
+    def __init__(self, app, debug=None):
         self.app = app
+        self.debug = debug                            # debuglog.DebugLog, or None
+
+    def debug_entry(self, scope, status: int, note: dict) -> dict:
+        """The fields of one request for the debug log: names and kinds, never values of passwords, keys, cookies or query parameters."""
+        headers = {}
+        for key, value in scope.get("headers", ()):
+            headers.setdefault(key.decode("latin-1").lower(), value.decode("latin-1"))
+        client = scope.get("client")
+        query = parse_qsl(scope.get("query_string", b"").decode("latin-1"), keep_blank_values=True)
+        target = scope.get("raw_path", b"").decode("latin-1").split("?", 1)[0] or scope.get("path", "")
+        if query:
+            target += "?" + "&".join(sorted({k[:30] for k, _ in query})[:10]) + " (names only)"
+        forwarded = ", ".join("%s=%s" % (k[2:], headers[k][:60]) for k in ("x-forwarded-for", "x-forwarded-proto", "x-forwarded-host") if k in headers)
+        cookies = ", ".join(sorted({c.split("=", 1)[0].strip()[:20] for c in headers.get("cookie", "").split(";") if "=" in c})[:6])
+        scheme = headers.get("authorization", "").split(" ", 1)[0][:12]
+        return {"method": scope.get("method", "-"), "target": target[:200], "status": status, "client": client[0] if client else "-",
+                "forwarded": forwarded, "agent": headers.get("user-agent", "")[:120], "accept": headers.get("accept", "")[:80],
+                "login": note.get("login") or (("%s header (not checked)" % scheme) if scheme else ""),
+                "cookies": cookies, "note": note.get("note", "")}
 
     async def __call__(self, scope, receive, send):
         if scope["type"] != "http":
             return await self.app(scope, receive, send)
         status = [0]
+        note: dict = {}
+        scope["pluteus_debug"] = note                 # resolve() adds what it learned about the login; read when the response is done
 
         async def wrapped(message):
             if message["type"] == "http.response.start":
@@ -118,6 +139,8 @@ class AccessLog:
         finally:
             client = scope.get("client")
             access_log.info('%s - "%s %s" %s', client[0] if client else "-", scope.get("method", "-"), _logged_target(scope), status[0])
+            if self.debug is not None and self.debug.active():
+                self.debug.record(self.debug_entry(scope, status[0], note))
 
 
 def csp_for_page() -> str:
@@ -304,6 +327,20 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
             hints.append("the password is empty")
         return "wrong password (%d characters%s)" % (len(password), "; " + "; ".join(hints) if hints else "")
 
+    def mark(request: Request, text: str, key: str = "login") -> None:
+        """Tell the debug log (when it is on) what happened to this request's login."""
+        if debug.active():
+            holder = request.scope.get("pluteus_debug")
+            if holder is not None:
+                holder[key] = (holder.get(key, "") + " " + text).strip()
+
+    def describe_login(creds) -> str:
+        if creds is None:
+            return "Basic header that could not be read"
+        name, password = creds
+        who = "exactly" if name in auth.users else ("ignoring case and spaces" if auth.canonical_name(name) in auth.users else "no such user")
+        return "Basic, name %d characters (matches a user: %s), password %d characters" % (len(name), who, len(password))
+
     async def resolve(request: Request):
         """(user or None, seconds to wait when throttled). Password hashing and the hourly housekeeping run on
         worker threads, never on the event loop."""
@@ -316,15 +353,19 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
             await run_in_threadpool(state.purge_appkeys, set(auth.users))
         user = sessions.user_for(request.cookies.get(COOKIE), auth.users)
         if user:
+            mark(request, "session cookie accepted for the signed-in user")
             return user, 0
         header = request.headers.get("authorization")
         if header:
             user = auth.cached_user(header)
             if user:
+                mark(request, "Basic login accepted (checked a moment ago)")
                 return user, 0
             if auth.known_bad(header):                  # the same wrong credentials again: no hashing, no new strike
+                mark(request, "Basic login refused: exactly these credentials failed a moment ago")
                 return None, 0
             creds = auth.parse_basic(header)
+            mark(request, describe_login(creds) + ".")
             name, ip = (auth.canonical_name(creds[0]) if creds else ""), limiter_ip(request)       # the throttle counts the user a login means, however it is spelled
             known, device_id, _ = device_state(request, name)
             wait = limiter.wait_seconds(name, ip, device=device_id, known=known)
@@ -332,12 +373,15 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
                 # Locked for strangers. Credentials that were verified earlier (a reader app that has logged in before)
                 # still work: only someone who already knows the password can send them.
                 trusted = auth.trusted_user(header)
+                mark(request, "Locked for %d s for a new device%s." % (wait, "; accepted because these credentials were verified earlier" if trusted else ""))
                 return (trusted, 0) if trusted else (None, wait)
             user = await run_in_threadpool(auth.authenticate, header)
             if user:
                 limiter.success(name, device_id)
+                mark(request, "Accepted as %r." % user.name)
                 return user, 0
             note_failure(name, ip, device_id, known)
+            mark(request, "Refused: " + refusal_reason(creds) + ".")
             log.warning("login refused for %r from %s: %s", (name or "")[:40], ip, refusal_reason(creds))
             return None, 0
         if cfg.anonymous_user:
@@ -2072,7 +2116,10 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
     if cfg.kosync:
         from .kosync import KoSync
         routes.append(Route("/kosync/{route:path}", KoSync(auth, state, Throttle()).handle, methods=["GET", "PUT", "POST"]))
-    app = Starlette(routes=routes, middleware=[Middleware(AccessLog), Middleware(SecurityHeaders)])
+    debug = debuglog.DebugLog(always=cfg.debug)
+    if cfg.debug:
+        log.warning("debug logging is ON (debug = true in the config): every request is described in the log; no passwords, keys or cookie values")
+    app = Starlette(routes=routes, middleware=[Middleware(AccessLog, debug=debug), Middleware(SecurityHeaders)])
     app.state.library = lib
     app.state.state = state
     app.state.sessions = sessions
@@ -2083,6 +2130,7 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
     # What the admin page (adminapp.py, on its own port) shares with this app: the same state, throttle and users, the
     # same configuration, and the public routes for the stylesheets, icons and themes.
     app.state.cfg = cfg
+    app.state.debuglog = debug
     app.state.relay_limits = relay_limits
     app.state.relay_vault = vault_state
     app.state.config_path = config_path

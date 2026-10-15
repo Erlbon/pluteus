@@ -26,6 +26,16 @@ most 10 seconds, and the downloaded bytes are never kept: they must open as a PN
 256 pixels is written beside the station file (SVG is not taken). A logo that fails costs only that logo. The same guard is meant for any later
 feature that fetches an address on the server's behalf.
 
+## Debug logging (`debug = true`, or the admin page for 15 minutes)
+
+Off by default. While on, each request to the site leaves one line in the log and in a short list in memory (`pluteus/debuglog.py`): method, path,
+the *names* of query parameters, status, client address, what the proxy said (`X-Forwarded-*`), User-Agent and Accept, the names of the cookies, and
+for a login its kind and what can be said without the secret (how long the name and password are, whether the name matches a user, why it was
+refused). **Never recorded:** passwords, keys and tokens, cookie values, query values, request bodies, file contents. Nothing is written to disk by
+it, and a restart forgets the lines. `debug = true` keeps it on for as long as the server runs (the owner asked for that: a config line is a
+deliberate choice); the admin switch ends by itself after 15 minutes. The admin page can download a diagnostics text with the version, a summary of
+the settings (names and switches, no paths, keys or addresses) and the lines. It is on the admin page only (local network).
+
 ## Notes written from the browser
 
 Libraries are read-only by design, so a note edited or added on a folder page is a *personal copy* in the user's own upload folder
