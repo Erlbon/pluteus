@@ -125,7 +125,8 @@ def clean_entry(auth_type: str, user: str, password: str, token: str, headers_te
         raise ValueError("At most %d headers." % MAX_HEADERS)
     hosts = [h.strip().lower().rstrip(".") for h in re.split(r"[,\s]+", hosts_text or "") if h.strip()]
     if not hosts or len(hosts) > MAX_HOSTS or not all(_HOSTNAME.match(h) for h in hosts):
-        raise ValueError("Name the host names these may be sent to, for example stream.example.org (up to %d, no http:// and no path)." % MAX_HOSTS)
+        raise ValueError("Fill in the stream's server: the part of its address after http:// or https:// and before the first /, for example stream.example.org. "
+                         "The login is sent only to the server you list here (several are separated by commas, at most %d)." % MAX_HOSTS)
     entry["hosts"] = sorted(set(hosts))
     if entry["auth"]["type"] == "none" and not entry["headers"]:
         raise ValueError("Give a login, a token or at least one header.")

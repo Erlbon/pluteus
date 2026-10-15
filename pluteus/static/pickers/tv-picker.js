@@ -203,6 +203,15 @@
     reader.onerror = function () { m3uSay("The file could not be read.", true); };
     reader.readAsText(f);
   });
+  /* one channel by its address: it joins the list (ticked) so it is saved like any other */
+  $("oneAdd").addEventListener("click", function () {
+    var url = $("oneUrl").value.trim(), name = clean($("oneName").value) || "Channel";
+    if (!/^https?:\/\/[^\s]+$/i.test(url)) { m3uSay("Give a plain http or https address.", true); return; }
+    shown.unshift({ id: "", name: name, country: "", cats: [], url: url, quality: "", labels: [], logo: "", on: true, test: "" });
+    limit = Math.max(limit, PAGE); render();
+    $("oneName").value = ""; $("oneUrl").value = "";
+    m3uSay("Added " + name + ". It is ticked in the list below: choose “Save to my IPTV folder”.");
+  });
   if (relayOn) $("m3uUrlBar").hidden = false;
   $("m3uFetch").addEventListener("click", function () {
     var url = $("m3uUrl").value.trim();

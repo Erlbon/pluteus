@@ -100,3 +100,11 @@ def test_a_saved_ts_channel_opens_as_a_channel_not_as_radio(up):
     assert 'pluteus-kind="tv"' in saved and "/proxy/ts/stream/" in saved
     page = me.get("/view/uploads/IPTV/NRK%201.m3u", headers={"Accept": "text/html"}).text
     assert "id='tv'" in page and "pl-iptv" in page
+
+
+def test_the_tv_picker_has_the_single_channel_form_and_the_import(up):
+    me, app, folder = up
+    page = me.get("/stations/tv", headers={"Accept": "text/html"}).text
+    assert "id='oneAdd'" in page.replace('"', "'") and "id='m3uFile'" in page.replace('"', "'")
+    js = me.get("/static/pickers/tv-picker.js").text
+    assert "oneAdd" in js and "unshift" in js

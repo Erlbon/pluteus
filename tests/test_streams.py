@@ -121,7 +121,7 @@ def test_the_page_stores_an_entry_and_never_shows_or_keeps_a_secret_in_clear(cfg
 
 def test_bad_input_is_refused_with_a_reason_and_nothing_is_stored(cfg, tmp_path, station):
     me, folder = signed_in(cfg, tmp_path)
-    for bad, words in ((dict(hosts=""), "host names"), (dict(headers="Host:+evil"), "cannot be set"), (dict(user="a:b"), "colon"),
+    for bad, words in ((dict(hosts=""), "stream's server"), (dict(headers="Host:+evil"), "cannot be set"), (dict(user="a:b"), "colon"),
                        (dict(login="none", headers=""), "at least one header"), (dict(name="a%22b"), "quotation")):
         r = save(me, **bad)
         assert r.status_code == 200 and words in r.text, bad
