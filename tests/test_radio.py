@@ -105,3 +105,11 @@ def test_other_files_and_as_text_keep_the_text_viewer_and_the_normal_policy(clie
     assert "media-src" not in local.headers["content-security-policy"]
     text = c.get("/view/radio/NRK.m3u?as=text", headers={**auth, **HTML})
     assert "id='radio'" not in text.text and "NRK P1" in text.text
+
+
+def test_a_transport_stream_address_opens_as_a_channel_without_any_marker():
+    from pluteus import radio
+    for address in ("http://tv.lan/proxy/ts/stream/46ae7592-3233-4e52-8ed5-cdf9154d45ed", "http://h/live/ch1.ts", "http://h/x/stream.M2TS?token=1", "https://h/a/b.m3u8"):
+        assert radio.looks_like_tv("", [("C", address)]), address
+    for address in ("http://h/stream", "https://h/radio.mp3", "http://h/listen/ts-radio", "http://h:8000/live.aac"):
+        assert not radio.looks_like_tv("", [("R", address)]), address
