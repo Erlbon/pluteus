@@ -32,7 +32,7 @@ from starlette.responses import (FileResponse, HTMLResponse, JSONResponse, Plain
                                  RedirectResponse, Response, StreamingResponse)
 from starlette.routing import Route
 
-from . import aboutfiles, cbz, debuglog, kinds, markdown, mediainfo, notes, opds, opds2, radio, relay, stationsave, subtitles, tabular, thumbs, textview, uploads, vault, web, ziputil
+from . import aboutfiles, cbz, debuglog, keypath, kinds, markdown, mediainfo, notes, opds, opds2, radio, relay, stationsave, subtitles, tabular, thumbs, textview, uploads, vault, web, ziputil
 from .auth import Authenticator
 from .bodies import read_limited
 from .cbz import CbzError
@@ -84,7 +84,7 @@ access_log = logging.getLogger("pluteus.access")
 def _logged_target(scope) -> str:
     """The request line for the access log with every secret removed: Subsonic apps send p= (the key, or even the password),
     apiKey=, t= and s= in the address, and /join/TOKEN is a one-time access link."""
-    path = scope.get("path", "")
+    path = keypath.masked(scope.get("path", ""))                 # /k/<app key>/opds: the key in an address
     if "/join/" in path:
         path = path.split("/join/")[0] + "/join/***"
     query = scope.get("query_string", b"").decode("latin-1")
@@ -112,7 +112,7 @@ class AccessLog:
             headers.setdefault(key.decode("latin-1").lower(), value.decode("latin-1"))
         client = scope.get("client")
         query = parse_qsl(scope.get("query_string", b"").decode("latin-1"), keep_blank_values=True)
-        target = scope.get("raw_path", b"").decode("latin-1").split("?", 1)[0] or scope.get("path", "")
+        target = keypath.masked(scope.get("raw_path", b"").decode("latin-1").split("?", 1)[0] or scope.get("path", ""))
         if query:
             target += "?" + "&".join(sorted({k[:30] for k, _ in query})[:10]) + " (names only)"
         forwarded = ", ".join("%s=%s" % (k[2:], headers[k][:60]) for k in ("x-forwarded-for", "x-forwarded-proto", "x-forwarded-host") if k in headers)
@@ -2147,7 +2147,8 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
     debug = debuglog.DebugLog(always=cfg.debug)
     if cfg.debug:
         log.warning("debug logging is ON (debug = true in the config): every request is described in the log; no passwords, keys or cookie values")
-    app = Starlette(routes=routes, middleware=[Middleware(AccessLog, debug=debug), Middleware(SecurityHeaders)])
+    app = Starlette(routes=routes, middleware=[Middleware(AccessLog, debug=debug), Middleware(SecurityHeaders),
+                                              Middleware(keypath.KeyPath, auth=auth, base=cfg.base_path)])
     app.state.library = lib
     app.state.state = state
     app.state.sessions = sessions

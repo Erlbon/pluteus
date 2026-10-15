@@ -26,6 +26,16 @@ most 10 seconds, and the downloaded bytes are never kept: they must open as a PN
 256 pixels is written beside the station file (SVG is not taken). A logo that fails costs only that logo. The same guard is meant for any later
 feature that fetches an address on the server's behalf.
 
+## An app key in the OPDS address (`/k/<key>/opds`)
+
+For reader apps that never send the login they are given. The key is the music-app key of a user (admin page, Users), 144 random bits, so it cannot be guessed;
+a wrong one is sent on as a wrong password (counted by the same limits, locked for strangers like any other). `pluteus/keypath.py` takes `/k/<key>` off the
+path and gives the request the Basic login the key stands for, so the rest of the server is unchanged: the user stays read-only (no uploads, no changes, no admin),
+and only the paths a feed links to answer (`/opds`, downloads, covers, thumbnails, comic pages): the web pages, uploads, the admin page, Subsonic, WebDAV and every
+write are refused through a key address. Links in feeds answered this way carry the key so the app can follow them. **The trade-off:** the key is a secret in an
+address: it ends up in the app's catalogue list and in the logs of anything in front of pluteus (a proxy such as Caddy logs the whole address). pluteus masks it in
+its own access and debug logs. Treat the address like a password; revoking the app key ends every address that holds it.
+
 ## Debug logging (`debug = true`, or the admin page for 15 minutes)
 
 Off by default. While on, each request to the site leaves one line in the log and in a short list in memory (`pluteus/debuglog.py`): method, path,

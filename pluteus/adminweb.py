@@ -362,7 +362,12 @@ def _new_key_box(new_key: tuple, address: str) -> str:
                 "<p class='pl-muted'>Use it as the <b>password</b>, with the user name <code>%s</code>, in reader apps (OPDS: PocketBook, "
                 "Moon+ ...), music apps (Subsonic: Symfonium, Tempo ...; the server address is <code>%s</code>), KOReader's progress sync "
                 "(the address ends in /kosync) and WebDAV. A key can only read: no uploads, no changes, no admin page. Subsonic apps that "
-                "support API keys can use it as the key without a user name.</p>" % (escape(secret), escape(name), escape(address)))
+                "support API keys can use it as the key without a user name.</p>"
+                "<p class='pl-muted'><b>A reader app that cannot log in</b> (the PocketBook Android app does not send the login to this server): put the "
+                "key in the catalogue address and leave the login boxes empty: <code>%s/k/%s/opds</code>. For use away from home, replace "
+                "<code>%s</code> with your public address (the one with https). Anyone who has that address can read what this user may read, so "
+                "keep it private; revoking the key ends it.</p>"
+                % (escape(secret), escape(name), escape(address), escape(address), escape(secret), escape(address)))
 
 
 def users_page(ctx: Ctx, users: list, root_names: list, me: str, flash: str = "", error: str = "",

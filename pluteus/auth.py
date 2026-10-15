@@ -55,6 +55,15 @@ class Authenticator:
         self._bad = {}
         self._trusted = {}
 
+    def user_for_key(self, key: str):
+        """The user name whose app key this is, or None (see keypath.py). Compared in constant time; there are only a few users."""
+        found = None
+        for name in list(self.users):
+            secret = self.appkeys(name)
+            if secret and hmac.compare_digest(secret.encode("utf-8"), key.encode("utf-8")):
+                found = name
+        return found
+
     def canonical_name(self, name: str) -> str:
         """The user name a login means. Reader apps on an e-reader keyboard often capitalise the first letter or add a space: a name that is
         exactly one user's name is that user; otherwise, ignoring spaces around it and letter case, the one user it matches. Passwords are
