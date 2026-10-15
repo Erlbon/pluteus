@@ -3,6 +3,7 @@
 Release notes are taken from the section of the tagged version (`## 0.5.0 ...`).
 
 ## Unreleased
+- **Apostrophes do not count when a release is matched with a folder:** "What's Up?" matches a folder called "Whats Up".
 - **Notes load after the folder list, and sit under it.** The folder page no longer opens the note (or looks for one) before it answers: it is built from the listing alone, with an empty place under the list, and `notes-lazy.js` fetches the note (`/api/folder-note/...`) and fills the place. A slow drive or a long note can no longer hold the folder list back. Folders that cannot have a note get no place and no fetch.
 - **A discography shows what the library has and what is missing.** Under a heading such as Studio albums or Discography, each release in the note (plain `- Title (Year)` lines) gets a badge, "in library" or "missing", by comparing the title with the album folders next to the note (ignoring year, brackets, punctuation, `&` and `and`). It is computed when the page is shown, so it follows the folders; nothing is written into the note and the note needs no links. See docs/notes-format.md.
 - **"Play all" lists each folder once.** The "About" lookup used a second listing of every album folder; it now reuses the listing the walk already made (23 listings for an artist with 11 albums became 12).

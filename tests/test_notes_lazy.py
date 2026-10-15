@@ -67,6 +67,7 @@ def test_release_titles_match_folder_names_ignoring_year_ampersand_and_brackets(
     assert key("Speak & Spell (1981)") == key("[1981] - Speak And Spell") == key("1981 - Speak and Spell") == "speak and spell"
     assert key("Violator") == key("[1990] - Violator (Remastered)") == "violator"
     assert key("Playing the Angel (2005)") != key("Sounds of the Universe")
+    assert key("What's Up?") == key("Whats Up") == key("What’s Up? (1993)") == "whats up"                  # apostrophes do not count
 
 
 def test_a_discography_shows_which_releases_the_folders_have_and_which_are_missing(lib):

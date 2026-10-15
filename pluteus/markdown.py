@@ -76,7 +76,10 @@ RELEASE_HEADINGS = {"discography", "studio albums", "albums", "live albums", "li
 def release_key(text: str) -> str:
     """What a release title and an album folder name share: lower case, "&" as "and", a leading year and any (year) or [year] group left out,
     everything that is not a letter or digit as one space. "Speak & Spell (1981)" and "[1981] - Speak And Spell" are the same key."""
-    text = re.sub(r"[(\[][^)\]]*[)\]]", " ", unescape(text).lower().replace("&", " and "))
+    text = unescape(text).lower().replace("&", " and ")
+    for apostrophe in ("'", "’", "‘", "`"):                 # What's Up? and Whats Up are the same title
+        text = text.replace(apostrophe, "")
+    text = re.sub(r"[(\[][^)\]]*[)\]]", " ", text)
     text = re.sub(r"^\W*\d{4}\W+(?=\w)", "", text.strip())
     return re.sub(r"[\W_]+", " ", text).strip()
 
