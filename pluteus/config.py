@@ -97,6 +97,7 @@ class Config:
     relay_streams_user: int = 2    # most streams one user may have open through the relay at once
     relay_streams_total: int = 6   # most streams open through the relay at once, all users together
     debug: bool = False            # debug logging ALWAYS on (see debuglog.py); off by default. The admin page can also switch it on for 15 minutes
+    relay_allow: tuple = ()        # hosts pluteus may fetch even on a private address or an unusual port, as "host:port" (a media server on the same machine)
     relay_key: str = ""            # the key that encrypts stored logins and headers for protected streams; "" = pluteus makes one in the data folder (relay.key)
     update_check: bool = False     # the admin page asks GitHub once a day for a newer version and security advisories (opt-in)
     update_repo: str = "Erlbon/pluteus"   # owner/name of the repository to ask
@@ -110,7 +111,7 @@ class Config:
 # [[roots]] by mistake would silently do nothing. Every table's keys are therefore checked.
 _SERVER_KEYS = {"host", "port", "page_size", "base_path", "realm", "auth_cache_seconds", "anonymous_user",
                 "session_days", "cookie_secure", "trust_proxy", "allowed_hosts", "opds_pse", "show_all_files", "text_view_kb",
-                "admin_port", "admin_host", "site_port", "update_check", "update_repo", "share_target", "join_token", "join_user", "admin_url", "library_bases", "subsonic", "webdav", "kosync", "thumbnails", "relay", "relay_streams_user", "relay_streams_total", "relay_key", "debug"}
+                "admin_port", "admin_host", "site_port", "update_check", "update_repo", "share_target", "join_token", "join_user", "admin_url", "library_bases", "subsonic", "webdav", "kosync", "thumbnails", "relay", "relay_streams_user", "relay_streams_total", "relay_key", "relay_allow", "debug"}
 _GLOBAL_KEYS = {"exclude", "extensions", "display_strip", "adult_marker", "private_marker", "hidden_marker", "metadata", "cache_dir",
                 "data_dir", "themes_dir", "theme", "uploads_dir", "upload_max_mb", "upload_quota_mb"}
 _ROOT_KEYS = {"name", "path", "notes"}
@@ -134,6 +135,22 @@ def _in_range(table: dict, key: str, default: int, low: int, high: int) -> int:
     if not low <= value <= high:
         raise ConfigError("%s must be between %d and %d" % (key, low, high))
     return value
+
+
+_HOST_PORT = re.compile(r"[A-Za-z0-9._-]{1,253}:[0-9]{1,5}")
+
+
+def _host_ports(value) -> tuple:
+    """relay_allow: a list of "host:port" strings (exact, no wildcards, no paths)."""
+    if not isinstance(value, (list, tuple)):
+        raise ConfigError("relay_allow must be a list of \"host:port\" strings")
+    out = []
+    for item in value:
+        text = str(item).strip().lower()
+        if not _HOST_PORT.fullmatch(text) or not 0 < int(text.rsplit(":", 1)[1]) < 65536:
+            raise ConfigError("relay_allow entry %r must look like host:port (for example 192.168.1.99:9191)" % (item,))
+        out.append(text)
+    return tuple(out)
 
 
 def _check_uploads(uploads_dir: str, roots: dict, users: dict, opts: dict) -> None:
@@ -273,7 +290,7 @@ def parse_config(data: dict, check_roots: bool = True) -> Config:
         admin_port=admin_port, admin_host=str(server.get("admin_host", "127.0.0.1")),
         site_port=_in_range(server, "site_port", 0, 0, 65535),
         relay=bool(server.get("relay", False)), debug=bool(server.get("debug", False)), relay_streams_user=_in_range(server, "relay_streams_user", 2, 1, 50),
-        relay_streams_total=_in_range(server, "relay_streams_total", 6, 1, 500), relay_key=str(server.get("relay_key", "")),
+        relay_streams_total=_in_range(server, "relay_streams_total", 6, 1, 500), relay_key=str(server.get("relay_key", "")), relay_allow=_host_ports(server.get("relay_allow", ())),
         library_bases=tuple(str(b) for b in server.get("library_bases", ())), admin_url=_admin_url(server.get("admin_url", "")), join_token=str(server.get("join_token", "")), join_user=str(server.get("join_user", "")),
         share_target=bool(server.get("share_target", True)), subsonic=bool(server.get("subsonic", False)), webdav=bool(server.get("webdav", False)), kosync=bool(server.get("kosync", False)), thumbnails=bool(server.get("thumbnails", False)), update_check=bool(server.get("update_check", False)), update_repo=_repo_name(server.get("update_repo", "Erlbon/pluteus")),
         host=str(server.get("host", "127.0.0.1")), port=_in_range(server, "port", 8080, 1, 65535),

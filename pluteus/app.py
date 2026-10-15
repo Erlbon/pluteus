@@ -32,7 +32,7 @@ from starlette.responses import (FileResponse, HTMLResponse, JSONResponse, Plain
                                  RedirectResponse, Response, StreamingResponse)
 from starlette.routing import Route
 
-from . import aboutfiles, cbz, debuglog, keypath, kinds, markdown, mediainfo, notes, opds, opds2, radio, relay, stationsave, subtitles, tabular, thumbs, textview, uploads, vault, web, ziputil
+from . import aboutfiles, cbz, debuglog, fetchimage, keypath, kinds, m3uimport, markdown, mediainfo, notes, opds, opds2, radio, relay, stationsave, subtitles, tabular, thumbs, textview, uploads, vault, web, ziputil
 from .auth import Authenticator
 from .bodies import read_limited
 from .cbz import CbzError
@@ -1584,6 +1584,33 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
         return JSONResponse(result)
 
     @guarded("web")
+    async def stations_parse(request: Request, user):
+        """The channels of an IPTV playlist (an M3U): pasted or read from a file by the browser ({"text": ...}), or fetched by the server from an
+        address ({"url": ...}, only with the relay on, and only from a public address or a host listed in relay_allow). Returns them for the picker
+        to show; nothing is saved here."""
+        if not lib.uploads_enabled(user):
+            raise NotFound("no upload folder")
+        raw = await read_limited(request, 5_000_000)
+        if raw is None:
+            return JSONResponse({"error": "That playlist is too large."}, 413)
+        try:
+            data = json.loads(raw.decode("utf-8"))
+            text, url = data.get("text"), data.get("url")
+        except (ValueError, UnicodeDecodeError, AttributeError):
+            return JSONResponse({"error": "The request was not understood."}, 400)
+        if url:
+            if not cfg.relay:
+                return JSONResponse({"error": "The server fetches a playlist only when the relay is on (relay = true). Download the file and choose it instead."}, 400)
+            try:
+                body, _, _ = await run_in_threadpool(relay.fetch_body, str(url).strip(), m3uimport.MAX_TEXT)
+            except relay.Refused as e:
+                return JSONResponse({"error": e.message}, 400 if e.status < 500 else 502)
+            text = body.decode("utf-8-sig", "replace")
+        if not isinstance(text, str) or "#EXTINF" not in text.upper():
+            return JSONResponse({"error": "That does not look like an IPTV playlist (no #EXTINF lines)."}, 400)
+        return JSONResponse(await run_in_threadpool(m3uimport.parse, text))
+
+    @guarded("web")
     async def stations_save(request: Request, user):
         """Write the ticked stations as .m3u files into the user's upload folder (Radio/ or IPTV/)."""
         if not lib.uploads_enabled(user):
@@ -2069,6 +2096,7 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
         Route("/settings/streams", my_streams, methods=["GET", "POST"]),
         Route("/stations/{kind}", stations_page),
         Route("/api/stations", stations_save, methods=["POST"]),
+        Route("/api/stations/parse", stations_parse, methods=["POST"]),
         Route("/api/stations/missing", stations_missing),
         Route("/api/stations/logos", stations_logos, methods=["POST"]),
         Route("/api/queue/{root}/{path:path}", queue),
@@ -2144,6 +2172,7 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
     if cfg.kosync:
         from .kosync import KoSync
         routes.append(Route("/kosync/{route:path}", KoSync(auth, state, Throttle()).handle, methods=["GET", "PUT", "POST"]))
+    fetchimage.set_allowed(cfg.relay_allow)                     # the hosts the owner trusts on a private address (relay_allow)
     debug = debuglog.DebugLog(always=cfg.debug)
     if cfg.debug:
         log.warning("debug logging is ON (debug = true in the config): every request is described in the log; no passwords, keys or cookie values")

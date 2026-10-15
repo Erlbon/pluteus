@@ -28,6 +28,7 @@ def _text(value, limit: int = 120) -> str:
 def _file_text(kind: str, name: str, url: str, ident: str, group: str, logo: str = "") -> str:
     attrs = ""
     if kind == "tv":
+        attrs += ' pluteus-kind="tv"'                    # the page that plays it: a channel, whatever its address ends in
         if ident:
             attrs += ' tvg-id="%s"' % ident
         if group:

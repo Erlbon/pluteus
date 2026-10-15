@@ -167,6 +167,43 @@
     });
   });
 
+  /* ---- import a playlist (an M3U): the server parses it (and fetches it from an address when the relay is on); the channels are listed like search results ---- */
+  function m3uSay(text, bad) { var s = $("m3uStatus"); s.textContent = text; s.className = "status" + (bad ? " warn" : ""); }
+  function showImported(list) {
+    list.forEach(function (s) { if (s.group) categoryNames[s.group] = s.group; });
+    shown = list.map(function (s) {
+      return { id: s.id || "", name: s.name, country: "", cats: s.group ? [s.group] : [], url: s.url, quality: "", labels: [], logo: s.logo || "", on: false, test: "" };
+    });
+    limit = PAGE; render();
+  }
+  function parsePlaylist(body) {
+    m3uSay("Reading the playlist…");
+    return fetch(page.save + "/parse", { method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
+      .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, body: j }; }); })
+      .then(function (res) {
+        if (!res.ok) { m3uSay(res.body.error || "Could not read the playlist.", true); return; }
+        showImported(res.body.stations);
+        m3uSay(res.body.stations.length + " channels" + (res.body.skipped ? " (" + res.body.skipped + " entries skipped: not a plain http or https address, or over the limit)" : "") +
+               ". Tick the ones to save below.");
+      })
+      .catch(function () { m3uSay("The server could not be reached.", true); });
+  }
+  $("m3uFile").addEventListener("change", function () {
+    var f = this.files && this.files[0];
+    if (!f) return;
+    if (f.size > 4000000) { m3uSay("That file is larger than 4 MB.", true); return; }
+    var reader = new FileReader();
+    reader.onload = function () { parsePlaylist({ text: String(reader.result) }); };
+    reader.onerror = function () { m3uSay("The file could not be read.", true); };
+    reader.readAsText(f);
+  });
+  if (relayOn) $("m3uUrlBar").hidden = false;
+  $("m3uFetch").addEventListener("click", function () {
+    var url = $("m3uUrl").value.trim();
+    if (!url) { m3uSay("Give the playlist's address first.", true); return; }
+    parsePlaylist({ url: url });
+  });
+
   /* ---- saving ---- */
   function log(text, bad) { $("log").textContent = text; $("log").className = "log" + (bad ? " warn" : ""); }
   function attr(text) { return clean(text).replace(/"/g, "'"); }

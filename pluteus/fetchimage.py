@@ -27,15 +27,30 @@ class Refused(Exception):
     """The address or the reply is not acceptable (the logo is simply left out)."""
 
 
+# Hosts the owner has declared trusted (config: relay_allow = ["192.168.1.99:9191"]), as exact "host:port" strings. Only these may be
+# on a private address or an unusual port; everything else keeps every rule below. Set once at start-up from the configuration.
+_ALLOWED: frozenset = frozenset()
+
+
+def set_allowed(entries) -> None:
+    global _ALLOWED
+    _ALLOWED = frozenset(str(e).strip().lower() for e in (entries or ()) if str(e).strip())
+
+
+def is_allowed(host: str, port: int) -> bool:
+    return ("%s:%d" % ((host or "").lower(), port)) in _ALLOWED
+
+
 def _public_addresses(host: str, port: int) -> list:
     try:
         found = socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)
     except OSError:
         raise Refused("unknown host")
     addresses = []
+    trusted = is_allowed(host, port)
     for family, _, _, _, sockaddr in found:
         ip = ipaddress.ip_address(sockaddr[0])
-        if not ip.is_global:                              # private, loopback, link-local, multicast, reserved, unspecified ...
+        if not ip.is_global and not trusted:              # private, loopback, link-local, multicast, reserved, unspecified ... (unless the owner listed this host)
             raise Refused("not a public address")
         addresses.append((family, sockaddr))
     if not addresses:
@@ -48,7 +63,7 @@ def _split(url: str):
     if parts.scheme not in PORTS or not parts.hostname or parts.username or parts.password:
         raise Refused("not a plain web address")
     port = parts.port or PORTS[parts.scheme][0]
-    if port not in PORTS[parts.scheme]:
+    if port not in PORTS[parts.scheme] and not is_allowed(parts.hostname, port):
         raise Refused("unusual port")
     path = (parts.path or "/") + ("?" + parts.query if parts.query else "")
     return parts.scheme, parts.hostname, port, path

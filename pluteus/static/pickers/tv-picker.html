@@ -41,6 +41,20 @@
     </div>
   </section>
 
+  <section class="card">
+    <h2 style="font-size:16px;margin:0 0 6px">Import a playlist (Dispatcharr or any IPTV provider)</h2>
+    <p class="status" style="margin:0 0 10px">Reads an M3U playlist and lists its channels below, where you tick the ones to save: one <code>.m3u</code> file each, with name, logo and group.
+      Choose a downloaded file, or (with the relay on) give the playlist's address and the server fetches it, which also works for a server on your own network that you listed in <code>relay_allow</code>.</p>
+    <div class="bar">
+      <label class="check"><span>File</span><input type="file" id="m3uFile" accept=".m3u,.m3u8,.txt,audio/x-mpegurl,application/vnd.apple.mpegurl"></label>
+    </div>
+    <div class="bar" id="m3uUrlBar" hidden>
+      <label class="check"><span>Address</span><input type="text" id="m3uUrl" placeholder="http://192.168.1.99:9191/..." size="48"></label>
+      <button id="m3uFetch">Fetch</button>
+    </div>
+    <span class="status" id="m3uStatus"></span>
+  </section>
+
   <section class="card" id="results" hidden>
     <div class="bar" style="margin:0 0 6px">
       <button id="all">Tick all shown</button><button id="none">Tick none</button>

@@ -19,9 +19,10 @@ _PLS = re.compile(r"^(File|Title)(\d+)\s*=\s*(.*)$", re.IGNORECASE)
 
 def looks_like_tv(text: str, stations: list) -> bool:
     """An HLS address (.m3u8) may carry a picture, and only the video page can play HLS: the file opens there. The video page also
-    plays a radio stream, but the radio page keeps playing while you browse, so plain streams stay with it. (IPTV attributes such
+    plays a radio stream, but the radio page keeps playing while you browse, so plain streams stay with it. A file the TV picker saved says so itself (pluteus-kind="tv"), which is how a channel whose address does not end in
+    .m3u8 (an MPEG-TS stream from a panel such as Dispatcharr) still opens as a channel. (IPTV attributes such
     as tvg-id are no hint: radio lists carry them too.)"""
-    return any(urlsplit(url).path.lower().endswith(".m3u8") for _, url in stations)
+    return 'pluteus-kind="tv"' in text or any(urlsplit(url).path.lower().endswith(".m3u8") for _, url in stations)
 
 
 LOGO_TYPES = ((".png", "image/png"), (".jpg", "image/jpeg"), (".jpeg", "image/jpeg"), (".webp", "image/webp"))

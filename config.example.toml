@@ -20,6 +20,8 @@ page_size = 50              # entries per OPDS / web page
 #                    # relay_streams_total in all are open at once (defaults 2 and 6). Uses the server's upload bandwidth.
 # debug = false      # OFF by default. true: debug logging is on ALL the time (every request gets a line in the log: what was asked, who asked, why a login was
 #                    refused; never passwords, keys or cookie values). For a short look, use the admin page, Debug, instead: it switches itself off after 15 minutes.
+# relay_allow = ["192.168.1.99:9191"]   # hosts pluteus may fetch from even on your own network (a media server such as Dispatcharr on the same
+#                    machine), as exact "host:port" strings (no names with wildcards, no paths). Everything else on a private address stays refused.
 # relay_streams_user = 2
 # relay_streams_total = 6
 # relay_key = "a long passphrase"   # encrypts the stored logins and headers (Settings > My streams). Without it pluteus makes a key in the data folder

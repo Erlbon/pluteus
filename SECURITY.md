@@ -26,6 +26,13 @@ most 10 seconds, and the downloaded bytes are never kept: they must open as a PN
 256 pixels is written beside the station file (SVG is not taken). A logo that fails costs only that logo. The same guard is meant for any later
 feature that fetches an address on the server's behalf.
 
+## `relay_allow`: trusted hosts on a private address
+
+The relay, the logo fetch and the playlist fetch only connect to public addresses (an address from a request must never reach your own network). `relay_allow` is the
+owner's exception: each entry is an exact `"host:port"` string in the config (`192.168.1.99:9191`), no wildcards, no paths, no names that merely resemble it. A listed
+host may be on a private address and on that port only (another port on the same host, or another host, keeps every rule). It applies to everything the server fetches
+for a user, so list only machines whose streams and playlists you are happy for your users to reach through pluteus.
+
 ## An app key in the OPDS address (`/k/<key>/opds`)
 
 For reader apps that never send the login they are given. The key is the music-app key of a user (admin page, Users), 144 random bits, so it cannot be guessed;

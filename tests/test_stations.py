@@ -61,7 +61,7 @@ def test_tv_channels_carry_their_attributes_and_can_go_in_a_folder_per_country(u
         {"name": "Other", "url": "https://example.org/o.m3u8", "id": "<b>", "group": "", "country": ""}]})
     assert r.json()["saved"] == 2
     nrk = (folder / "alice" / "IPTV" / "Norway" / "NRK1.m3u").read_text(encoding="utf-8")
-    assert nrk == '#EXTM3U\n#EXTINF:-1 tvg-id="NRK1.no" group-title="News x",NRK1\nhttps://example.org/nrk1.m3u8\n'
+    assert nrk == '#EXTM3U\n#EXTINF:-1 pluteus-kind="tv" tvg-id="NRK1.no" group-title="News x",NRK1\nhttps://example.org/nrk1.m3u8\n'
     other = (folder / "alice" / "IPTV" / "Other.m3u").read_text(encoding="utf-8")
     assert "<" not in other.split("\n")[1]
 
