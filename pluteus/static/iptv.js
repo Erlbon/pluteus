@@ -196,8 +196,8 @@
     paintSeg();
   }
   playBtn.addEventListener("click", toggle);
-  var wasIdle = false;                                           // a tap that only brings the controls back in full screen must not also pause the channel
-  video.addEventListener("click", function () { if (wasIdle) { wasIdle = false; return; } toggle(); });      // like the movie player: a click on the picture plays or pauses
+  /* like the movie player: a click on the picture plays or pauses (not when it only brought the controls back in full screen) */
+  video.addEventListener("click", function () { if (modes && modes.tapWokeControls()) return; toggle(); });
 
   /* subtitles (the CC button): shown only when the channel carries some. An HLS channel lists them through hls.js, a natively played stream
      through the video's own text tracks. Each press steps to the next track and finally off. (A raw MPEG-TS channel has none the browser can show.) */
@@ -237,70 +237,12 @@
     if (video.textTracks && video.textTracks.addEventListener) video.textTracks.addEventListener("addtrack", ccRefresh);
   }
 
-  /* full screen: the picture fills the screen and the controls lie over it; they fade away after a few seconds without movement and come
-     back with the mouse or a touch. A double click on the picture does the same. The maximize button keeps the older mode: the whole player
-     (controls under a smaller picture) fills the screen. (Safari on an iPhone has only its own video full screen.) */
-  var fsButton = document.getElementById("fs"), maxButton = document.getElementById("mx"), idleTimer = null, cinema = false;
-  /* In the shell the FRAME goes full screen (shell.js), so the next page opened in it stays full screen; elsewhere the player box does. */
-  var shellFs = null;
-  try { shellFs = window.parent !== window && window.parent.plShell ? window.parent.plShell.fullscreen : null; } catch (e) { shellFs = null; }
-  function fullElement() { return document.fullscreenElement || document.webkitFullscreenElement; }
-  function fullMode() {                                        // "cinema", "max" or "" for now
-    if (shellFs) return shellFs.mode();
-    return fullElement() === box ? (cinema ? "cinema" : "max") : "";
-  }
-  function wake() {
-    box.classList.remove("pl-idle");
-    clearTimeout(idleTimer);
-    if (fullMode() === "cinema") idleTimer = setTimeout(function () { box.classList.add("pl-idle"); }, 3000);
-  }
-  function fullscreen(asCinema) {                              // cinema: the picture alone fills the screen; otherwise the whole player does (maximize)
-    if (!box) return;
-    if (fullMode()) { if (shellFs) shellFs.exit(); else (document.exitFullscreen || document.webkitExitFullscreen).call(document); return; }
-    if (shellFs && shellFs.enter(asCinema !== false ? "cinema" : "max")) return;
-    cinema = asCinema !== false;
-    if (box.requestFullscreen) box.requestFullscreen().catch(function () { /* refused */ });
-    else if (box.webkitRequestFullscreen) box.webkitRequestFullscreen();
-    else if (video.webkitEnterFullscreen) video.webkitEnterFullscreen();
-  }
-  function fullChanged() {
-    var mode = fullMode();
-    if (!mode) cinema = false;
-    box.classList.toggle("pl-full", mode === "cinema"); box.classList.toggle("pl-maxed", mode === "max" && !!shellFs); wake();
-  }
-  if (box) {
-    document.addEventListener("fullscreenchange", fullChanged);
-    document.addEventListener("webkitfullscreenchange", fullChanged);
-    if (shellFs) { shellFs.onChange(fullChanged); fullChanged(); }                // a page opened while the frame is full screen starts full screen
-    box.addEventListener("pointerdown", function () { wasIdle = box.classList.contains("pl-idle"); }, true);
-    ["mousemove", "pointerdown", "touchstart", "keydown"].forEach(function (name) { box.addEventListener(name, wake, { passive: true }); });
-  }
-  if (fsButton) fsButton.addEventListener("click", function () { fullscreen(true); });
-  if (maxButton) maxButton.addEventListener("click", function () { fullscreen(false); });
-  video.addEventListener("dblclick", function (e) { e.preventDefault(); fullscreen(true); });
+  /* full screen and maximize: player-common.js (shared with the movie player); a double click on the picture goes full screen */
+  var modes = box && window.plScreenModes ? window.plScreenModes(box, video) : null;
+  video.addEventListener("dblclick", function (e) { e.preventDefault(); if (modes) modes.toggle(true); });
 
-  /* volume (shown on wide screens only, see base.css): remembered in this browser; the icon is a mute switch */
-  var volume = document.getElementById("volume"), mute = document.getElementById("mute");
-  if (volume && mute) {
-    var level = 1;
-    try { var saved = parseFloat(localStorage.getItem("pluteus-media-volume")); if (saved >= 0 && saved <= 1) level = saved; } catch (e) { /* storage blocked */ }
-    var fill = function () { volume.style.setProperty("--p", volume.value + "%"); };
-    var show = function () {
-      volume.value = String(Math.round((video.muted ? 0 : video.volume) * 100)); fill();
-      var icon = mute.querySelector(".pl-icon");
-      if (icon) icon.className = "pl-icon " + (video.muted || video.volume === 0 ? "pl-i-mute" : "pl-i-volume");
-    };
-    video.volume = level; show();
-    volume.addEventListener("input", function () {
-      video.muted = false; video.volume = volume.value / 100;
-      try { localStorage.setItem("pluteus-media-volume", String(video.volume)); } catch (e) { /* storage blocked */ }
-      show();
-    });
-    mute.addEventListener("click", function () {
-      if (video.volume === 0) { video.muted = false; video.volume = 0.5; } else video.muted = !video.muted;
-      show();
-    });
-  }
+  /* volume (shown on wide screens only, see base.css): player-common.js */
+  if (window.plVolume) window.plVolume(video);
 
   stations.forEach(function (button) {
     button.addEventListener("click", function () {

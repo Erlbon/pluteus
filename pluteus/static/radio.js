@@ -110,25 +110,8 @@
   }
   mediaSession();
 
-  /* volume (wide screens only, like the music player) */
-  var volume = document.getElementById("volume"), mute = document.getElementById("mute");
-  if (!shell && volume && mute) {
-    var level = 1;
-    try { var saved = parseFloat(localStorage.getItem("pluteus-media-volume")); if (saved >= 0 && saved <= 1) level = saved; } catch (e) { /* storage blocked */ }
-    audio.volume = level;
-    volume.value = String(Math.round(level * 100));
-    var fill = function () { volume.style.setProperty("--p", volume.value + "%"); };
-    fill();
-    volume.addEventListener("input", function () {
-      audio.muted = false; audio.volume = volume.value / 100; fill();
-      try { localStorage.setItem("pluteus-media-volume", String(audio.volume)); } catch (e) { /* storage blocked */ }
-    });
-    mute.addEventListener("click", function () {
-      audio.muted = !audio.muted;
-      var icon = mute.querySelector(".pl-icon");
-      if (icon) icon.className = "pl-icon " + (audio.muted ? "pl-i-mute" : "pl-i-volume");
-    });
-  }
+  /* volume (wide screens only, like the music player): player-common.js */
+  if (!shell && window.plVolume) window.plVolume(audio);
   if (shell) shell.onState(paint);
   paint();
 })();

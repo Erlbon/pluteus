@@ -142,18 +142,19 @@ def test_the_music_player_has_a_volume_control_that_the_script_remembers(music):
     client, auth = make_client(music)
     page = client.get("/view/music/Album/spark.mp3", headers={**auth, **HTML}).text
     assert "id='volume'" in page and "id='mute'" in page and page.index("id='dur'") < page.index("id='volume'")
-    js = open(os.path.join(HERE, "..", "pluteus", "static", "viewer-media.js"), encoding="utf-8").read()
+    js = open(os.path.join(HERE, "..", "pluteus", "static", "player-common.js"), encoding="utf-8").read()       # the volume code is shared by every player
     css = open(os.path.join(HERE, "..", "pluteus", "static", "base.css"), encoding="utf-8").read()
-    assert "pluteus-media-volume" in js and "volumechange" in js
+    assert "pluteus-media-volume" in js and "volumechange" in js and "plVolume" in open(os.path.join(HERE, "..", "pluteus", "static", "viewer-media.js"), encoding="utf-8").read()
     assert ".pl-vol { display: none; }" in css and "@media (min-width: 720px)" in css      # a phone has its own volume buttons
 
 
 def test_the_sliders_have_a_gold_track_and_handle_that_follows_the_value():
     css = open(os.path.join(HERE, "..", "pluteus", "static", "base.css"), encoding="utf-8").read()
     js = open(os.path.join(HERE, "..", "pluteus", "static", "viewer-media.js"), encoding="utf-8").read()
+    common = open(os.path.join(HERE, "..", "pluteus", "static", "player-common.js"), encoding="utf-8").read()
     for needle in ("::-webkit-slider-runnable-track", "::-moz-range-progress", "::-webkit-slider-thumb", "::-moz-range-thumb"):
         assert needle in css                                                            # Chrome and Firefox are both drawn by us
-    assert 'setProperty("--p"' in js and js.count("fill(scrub)") >= 2 and "fill(volume)" in js
+    assert 'setProperty("--p"' in js and js.count("fill(scrub)") >= 2 and 'setProperty("--p"' in common      # the volume slider is filled by the shared code
 
 
 # ---- a movie gets the same controls as the music player --------------------------------------------------------------------------------------
@@ -171,7 +172,8 @@ def test_a_movie_page_has_the_music_players_controls_and_a_full_screen_button(mu
 
 def test_the_script_handles_clicks_and_full_screen_for_movies():
     js = open(os.path.join(HERE, "..", "pluteus", "static", "viewer-media.js"), encoding="utf-8").read()
-    assert "toggleFullscreen" in js and "webkitEnterFullscreen" in js and 'media.addEventListener("dblclick"' in js
+    common = open(os.path.join(HERE, "..", "pluteus", "static", "player-common.js"), encoding="utf-8").read()
+    assert "plScreenModes" in js and 'media.addEventListener("dblclick"' in js and "webkitEnterFullscreen" in common
 
 
 # ---- the transport row ----------------------------------------------------------------------------------------------------------------------
@@ -385,3 +387,35 @@ def test_a_skipped_song_is_not_a_place_to_pick_up_but_a_song_heard_for_a_while_i
     assert "spark" in home and "plain" not in home
     js = client.get("/static/viewer-media.js").text
     assert "t < 20 && data.kind === \"audio\"" in js
+
+
+def test_the_players_share_one_copy_of_the_volume_and_screen_mode_code():
+    """Channel, movie, song and radio pages once had their own copies (the movie page fell behind the channel page). The shared code lives in
+    player-common.js; no page script may carry its own."""
+    static = os.path.join(HERE, "..", "pluteus", "static")
+    read = lambda name: open(os.path.join(static, name), encoding="utf-8").read()
+    for name in ("viewer-media.js", "iptv.js", "radio.js"):
+        js = read(name)
+        assert "pluteus-media-volume" not in js and "plVolume" in js, name
+        assert "requestFullscreen" not in js and "fullscreenchange" not in js, name
+    assert "plScreenModes" in read("viewer-media.js") and "plScreenModes" in read("iptv.js")
+    common = read("player-common.js")
+    assert "pluteus-media-volume" in common and "requestFullscreen" in common
+
+
+def test_the_speed_text_on_the_play_button_has_a_valid_arc_offset(music):
+    """The offset was written as 50%% (a doubled percent sign that nothing turned into one), which the browser rejects: the speed text sat off the arc."""
+    client, auth = make_client(music)
+    page = client.get("/view/music/Album/spark.mp3", headers={**auth, **HTML}).text
+    assert "startOffset='50%'" in page and "%%" not in page
+
+
+def test_a_movie_page_has_both_a_maximize_and_a_full_screen_button_like_a_channel(music):
+    (music / "Album" / "clip.mp4").write_bytes(b"\x00\x00\x00\x18ftypmp42" + b"\x00" * 64)
+    client, auth = make_client(music)
+    page = client.get("/view/music/Album/clip.mp4", headers={**auth, **HTML}).text
+    assert page.index("id='mx'") < page.index("id='fs'") and "pl-i-maximize" in page and "player-common.js" in page
+    assert page.index("player-common.js") < page.index("viewer-media.js")
+    assert "id='mx'" not in client.get("/view/music/Album/spark.mp3", headers={**auth, **HTML}).text         # a song has no picture to enlarge
+    css = client.get("/static/base.css").text
+    assert ".pl-videobox.pl-full:not(.pl-iptv)" in css

@@ -139,8 +139,10 @@ def test_full_screen_belongs_to_the_shell_frame_so_the_next_file_stays_full_scre
     auth = client[1] if isinstance(client, tuple) else {}
     shell = c.get("/static/shell.js", headers=auth).text
     assert "frame.requestFullscreen" in shell and "fullscreen: fullscreen" in shell and "onChange" in shell
-    for name in ("viewer-media.js", "iptv.js"):
+    common = c.get("/static/player-common.js", headers=auth).text
+    assert "plShell.fullscreen" in common and "shellFs.enter(" in common and "pl-maxed" in common
+    for name in ("viewer-media.js", "iptv.js"):                 # the pages use the shared code and carry no copy of it
         js = c.get("/static/" + name, headers=auth).text
-        assert "plShell.fullscreen" in js and "shellFs.enter(" in js and "pl-maxed" in js, name
+        assert "plScreenModes" in js and "requestFullscreen" not in js and "shellFs" not in js, name
     css = c.get("/static/base.css", headers=auth).text
     assert ".pl-videobox.pl-maxed" in css and "position: fixed; inset: 0" in css

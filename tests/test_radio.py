@@ -124,7 +124,9 @@ def test_a_channel_page_has_subtitle_maximize_and_full_screen_buttons_and_the_sc
     assert "pl-i-maximize" in page and "pl-i-fullscreen" in page
     js = c.get("/static/iptv.js").text
     assert "subtitleTracks" in js and "SUBTITLE_TRACKS_UPDATED" in js and "textTracks" in js
-    assert 'getElementById("mx")' in js and '"pl-full"' in js and '"pl-idle"' in js
+    common = c.get("/static/player-common.js", headers=auth).text
+    assert "plScreenModes" in js and "plVolume" in js and 'getElementById("mx")' in common and '"pl-full"' in common and '"pl-idle"' in common
+    assert "player-common.js" in page and page.index("player-common.js") < page.index("iptv.js")
     css = c.get("/static/base.css").text
     assert ".pl-videobox.pl-iptv.pl-full video" in css and "object-fit: contain" in css and "pl-idle" in css
     assert c.get("/theme/night/icons/maximize.svg").status_code == 200

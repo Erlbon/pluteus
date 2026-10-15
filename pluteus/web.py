@@ -600,7 +600,7 @@ def media_viewer_page(ctx: Ctx, title: str, *, kind: str, raw_url: str, mime: st
         # change it): tapping the text does nothing, so a thumb reaching for play or the title above it cannot change the speed by accident
         speed_val = ("<span class='pl-speed-arc' id='speed' role='img' aria-label='Playback speed'>"
                      "<svg viewBox='0 0 100 50' aria-hidden='true'><path id='pl-arc' d='M 14 50 A 36 36 0 0 1 86 50' fill='none'/>"
-                     "<text><textPath href='#pl-arc' startOffset='50%%' text-anchor='middle' class='pl-btn-text'>1&times;</textPath></text>"
+                     "<text><textPath href='#pl-arc' startOffset='50%' text-anchor='middle' class='pl-btn-text'>1&times;</textPath></text>"
                      "</svg></span>")
         # video: a plain gold chip between the skip buttons
         speed_chip = ("<button class='pl-speed-val' id='speed' type='button' title='%s'>"
@@ -621,7 +621,8 @@ def media_viewer_page(ctx: Ctx, title: str, *, kind: str, raw_url: str, mime: st
             % (escape(heading), "<div class='pl-track-by'>%s</div>" % by if by else "",
                "<div class='pl-chips'>%s</div>" % chips if chips else ""))
     # the position bar, volume and (for a movie) full screen, and the row of big buttons: the same for music and movies
-    fullscreen = ("<button type='button' id='fs' class='pl-vol-btn pl-fs-btn' aria-label='Full screen'><span class='pl-icon pl-i-fullscreen'></span></button>"
+    fullscreen = ("<button type='button' id='mx' class='pl-vol-btn pl-fs-btn' aria-label='Maximize: fill the screen with the controls under the picture' title='Maximize (controls under the picture)'><span class='pl-icon pl-i-maximize'></span></button>"
+                  "<button type='button' id='fs' class='pl-vol-btn pl-fs-btn' aria-label='Full screen: the picture fills the screen' title='Full screen (picture only, controls fade away)'><span class='pl-icon pl-i-fullscreen'></span></button>"
                   if kind == "video" else "")
     subtitles = subtitles or []
     captions = ("<button type='button' id='cc' class='pl-vol-btn pl-cc-btn' aria-label='Subtitles' aria-pressed='false'>CC</button>"
@@ -668,7 +669,7 @@ def media_viewer_page(ctx: Ctx, title: str, *, kind: str, raw_url: str, mime: st
                    data=(("progress", progress_url), ("kind", kind), ("prev", prev_url or ""), ("next", next_url or ""),
                          ("title", heading), ("artist", artist), ("album", album_name), ("bookmarks", bookmarks_url), ("queue", queue_url),
                          ("artwork", cover_url or ctx.urls.static("icon/icon-512.png"))),
-                   scripts=(ctx.urls.static("viewer-media.js"),))
+                   scripts=(ctx.urls.static("player-common.js"), ctx.urls.static("viewer-media.js")))
 
 
 def pdf_viewer_page(ctx: Ctx, title: str, *, raw_url: str, download_url: str, back_url: str, progress_url: str) -> str:
@@ -741,7 +742,7 @@ def iptv_page(ctx: Ctx, title: str, *, stations: list, download_url: str, text_u
                 escape(ctx.urls.static("vendor/mpegts.min.js")), " data-keep-sound='1'" if ctx.tv_sound else "", live_row, transport, listing))
     tools = _download_link(download_url) + _reader_scheme()
     foot = "<a href='%s'>Show as text</a>" % escape(text_url)
-    scripts = (ctx.urls.static("vendor/hls.min.js"), ctx.urls.static("iptv.js"))
+    scripts = (ctx.urls.static("vendor/hls.min.js"), ctx.urls.static("player-common.js"), ctx.urls.static("iptv.js"))
     return _viewer(ctx, title, back_url, tools=tools, stage=stage, foot=foot, classes="pl-mediaview pl-video",
                    stage_class="pl-media-stage", scripts=scripts)
 
@@ -776,7 +777,7 @@ def radio_page(ctx: Ctx, title: str, *, stations: list, download_url: str, text_
                    data=(("title", heading), ("artwork", logo_url or ctx.urls.static("icon/icon-512.png")), ("logo", logo_url),
                          ("relay", "|".join(relay_urls or [])),               # one address per station, when the relay is on
                          ("always", "|".join("1" if a else "0" for a in (always or [])))),    # 1: the station needs a stored stream: only the server may fetch it
-                   scripts=(ctx.urls.static("radio.js"),))
+                   scripts=(ctx.urls.static("player-common.js"), ctx.urls.static("radio.js")))
 
 
 def streams_page(ctx: Ctx, entries: list, key_note: str, message: str = "", error: str = "") -> str:

@@ -126,7 +126,7 @@
 
     /* a movie: a click on the picture plays or pauses, a double click goes full screen, and the full-screen button takes the whole
        player (picture and controls) full screen; an iPhone can only do the picture, with the browser's own controls */
-    var fsButton = document.getElementById("fs"), box = document.querySelector(".pl-videobox");
+    var box = document.querySelector(".pl-videobox");
     /* a wide picture on a phone: turn the screen sideways while full screen (it is released again on leaving; browsers that cannot do this skip it) */
     function turnSideways() {
       try {
@@ -135,29 +135,14 @@
         }
       } catch (e) { /* no orientation API */ }
     }
-    document.addEventListener("fullscreenchange", function () {
-      if (document.fullscreenElement) return;
+    function unlockSideways() {
       try { if (screen.orientation && screen.orientation.unlock) screen.orientation.unlock(); } catch (e) { /* ignore */ }
-    });
-    /* In the shell the FRAME goes full screen (shell.js), so the next file opened in it stays full screen; elsewhere the player box does. */
-    var shellFs = null;
-    try { shellFs = window.parent !== window && window.parent.plShell ? window.parent.plShell.fullscreen : null; } catch (e) { shellFs = null; }
-    function paintFull() { if (box) box.classList.toggle("pl-maxed", !!shellFs && !!shellFs.mode()); }
-    if (shellFs) { shellFs.onChange(paintFull); paintFull(); }
-    function toggleFullscreen() {
-      if (!box) return;
-      if (shellFs && shellFs.mode()) { shellFs.exit(); return; }
-      if (shellFs && shellFs.enter("max")) { turnSideways(); return; }
-      var inside = document.fullscreenElement || document.webkitFullscreenElement;
-      if (inside) { (document.exitFullscreen || document.webkitExitFullscreen).call(document); return; }
-      if (box.requestFullscreen) box.requestFullscreen().then(turnSideways).catch(function () { /* refused */ });
-      else if (box.webkitRequestFullscreen) box.webkitRequestFullscreen();
-      else if (media.webkitEnterFullscreen) media.webkitEnterFullscreen();
     }
-    if (fsButton) fsButton.addEventListener("click", toggleFullscreen);
+    /* Full screen (picture only, controls fade) and Maximize (whole player): player-common.js, shared with the live channel player */
+    var modes = box && window.plScreenModes ? window.plScreenModes(box, media, { onEnter: turnSideways, onExit: unlockSideways, active: function () { return !media.paused; } }) : null;
     if (box) {
-      media.addEventListener("click", function () { playButton.click(); });
-      media.addEventListener("dblclick", function (e) { e.preventDefault(); toggleFullscreen(); });
+      media.addEventListener("click", function () { if (modes && modes.tapWokeControls()) return; playButton.click(); });
+      media.addEventListener("dblclick", function (e) { e.preventDefault(); if (modes) modes.toggle(true); });
     }
 
     /* subtitles (.srt / .vtt next to the movie, offered by the page as <track>s): the CC button steps through them and off again;
@@ -181,31 +166,8 @@
       ccButton.addEventListener("click", function () { showTrack(shown + 1 < tracks.length ? shown + 1 : -1, true); });
     }
 
-    /* volume (shown on wide screens only, see base.css): remembered in this browser; the icon is a mute switch */
-    var volume = document.getElementById("volume"), muteButton = document.getElementById("mute");
-    if (volume && muteButton) {
-      var level = 1;
-      try { var saved = parseFloat(localStorage.getItem("pluteus-media-volume")); if (saved >= 0 && saved <= 1) level = saved; } catch (e) { /* storage blocked */ }
-      var showVolume = function () {
-        volume.value = String(Math.round((media.muted ? 0 : media.volume) * 100));
-        fill(volume);
-        var icon = muteButton.querySelector(".pl-icon");
-        if (icon) icon.className = "pl-icon " + (media.muted || media.volume === 0 ? "pl-i-mute" : "pl-i-volume");
-        muteButton.setAttribute("aria-label", media.muted ? "Unmute" : "Mute");
-      };
-      media.volume = level;
-      volume.addEventListener("input", function () {
-        media.muted = false;
-        media.volume = volume.value / 100;
-        try { localStorage.setItem("pluteus-media-volume", String(media.volume)); } catch (e) { /* storage blocked */ }
-      });
-      muteButton.addEventListener("click", function () {
-        if (media.volume === 0) { media.muted = false; media.volume = 0.5; }                    // at zero the icon brings the sound back
-        else media.muted = !media.muted;
-      });
-      media.addEventListener("volumechange", showVolume);
-      showVolume();
-    }
+    /* volume (shown on wide screens only, see base.css): player-common.js */
+    if (window.plVolume) window.plVolume(media);
     document.addEventListener("keydown", function (e) {
       if (e.altKey || e.ctrlKey || e.metaKey) return;                    // Alt+Arrow is the browser's Back / Forward
       if (e.target && /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)) return;      // the scrubber and fields keep their own keys
