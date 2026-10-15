@@ -1,4 +1,5 @@
 /* pluteus player code shared by the channel, movie, song and radio pages, in one place so they behave alike.
+   plSubtitles: the CC button.
    plScreenModes: the Full screen and Maximize buttons of every picture player (live channels and movies).
    - Full screen ("cinema", button #fs): the picture fills the screen, the title and controls lie over it and fade away after a few seconds
      without movement (class pl-idle); they come back with the mouse or a touch, and a tap that only brought them back does not also play or pause.
@@ -34,6 +35,64 @@
     });
     media.addEventListener("volumechange", show);
     show();
+  };
+
+  /* the subtitle button (#cc, present or not as the page decides): hidden until there are tracks. The tracks are an HLS stream's (hls.js lists them),
+     else the video's own text tracks (.srt / .vtt files offered as <track>s, a natively played stream). Each press steps to the next track and
+     finally off; the choice is remembered by name in this browser and picked again whenever a track of that name appears. The button follows what is
+     really showing (a stream may mark a track as its default). A raw MPEG-TS channel has none the browser can show.
+     options.say(text, ms): the page's message line; options.hls(): the page's current hls.js object, or null. Returns { refresh }: call it when tracks change. */
+  window.plSubtitles = function (media, options) {
+    options = options || {};
+    var button = document.getElementById("cc"), at = -1;
+    if (!button) return { refresh: function () { } };
+    function viaHls() { var h = options.hls ? options.hls() : null; return h && h.subtitleTracks && h.subtitleTracks.length ? h : null; }
+    function tracks() {
+      var h = viaHls(), list = [], i;
+      if (h) { for (i = 0; i < h.subtitleTracks.length; i++) list.push({ name: h.subtitleTracks[i].name || h.subtitleTracks[i].lang || ("Track " + (i + 1)) }); return list; }
+      for (i = 0; i < media.textTracks.length; i++) {
+        var t = media.textTracks[i];
+        if (t.kind === "subtitles" || t.kind === "captions") list.push({ name: t.label || t.language || ("Track " + (list.length + 1)), track: t });
+      }
+      return list;
+    }
+    function paint() { button.classList.toggle("pl-on", at >= 0); button.setAttribute("aria-pressed", String(at >= 0)); }
+    function apply(index) {
+      at = index;
+      var h = viaHls();
+      if (h) {                                                  // off only hides the track: switching it off would drop what is downloaded
+        h.subtitleDisplay = index >= 0;
+        if (index >= 0 && h.subtitleTrack !== index) h.subtitleTrack = index;
+      } else {
+        tracks().forEach(function (item, n) { item.track.mode = n === index ? "showing" : "disabled"; });
+      }
+      paint();
+    }
+    function shown(list) {                                      // which track is showing now, -1 for none
+      var h = viaHls();
+      if (h) return h.subtitleDisplay === false ? -1 : h.subtitleTrack;
+      for (var n = 0; n < list.length; n++) if (list[n].track.mode === "showing") return n;
+      return -1;
+    }
+    function refresh() {
+      var list = tracks(), wanted = "";
+      button.hidden = list.length === 0;
+      try { wanted = localStorage.getItem("pluteus-subs") || ""; } catch (e) { /* storage blocked */ }
+      at = shown(list);
+      for (var n = 0; n < list.length; n++) if (wanted && list[n].name === wanted && at !== n) { apply(n); break; }
+      paint();
+    }
+    button.addEventListener("click", function () {
+      var list = tracks();
+      if (!list.length) return;
+      var next = at + 1 >= list.length ? -1 : at + 1;
+      apply(next);
+      try { localStorage.setItem("pluteus-subs", next >= 0 ? list[next].name : ""); } catch (e) { /* storage blocked */ }
+      if (options.say) options.say(next < 0 ? "Subtitles off" : "Subtitles: " + list[next].name, 2500);
+    });
+    if (media.textTracks && media.textTracks.addEventListener) media.textTracks.addEventListener("addtrack", refresh);
+    refresh();
+    return { refresh: refresh };
   };
 
   window.plScreenModes = function (box, media, options) {

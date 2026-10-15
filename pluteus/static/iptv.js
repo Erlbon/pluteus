@@ -43,7 +43,7 @@
     if (hls) { try { hls.destroy(); } catch (e) { /* ignore */ } hls = null; }
     video.removeAttribute("src");
     video.load();
-    ccAt = -1; ccRefresh();                                    // the next channel has its own subtitles
+    subsRefresh();                                             // the next channel has its own subtitles
   }
   function failed() {
     if (relay && !viaRelay && !always) { viaRelay = true; start(); return; }          // the direct stream failed (no CORS, refused): once through the server
@@ -111,8 +111,8 @@
       hls = new window.Hls(behind > 0 ? { enableWorker: false, lowLatencyMode: false, liveSyncDuration: behind, maxBufferLength: Math.max(30, behind * 2) }
                                       : { enableWorker: false, lowLatencyMode: false });
       hls.on(window.Hls.Events.MANIFEST_PARSED, play);
-      hls.on(window.Hls.Events.SUBTITLE_TRACKS_UPDATED, ccRefresh);
-      hls.on(window.Hls.Events.SUBTITLE_TRACK_SWITCH, ccRefresh);
+      hls.on(window.Hls.Events.SUBTITLE_TRACKS_UPDATED, subsRefresh);
+      hls.on(window.Hls.Events.SUBTITLE_TRACK_SWITCH, subsRefresh);
       hls.on(window.Hls.Events.ERROR, function (event, data) { if (data && data.fatal) failed(); });
       hls.loadSource(source);
       hls.attachMedia(video);
@@ -199,43 +199,9 @@
   /* like the movie player: a click on the picture plays or pauses (not when it only brought the controls back in full screen) */
   video.addEventListener("click", function () { if (modes && modes.tapWokeControls()) return; toggle(); });
 
-  /* subtitles (the CC button): shown only when the channel carries some. An HLS channel lists them through hls.js, a natively played stream
-     through the video's own text tracks. Each press steps to the next track and finally off. (A raw MPEG-TS channel has none the browser can show.) */
-  var ccButton = document.getElementById("cc"), ccAt = -1;
-  function ccTracks() {
-    if (hls && hls.subtitleTracks && hls.subtitleTracks.length) return hls.subtitleTracks.map(function (t, i) { return { name: t.name || t.lang || ("Track " + (i + 1)) }; });
-    var list = [];
-    for (var i = 0; i < video.textTracks.length; i++) { var t = video.textTracks[i]; if (t.kind === "subtitles" || t.kind === "captions") list.push({ name: t.label || t.language || ("Track " + (list.length + 1)), track: t }); }
-    return list;
-  }
-  function ccApply(index) {
-    ccAt = index;
-    if (hls && hls.subtitleTracks && hls.subtitleTracks.length) {            // off only hides the track: switching it off would drop what is downloaded
-      hls.subtitleDisplay = index >= 0;
-      if (index >= 0 && hls.subtitleTrack !== index) hls.subtitleTrack = index;
-    }
-    else { var n = -1; for (var i = 0; i < video.textTracks.length; i++) { var t = video.textTracks[i]; if (t.kind === "subtitles" || t.kind === "captions") { n++; t.mode = n === index ? "showing" : "disabled"; } } }
-    if (ccButton) { ccButton.classList.toggle("pl-on", index >= 0); ccButton.setAttribute("aria-pressed", String(index >= 0)); }
-  }
-  function ccRefresh() {
-    if (!ccButton) return;
-    var tracks = ccTracks();
-    ccButton.hidden = tracks.length === 0;
-    ccAt = -1;                                                 // what is showing now (a stream may mark a track as its default): the button follows it
-    if (hls && tracks.length) ccAt = hls.subtitleDisplay === false ? -1 : hls.subtitleTrack;
-    else for (var i = 0, n = -1; i < video.textTracks.length; i++) { var t = video.textTracks[i]; if (t.kind === "subtitles" || t.kind === "captions") { n++; if (t.mode === "showing") ccAt = n; } }
-    ccButton.classList.toggle("pl-on", ccAt >= 0); ccButton.setAttribute("aria-pressed", String(ccAt >= 0));
-  }
-  if (ccButton) {
-    ccButton.addEventListener("click", function () {
-      var tracks = ccTracks();
-      if (!tracks.length) return;
-      var next = ccAt + 1 >= tracks.length ? -1 : ccAt + 1;
-      ccApply(next);
-      say(next < 0 ? "Subtitles off" : "Subtitles: " + tracks[next].name, 2500);
-    });
-    if (video.textTracks && video.textTracks.addEventListener) video.textTracks.addEventListener("addtrack", ccRefresh);
-  }
+  /* subtitles (the CC button, shown only when the channel carries some): player-common.js; hls.js lists an HLS channel's tracks */
+  var subs = window.plSubtitles ? window.plSubtitles(video, { say: say, hls: function () { return hls; } }) : null;
+  function subsRefresh() { if (subs) subs.refresh(); }
 
   /* full screen and maximize: player-common.js (shared with the movie player); a double click on the picture goes full screen */
   var modes = box && window.plScreenModes ? window.plScreenModes(box, video) : null;

@@ -123,7 +123,7 @@ def test_a_channel_page_has_subtitle_maximize_and_full_screen_buttons_and_the_sc
     assert page.index("id='cc'") < page.index("id='mx'") < page.index("id='fs'")
     assert "pl-i-maximize" in page and "pl-i-fullscreen" in page
     js = c.get("/static/iptv.js").text
-    assert "subtitleTracks" in js and "SUBTITLE_TRACKS_UPDATED" in js and "textTracks" in js
+    assert "plSubtitles" in js and "SUBTITLE_TRACKS_UPDATED" in js and "subtitleTracks" not in js         # the CC logic is shared (player-common.js)
     common = c.get("/static/player-common.js", headers=auth).text
     assert "plScreenModes" in js and "plVolume" in js and 'getElementById("mx")' in common and '"pl-full"' in common and '"pl-idle"' in common
     assert "player-common.js" in page and page.index("player-common.js") < page.index("iptv.js")

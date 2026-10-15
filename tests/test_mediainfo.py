@@ -399,8 +399,12 @@ def test_the_players_share_one_copy_of_the_volume_and_screen_mode_code():
         assert "pluteus-media-volume" not in js and "plVolume" in js, name
         assert "requestFullscreen" not in js and "fullscreenchange" not in js, name
     assert "plScreenModes" in read("viewer-media.js") and "plScreenModes" in read("iptv.js")
+    for name in ("viewer-media.js", "iptv.js"):                  # the CC button too: one implementation, used by the movie and the channel page
+        js = read(name)
+        assert "plSubtitles" in js and "pluteus-subs" not in js and "subtitleTracks" not in js and "textTracks" not in js, name
     common = read("player-common.js")
     assert "pluteus-media-volume" in common and "requestFullscreen" in common
+    assert "pluteus-subs" in common and "subtitleTracks" in common and "textTracks" in common
 
 
 def test_the_speed_text_on_the_play_button_has_a_valid_arc_offset(music):

@@ -145,26 +145,8 @@
       media.addEventListener("dblclick", function (e) { e.preventDefault(); if (modes) modes.toggle(true); });
     }
 
-    /* subtitles (.srt / .vtt next to the movie, offered by the page as <track>s): the CC button steps through them and off again;
-       the last choice is remembered by name. Without this script the browser's own controls list the tracks. */
-    var ccButton = document.getElementById("cc");
-    if (ccButton && media.textTracks && media.textTracks.length) {
-      var tracks = media.textTracks, shown = -1, wanted = "";
-      try { wanted = localStorage.getItem("pluteus-subs") || ""; } catch (e) { /* storage blocked */ }
-      var showTrack = function (n, announce) {
-        for (var i = 0; i < tracks.length; i++) tracks[i].mode = i === n ? "showing" : "disabled";
-        shown = n;
-        var label = n >= 0 ? tracks[n].label : "";
-        ccButton.setAttribute("aria-pressed", n >= 0 ? "true" : "false");
-        ccButton.classList.toggle("pl-on", n >= 0);
-        try { localStorage.setItem("pluteus-subs", label); } catch (e) { /* storage blocked */ }
-        if (announce) say(n >= 0 ? "Subtitles: " + label : "Subtitles off", 2500);
-      };
-      var first = -1;
-      for (var t = 0; t < tracks.length; t++) if (wanted && tracks[t].label === wanted) first = t;
-      showTrack(first, false);
-      ccButton.addEventListener("click", function () { showTrack(shown + 1 < tracks.length ? shown + 1 : -1, true); });
-    }
+    /* subtitles (.srt / .vtt next to the movie, offered by the page as <track>s): the CC button, player-common.js */
+    if (window.plSubtitles) window.plSubtitles(media, { say: say });
 
     /* volume (shown on wide screens only, see base.css): player-common.js */
     if (window.plVolume) window.plVolume(media);
