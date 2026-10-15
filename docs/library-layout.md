@@ -9,12 +9,18 @@ information**, and a note sits at the level it describes. The recognised note na
 
 ```
 780 - Music/
-  Artist/
-    artist.md              the band: who, when, where (the player's "About" link and Subsonic's biography)
-    Album (Year)/
-      album.md             the album: recording, line-up, remarks
-      01 Song.mp3
+  Genre/                   optional level: a library may keep artists directly under the top folder
+    about.md               a short note on the genre
+    Artist/
+      artist.md            the band: who, when, where (the player's "About" link and Subsonic's biography)
+      Album (Year)/
+        album.md           the album: recording, line-up, remarks
+        01 Song.mp3
 ```
+
+The genre folder is optional (reported by the Redactor session as the owner's decision of 2026-10-15; the note name `about.md` is already recognised and
+needs nothing new in pluteus). Without it the tree is `Music/Artist/Album (Year)/tracks`, with `artist.md` and `album.md` at the same levels as above.
+The player's "About" link looks up to three folders above the track, so it finds an `artist.md` or `album.md` wherever it sits, and a genre `about.md` as a last resort.
 
 `artist.nfo` and `album.nfo` (Kodi, Plex, Lidarr, MusicBrainz Picard write them) are read when there is no `.md` note.
 
