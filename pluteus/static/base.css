@@ -649,3 +649,7 @@ html.pl-tv .pl-shell-player .pl-vol-btn { width: 56px; height: 56px; }
 .pl-seg button { font: inherit; font-size: 13px; padding: 4px 14px; min-width: 6em; text-align: center; border: 0; background: transparent; color: var(--pl-dim); cursor: pointer; }
 .pl-seg button + button { border-left: 1px solid var(--pl-line); }
 .pl-seg button.pl-on { background: var(--pl-accent); color: var(--pl-btn-primary-fg, #1a1405); font-weight: 600; }
+
+/* timed lyrics follow the song, so the box scrolls by itself: no visible scrollbar to jump around, and the movement glides (the wheel and a finger still scroll it) */
+.pl-lyrics-synced { scrollbar-width: none; scroll-behavior: smooth; }
+.pl-lyrics-synced::-webkit-scrollbar { display: none; }

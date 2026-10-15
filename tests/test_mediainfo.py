@@ -103,6 +103,8 @@ def test_player_page_shows_the_tags(music):
     assert "data-artist='Kaizers Orchestra'" in page and "id='scrub'" in page and "id='play'" in page
     assert "data-t='1.0'" in page and "pl-lyrics-synced" in page             # the .lrc file wins over the plain tag text
     assert "id='lyrics'>" in page and "id='lyrics' hidden" not in page      # timed lyrics are open from the start, below the controls
+    css = client.get("/static/base.css").text
+    assert ".pl-lyrics-synced { scrollbar-width: none; scroll-behavior: smooth; }" in css and ".pl-lyrics-synced::-webkit-scrollbar { display: none; }" in css
     assert "id='lyrics-btn' data-panel='lyrics' type='button' aria-label='Show: Lyrics' aria-expanded='true'" in page
 
 
