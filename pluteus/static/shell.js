@@ -204,8 +204,35 @@
     } catch (e) { /* not supported */ }
   }
 
+  /* full screen for the pages in the frame: the FRAME goes full screen, not the page's own player, so moving to the next file (the page is
+     replaced) keeps the screen full. A page asks with enter("max") (player with its controls) or enter("cinema") (the picture alone), is told of
+     every change with onChange, and finds the mode in mode() when it opens. enter() is false where the browser cannot do it (then the page
+     goes full screen by itself, and a new page starts normal). */
+  var fsMode = "", fsListeners = [];
+  function frameFull() { return !!frame && (document.fullscreenElement || document.webkitFullscreenElement) === frame; }
+  function fsChanged() {
+    if (!frameFull()) fsMode = "";
+    fsListeners = fsListeners.filter(function (fn) { try { fn(); return true; } catch (e) { return false; } });       // a page that is gone throws: dropped
+  }
+  document.addEventListener("fullscreenchange", fsChanged);
+  document.addEventListener("webkitfullscreenchange", fsChanged);
+  var fullscreen = {
+    mode: function () { return frameFull() ? fsMode : ""; },
+    enter: function (mode) {
+      var ask = frame && (frame.requestFullscreen || frame.webkitRequestFullscreen);
+      if (!ask) return false;
+      fsMode = mode === "cinema" ? "cinema" : "max";
+      var p = ask.call(frame);
+      if (p && p.catch) p.catch(function () { fsMode = ""; fsChanged(); });
+      return true;
+    },
+    exit: function () { (document.exitFullscreen || document.webkitExitFullscreen || function () {}).call(document); },
+    onChange: function (fn) { fsListeners.push(fn); }
+  };
+
   /* what the pages in the frame may call */
   window.plShell = {
+    fullscreen: fullscreen,
     playQueue: function (items, start) {
       queue = (items || []).filter(function (i) { return i && typeof i.url === "string"; }).slice(0, 2000);
       failures = 0;

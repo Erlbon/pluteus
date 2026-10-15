@@ -241,24 +241,37 @@
      back with the mouse or a touch. A double click on the picture does the same. The maximize button keeps the older mode: the whole player
      (controls under a smaller picture) fills the screen. (Safari on an iPhone has only its own video full screen.) */
   var fsButton = document.getElementById("fs"), maxButton = document.getElementById("mx"), idleTimer = null, cinema = false;
+  /* In the shell the FRAME goes full screen (shell.js), so the next page opened in it stays full screen; elsewhere the player box does. */
+  var shellFs = null;
+  try { shellFs = window.parent !== window && window.parent.plShell ? window.parent.plShell.fullscreen : null; } catch (e) { shellFs = null; }
   function fullElement() { return document.fullscreenElement || document.webkitFullscreenElement; }
+  function fullMode() {                                        // "cinema", "max" or "" for now
+    if (shellFs) return shellFs.mode();
+    return fullElement() === box ? (cinema ? "cinema" : "max") : "";
+  }
   function wake() {
     box.classList.remove("pl-idle");
     clearTimeout(idleTimer);
-    if (cinema && fullElement() === box) idleTimer = setTimeout(function () { box.classList.add("pl-idle"); }, 3000);
+    if (fullMode() === "cinema") idleTimer = setTimeout(function () { box.classList.add("pl-idle"); }, 3000);
   }
   function fullscreen(asCinema) {                              // cinema: the picture alone fills the screen; otherwise the whole player does (maximize)
     if (!box) return;
-    if (fullElement()) { (document.exitFullscreen || document.webkitExitFullscreen).call(document); return; }
+    if (fullMode()) { if (shellFs) shellFs.exit(); else (document.exitFullscreen || document.webkitExitFullscreen).call(document); return; }
+    if (shellFs && shellFs.enter(asCinema !== false ? "cinema" : "max")) return;
     cinema = asCinema !== false;
     if (box.requestFullscreen) box.requestFullscreen().catch(function () { /* refused */ });
     else if (box.webkitRequestFullscreen) box.webkitRequestFullscreen();
     else if (video.webkitEnterFullscreen) video.webkitEnterFullscreen();
   }
-  function fullChanged() { var on = fullElement() === box; if (!on) cinema = false; box.classList.toggle("pl-full", on && cinema); wake(); }
+  function fullChanged() {
+    var mode = fullMode();
+    if (!mode) cinema = false;
+    box.classList.toggle("pl-full", mode === "cinema"); box.classList.toggle("pl-maxed", mode === "max" && !!shellFs); wake();
+  }
   if (box) {
     document.addEventListener("fullscreenchange", fullChanged);
     document.addEventListener("webkitfullscreenchange", fullChanged);
+    if (shellFs) { shellFs.onChange(fullChanged); fullChanged(); }                // a page opened while the frame is full screen starts full screen
     box.addEventListener("pointerdown", function () { wasIdle = box.classList.contains("pl-idle"); }, true);
     ["mousemove", "pointerdown", "touchstart", "keydown"].forEach(function (name) { box.addEventListener(name, wake, { passive: true }); });
   }

@@ -139,8 +139,15 @@
       if (document.fullscreenElement) return;
       try { if (screen.orientation && screen.orientation.unlock) screen.orientation.unlock(); } catch (e) { /* ignore */ }
     });
+    /* In the shell the FRAME goes full screen (shell.js), so the next file opened in it stays full screen; elsewhere the player box does. */
+    var shellFs = null;
+    try { shellFs = window.parent !== window && window.parent.plShell ? window.parent.plShell.fullscreen : null; } catch (e) { shellFs = null; }
+    function paintFull() { if (box) box.classList.toggle("pl-maxed", !!shellFs && !!shellFs.mode()); }
+    if (shellFs) { shellFs.onChange(paintFull); paintFull(); }
     function toggleFullscreen() {
       if (!box) return;
+      if (shellFs && shellFs.mode()) { shellFs.exit(); return; }
+      if (shellFs && shellFs.enter("max")) { turnSideways(); return; }
       var inside = document.fullscreenElement || document.webkitFullscreenElement;
       if (inside) { (document.exitFullscreen || document.webkitExitFullscreen).call(document); return; }
       if (box.requestFullscreen) box.requestFullscreen().then(turnSideways).catch(function () { /* refused */ });

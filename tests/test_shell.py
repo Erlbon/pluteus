@@ -130,3 +130,17 @@ def test_tv_mode_is_a_per_browser_switch_with_its_own_script_and_the_player_merg
     shell = c.get("/static/shell.js").text
     assert "min-width: 1000px" in shell and "pl-merged" in shell
     assert "pl-merged" in c.get("/static/base.css").text
+
+
+def test_full_screen_belongs_to_the_shell_frame_so_the_next_file_stays_full_screen(client):
+    """The page's own player box used to go full screen, and opening the next file replaced the page, which ended it. In the shell the
+    frame goes full screen (shell.js fullscreen service), the page only covers itself (pl-maxed) and a new page asks for the mode when it opens."""
+    c = client[0] if isinstance(client, tuple) else client
+    auth = client[1] if isinstance(client, tuple) else {}
+    shell = c.get("/static/shell.js", headers=auth).text
+    assert "frame.requestFullscreen" in shell and "fullscreen: fullscreen" in shell and "onChange" in shell
+    for name in ("viewer-media.js", "iptv.js"):
+        js = c.get("/static/" + name, headers=auth).text
+        assert "plShell.fullscreen" in js and "shellFs.enter(" in js and "pl-maxed" in js, name
+    css = c.get("/static/base.css", headers=auth).text
+    assert ".pl-videobox.pl-maxed" in css and "position: fixed; inset: 0" in css
