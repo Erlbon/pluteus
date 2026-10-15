@@ -3,6 +3,8 @@
 Release notes are taken from the section of the tagged version (`## 0.5.0 ...`).
 
 ## Unreleased
+- **A reader app's login now tolerates a capitalised or padded user name.** E-reader keyboards often capitalise the first letter or add a space ("Erlend " for "erlend"). A Basic login name that matches exactly one user ignoring letter case and surrounding spaces now means that user (passwords stay exact, and two users that differ only in case are never guessed between). The login throttle counts every spelling against the same account.
+- **The refusal log says more** about the usual slips: the password length and whether it has a space at the start or end or is empty (never the password).
 - **Reader apps that send the name or password as Latin-1** (older firmware, for a password with ø, å or é) now log in: the Basic header is read as UTF-8 first, then as Latin-1.
 - **Every refused Basic login is logged** with the name, the address and the reason (wrong password, no such user, header unreadable), never the password, so a reader app that "does not accept" its login can be diagnosed from the server log.
 - **Fixed: tapping the speed text above the play button changed the speed.** The speed written along the top of the play button is now only a readout; the - and + beside the play button change it. A thumb reaching for play (or the title above it) can no longer switch the speed by accident.

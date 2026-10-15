@@ -55,6 +55,16 @@ class Authenticator:
         self._bad = {}
         self._trusted = {}
 
+    def canonical_name(self, name: str) -> str:
+        """The user name a login means. Reader apps on an e-reader keyboard often capitalise the first letter or add a space: a name that is
+        exactly one user's name is that user; otherwise, ignoring spaces around it and letter case, the one user it matches. Passwords are
+        never loosened. An unknown or ambiguous name is returned as typed."""
+        if name in self.users:
+            return name
+        wanted = (name or "").strip().lower()
+        found = [n for n in self.users if n.lower() == wanted]
+        return found[0] if len(found) == 1 else name
+
     @staticmethod
     def restricted(user):
         """The user as seen through an app key: no admin page, no uploads, and read_only (the request guard refuses writes)."""
@@ -138,6 +148,7 @@ class Authenticator:
         via_key = False
         user = None
         if creds:
+            creds = (self.canonical_name(creds[0]), creds[1])
             secret = self.appkeys(creds[0]) if creds[0] in self.users else None
             if secret and hmac.compare_digest(secret.encode("utf-8"), creds[1].encode("utf-8")):
                 user, via_key = self.restricted(self.users[creds[0]]), True      # the app key: reading only

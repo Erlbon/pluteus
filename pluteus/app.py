@@ -287,6 +287,23 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
             log.warning("login for %r is locked for %d s after repeated wrong passwords (lock number %d)",
                         (name or "")[:40], seconds, number)
 
+    def refusal_reason(creds) -> str:
+        """Why a Basic login was refused, with hints about the usual reader-app slips (never the password itself)."""
+        if creds is None:
+            return "the Authorization header could not be read"
+        name, password = creds
+        if auth.canonical_name(name) not in auth.users:
+            near = [n for n in auth.users if n.lower() == name.strip().lower()]
+            return "no such user" + (" (a name that differs only in letter case matches more than one user)" if len(near) > 1 else "")
+        hints = []
+        if password != password.strip():
+            hints.append("the password has a space or line break at the start or end")
+        if name != name.strip():
+            hints.append("the name has a space around it")
+        if not password:
+            hints.append("the password is empty")
+        return "wrong password (%d characters%s)" % (len(password), "; " + "; ".join(hints) if hints else "")
+
     async def resolve(request: Request):
         """(user or None, seconds to wait when throttled). Password hashing and the hourly housekeeping run on
         worker threads, never on the event loop."""
@@ -308,7 +325,7 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
             if auth.known_bad(header):                  # the same wrong credentials again: no hashing, no new strike
                 return None, 0
             creds = auth.parse_basic(header)
-            name, ip = (creds[0] if creds else ""), limiter_ip(request)
+            name, ip = (auth.canonical_name(creds[0]) if creds else ""), limiter_ip(request)       # the throttle counts the user a login means, however it is spelled
             known, device_id, _ = device_state(request, name)
             wait = limiter.wait_seconds(name, ip, device=device_id, known=known)
             if wait:
@@ -321,9 +338,7 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
                 limiter.success(name, device_id)
                 return user, 0
             note_failure(name, ip, device_id, known)
-            log.warning("login refused for %r from %s: %s", (name or "")[:40], ip,
-                        "the Authorization header could not be read" if creds is None else
-                        ("wrong password" if name in auth.users else "no such user"))
+            log.warning("login refused for %r from %s: %s", (name or "")[:40], ip, refusal_reason(creds))
             return None, 0
         if cfg.anonymous_user:
             return auth.users.get(cfg.anonymous_user), 0

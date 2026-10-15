@@ -43,3 +43,39 @@ def test_parse_basic_reads_both_encodings():
     for encoding in ("utf-8", "latin-1"):
         assert Authenticator.parse_basic(header("erlend", PASSWORD, encoding)["Authorization"]) == ("erlend", PASSWORD)
     assert Authenticator.parse_basic("Basic " + base64.b64encode(b"no-colon").decode()) is None
+
+
+def test_a_name_with_the_wrong_letter_case_or_a_space_still_means_the_user(tmp_path):
+    c = client(tmp_path)
+    for typed in ("Erlend", "ERLEND", " erlend", "erlend "):
+        assert c.get("/opds", headers=header(typed, PASSWORD, "utf-8")).status_code == 200, typed
+    assert c.get("/opds", headers=header("Erlend", PASSWORD.upper(), "utf-8")).status_code == 401           # the password is never loosened
+    assert c.get("/opds", headers=header("Erlend", PASSWORD + " ", "utf-8")).status_code == 401
+
+
+def test_loosened_names_still_count_against_the_same_account(tmp_path):
+    c = client(tmp_path)
+    for number, typed in enumerate(("erlend", "Erlend", " erlend", "ERLEND ", "erlend  ")):
+        c.get("/opds", headers=header(typed, "wrong-%d" % number, "utf-8"))
+    locked = c.get("/opds", headers=header("erlend  ", "wrong-again", "utf-8"))
+    assert locked.status_code == 429                                                                          # one lock for every spelling
+
+
+def test_ambiguous_names_are_not_guessed(tmp_path):
+    (tmp_path / "books").mkdir()
+    cfg = parse_config({"roots": [{"name": "books", "path": str(tmp_path / "books")}],
+                        "users": [{"name": "Sam", "password_hash": hash_password("pw-one-1", n=2 ** 4), "roots": ["*"]},
+                                  {"name": "sam", "password_hash": hash_password("pw-two-2", n=2 ** 4), "roots": ["*"]}]})
+    c = TestClient(create_app(cfg))
+    assert c.get("/opds", headers=header("sam", "pw-two-2", "utf-8")).status_code == 200                    # an exact name is exact
+    assert c.get("/opds", headers=header("Sam", "pw-one-1", "utf-8")).status_code == 200
+    assert c.get("/opds", headers=header("SAM", "pw-one-1", "utf-8")).status_code == 401                    # two users match: nothing is guessed
+
+
+def test_the_log_hints_at_the_usual_reader_app_slips(tmp_path, caplog):
+    c = client(tmp_path)
+    with caplog.at_level(logging.WARNING):
+        c.get("/opds", headers=header("erlend", PASSWORD + " ", "utf-8"))
+        c.get("/opds", headers=header("Erlend ", "", "utf-8"))
+    assert "wrong password (%d characters; the password has a space" % (len(PASSWORD) + 1) in caplog.text
+    assert "the password is empty" in caplog.text and PASSWORD not in caplog.text
