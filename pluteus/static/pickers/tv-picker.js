@@ -103,7 +103,7 @@
     $("picked").textContent = n ? n + " ticked" : "Nothing ticked";
     $("saveServer").disabled = !n; $("saveOne").disabled = !n; $("check").disabled = !n;
   }
-  $("all").addEventListener("click", function () { shown.slice(0, limit).forEach(function (s) { s.on = true; }); render(); });
+  $("all").addEventListener("click", function () { shown.forEach(function (s) { s.on = true; }); render(); });
   $("none").addEventListener("click", function () { shown.forEach(function (s) { s.on = false; }); render(); });
 
   /* ---- try one channel in the page ---- */
@@ -234,27 +234,51 @@
     document.body.appendChild(a); a.click(); a.remove();
     log("Downloaded " + list.length + " channels as one list: Kodi's PVR IPTV Simple Client can read it. Without a programme guide they appear as plain channels.");
   });
+  /* A save request takes at most 300 channels, so a long list goes in batches of 200, one after the other. Names that repeat get a number first, so a
+     second "NRK 1" in a later batch is a new file and not "already exists". */
+  function uniqueNames(list) {
+    var seen = {};
+    return list.map(function (s) {
+      var key = s.name.toLowerCase(), n = (seen[key] = (seen[key] || 0) + 1);
+      return { s: s, name: n > 1 ? s.name + " " + n : s.name };
+    });
+  }
+  function saveInBatches(list) {
+    var BATCH = 200, named = uniqueNames(list), at = 0, total = { saved: 0, skipped: 0, logos: 0, folder: "" };
+    function next() {
+      if (at >= named.length) return Promise.resolve(total);
+      var part = named.slice(at, at + BATCH); at += BATCH;
+      log("Saving… " + Math.min(at, named.length) + " of " + named.length);
+      return fetch(page.save, {
+        method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ kind: "tv", sub: $("sub").value.trim(), by_country: $("bycountry").checked, overwrite: $("overwrite").checked,
+                               stations: part.map(function (p) {
+                                 var s = p.s;
+                                 return { name: p.name, url: s.url, id: s.id, group: categoryNames[s.cats[0]] || "", country: countries[s.country] || s.country, logo: s.logo };
+                               }) })
+      }).then(function (r) { return r.json().then(function (j) { return { ok: r.ok, body: j }; }); })
+        .then(function (res) {
+          if (!res.ok) { var e = new Error(res.body.error || "Not saved."); e.partial = total; throw e; }
+          total.saved += res.body.saved || 0; total.skipped += res.body.skipped || 0; total.logos += res.body.logos || 0; total.folder = res.body.folder;
+          return next();
+        });
+    }
+    return next();
+  }
   $("saveServer").addEventListener("click", function () {
     var list = ticked();
     $("saveServer").disabled = true;
     log("Saving…");
-    fetch(page.save, {
-      method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ kind: "tv", sub: $("sub").value.trim(), by_country: $("bycountry").checked, overwrite: $("overwrite").checked,
-                             stations: list.map(function (s) {
-                               return { name: s.name, url: s.url, id: s.id, group: categoryNames[s.cats[0]] || "", country: countries[s.country] || s.country, logo: s.logo };
-                             }) })
-    }).then(function (r) { return r.json().then(function (j) { return { ok: r.ok, body: j }; }); })
+    saveInBatches(list)
       .then(function (res) {
-        if (!res.ok) { log(res.body.error || "Not saved.", true); return; }
         var l = $("log");
-        l.textContent = "Saved " + res.body.saved + " in " + res.body.folder + (res.body.logos ? " with " + res.body.logos + " logos" : "") + "." +
-          (res.body.skipped ? " Left alone because they already exist: " + res.body.skipped + " (tick “overwrite existing” to replace them)." : "") + " ";
+        l.textContent = "Saved " + res.saved + " in " + res.folder + (res.logos ? " with " + res.logos + " logos" : "") + "." +
+          (res.skipped ? " Left alone because they already exist: " + res.skipped + " (tick “overwrite existing” to replace them)." : "") + " ";
         var a = document.createElement("a");
-        a.href = page.browse + (res.body.folder.indexOf("/") > 0 ? "/" + res.body.folder.split("/").slice(1).map(encodeURIComponent).join("/") : "");
+        a.href = page.browse + (res.folder.indexOf("/") > 0 ? "/" + res.folder.split("/").slice(1).map(encodeURIComponent).join("/") : "");
         a.textContent = "Open the folder"; l.appendChild(a);
       })
-      .catch(function () { log("Not saved: the server could not be reached.", true); })
+      .catch(function (e) { log((e && e.message ? e.message : "Not saved: the server could not be reached.") + (e && e.partial && e.partial.saved ? " (" + e.partial.saved + " channels were saved before this)" : ""), true); })
       .then(function () { update(); });
   });
 

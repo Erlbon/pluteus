@@ -3,6 +3,7 @@
 Release notes are taken from the section of the tagged version (`## 0.5.0 ...`).
 
 ## Unreleased
+- **A whole playlist in one go.** In the TV picker, "Tick all listed" ticks every channel of the list (not only the first 150 shown), and saving sends them in batches of 200 (one save request takes at most 300 and used to drop the rest without saying so). Channel names that repeat are numbered ("NRK 1 2") instead of the later one being skipped. Checked in a browser with a 450-channel playlist: 450 files saved.
 - **Clearer wording on Settings, My streams.** The field and the error say what is wanted: the stream's server, the part of the address between `https://` and the first `/`, and that the login is sent only there.
 - **Add one channel by its address** in the TV picker (name and address, for example a Dispatcharr `/proxy/ts/stream/...` address): it joins the list ticked, and is saved like any other channel.
 - **A station file with a TS address opens as a channel even without the marker** (`pluteus-kind="tv"`): addresses ending in `.ts`, `.mpegts` or `.m2ts`, or with `/proxy/ts/` in the path (Dispatcharr) are channels, so a playlist file saved by hand or by another tool no longer opens on the radio page.
