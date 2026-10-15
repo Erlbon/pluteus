@@ -361,3 +361,12 @@ def test_a_song_has_previous_and_next_song_buttons_inside_the_speed_buttons_and_
     js = client.get("/static/viewer-media.js").text
     assert "prev-song" in js and "next-song" in js
     assert client.get("/theme/night/icons/song-prev.svg").status_code == 200
+
+
+def test_the_lyrics_and_chapter_boxes_scroll_by_the_rows_place_inside_the_box_not_by_offsettop():
+    """offsetTop is measured from the nearest positioned parent; the lyrics box is not positioned, so offsetTop pointed far past the box and every
+    line change flung it to the bottom. The script must measure the row against the box itself."""
+    js = open(os.path.join(HERE, "..", "pluteus", "static", "viewer-media.js"), encoding="utf-8").read()
+    assert "lines[current].offsetTop" not in js and "chapterRows[found].offsetTop" not in js
+    assert js.count("getBoundingClientRect().top - lyricsBox.getBoundingClientRect().top + lyricsBox.scrollTop") == 1
+    assert "getBoundingClientRect().top - box.getBoundingClientRect().top + box.scrollTop" in js

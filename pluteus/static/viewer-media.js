@@ -235,7 +235,10 @@
       if (found >= 0) {
         chapterRows[found].classList.add("pl-now");
         var box = document.getElementById("chapters");
-        if (box && !box.hidden) box.scrollTop = chapterRows[found].offsetTop - box.clientHeight / 2;
+        if (box && !box.hidden) {                                    // the row's place inside the box, not from a higher parent
+          var rowTop = chapterRows[found].getBoundingClientRect().top - box.getBoundingClientRect().top + box.scrollTop;
+          box.scrollTop = rowTop - box.clientHeight / 2 + chapterRows[found].offsetHeight / 2;
+        }
       }
     });
   }
@@ -280,7 +283,11 @@
       current = found;
       if (current >= 0) {
         lines[current].classList.add("pl-now");
-        if (!lyricsBox.hidden) lyricsBox.scrollTop = lines[current].offsetTop - lyricsBox.clientHeight / 2 + lines[current].clientHeight / 2;
+        /* the line's place INSIDE the box: offsetTop would be measured from a higher parent (the box is not positioned) and fling the box to the bottom */
+        if (!lyricsBox.hidden) {
+          var inside = lines[current].getBoundingClientRect().top - lyricsBox.getBoundingClientRect().top + lyricsBox.scrollTop;
+          lyricsBox.scrollTop = inside - lyricsBox.clientHeight / 2 + lines[current].offsetHeight / 2;
+        }
       }
     });
   }
