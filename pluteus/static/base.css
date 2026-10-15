@@ -641,3 +641,11 @@ html.pl-tv .pl-shell-player .pl-vol-btn { width: 56px; height: 56px; }
 .pl-markdown .pl-have::before { content: "\2713\00a0"; }
 .pl-markdown .pl-missing { border: 1px dashed var(--pl-dim); color: var(--pl-dim); font-style: italic; }
 .pl-notes-lazy { margin-top: 18px; }
+
+/* the buffer buttons under the play button of a channel: Buffer [ Live | Smooth | Extra ] */
+.pl-bufferbar { display: flex; justify-content: center; align-items: center; gap: 8px; margin: 6px 0 2px; font-size: 13px; }
+.pl-bufferbar[hidden] { display: none; }
+.pl-seg { display: inline-grid; grid-auto-flow: column; grid-auto-columns: 1fr; border: 1px solid var(--pl-line); border-radius: 8px; overflow: hidden; }   /* equal columns: the three buttons are the same size */
+.pl-seg button { font: inherit; font-size: 13px; padding: 4px 14px; min-width: 6em; text-align: center; border: 0; background: transparent; color: var(--pl-dim); cursor: pointer; }
+.pl-seg button + button { border-left: 1px solid var(--pl-line); }
+.pl-seg button.pl-on { background: var(--pl-accent); color: var(--pl-btn-primary-fg, #1a1405); font-weight: 600; }

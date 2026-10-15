@@ -162,24 +162,9 @@
     function paintVia() {
       var possible = !!relay && !always && !(location.protocol === "https:" && /^http:/i.test(url));
       viaBtn.hidden = infoBox.hidden || !possible;
-      bufferSel.hidden = infoBox.hidden;
       viaBtn.textContent = viaRelay ? "Play directly instead" : "Play through the server instead";
     }
     viaBtn.addEventListener("click", function () { viaRelay = !viaRelay; start(); paintVia(); });
-    /* the buffer: how far behind live to play. A bigger cushion rides out a jittery stream, at the cost of a longer wait at the start and of being later than live. */
-    var bufferSel = document.createElement("select");
-    bufferSel.setAttribute("aria-label", "Buffer");
-    [["0", "Buffer: live, smallest delay"], ["8", "Buffer: smooth, about 8 s behind"], ["20", "Buffer: extra smooth, about 20 s behind"]].forEach(function (c) {
-      var o = document.createElement("option"); o.value = c[0]; o.textContent = c[1]; bufferSel.appendChild(o);
-    });
-    bufferSel.value = String(bufferSeconds());
-    bufferSel.hidden = true;
-    infoBtn.parentNode.appendChild(document.createTextNode(" "));
-    infoBtn.parentNode.appendChild(bufferSel);
-    bufferSel.addEventListener("change", function () {
-      try { localStorage.setItem("pluteus-tv-buffer", bufferSel.value); } catch (e) { /* storage blocked */ }
-      if (wanted) start();
-    });
     infoBtn.addEventListener("click", function () {
       var open = infoBox.hidden;
       infoBox.hidden = !open; infoBtn.setAttribute("aria-expanded", String(open));
@@ -187,6 +172,25 @@
       clearInterval(infoTimer);
       if (open) { infoBox.textContent = infoText(); infoTimer = setInterval(function () { infoBox.textContent = infoText(); paintVia(); }, 1000); }
     });
+  }
+  /* the buffer buttons (Live / Smooth / Extra): how far behind live to play. A bigger cushion rides out a jittery stream, at the cost of a longer wait
+     at the start and of being later than live. Kept in this browser. */
+  var bufferBar = document.getElementById("bufferbar");
+  if (bufferBar) {
+    var segButtons = Array.prototype.slice.call(bufferBar.querySelectorAll("button[data-sec]"));
+    var paintSeg = function () {
+      var now = String(bufferSeconds());
+      segButtons.forEach(function (b) { var on = b.dataset.sec === now; b.classList.toggle("pl-on", on); b.setAttribute("aria-pressed", String(on)); });
+    };
+    segButtons.forEach(function (b) {
+      b.addEventListener("click", function () {
+        try { localStorage.setItem("pluteus-tv-buffer", b.dataset.sec); } catch (e) { /* storage blocked */ }
+        paintSeg();
+        if (wanted) start();
+      });
+    });
+    bufferBar.hidden = false;
+    paintSeg();
   }
   playBtn.addEventListener("click", toggle);
   video.addEventListener("click", toggle);                      // like the movie player: a click on the picture plays or pauses

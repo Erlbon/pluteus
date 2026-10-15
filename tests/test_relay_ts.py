@@ -80,6 +80,9 @@ def test_the_channel_page_offers_mpegts_and_a_ts_relay_address(cfg, tmp_path):
     assert "tv.m3u?i=0&amp;ts=1" in page and "tv.m3u?i=1&amp;hls=1" in page                  # a TS channel goes to the TS relay, an HLS one to the HLS relay
     js = me.get("/static/iptv.js").text
     assert "Play through the server instead" in js and "Play directly instead" in js and "Stream info" in page          # the A/B switch in the info panel
+    assert "id='bufferbar'" in page and ">Live<" in page and "data-sec='8'" in page and ">Buffered<" in page and ">Extra buffered<" in page   # the buffer buttons
+    assert "grid-auto-columns: 1fr" in me.get("/static/base.css").text                                                   # equal-sized segments
+    assert "pluteus-tv-buffer" in js and "button[data-sec]" in js
     assert me.get("/static/vendor/mpegts.min.js").status_code == 200 and me.get("/static/vendor/LICENSE-mpegtsjs.txt").status_code in (200, 404)
     shell = me.get("/shell", headers={"Accept": "text/html"}).text
     assert "data-mpegts='/static/vendor/mpegts.min.js'" in shell
