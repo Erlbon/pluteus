@@ -11,7 +11,7 @@
   var now = document.getElementById("now"), statusEl = document.getElementById("status"), statusTimer = null;
   var playBtn = document.getElementById("play"), box = document.querySelector(".pl-videobox");
   var stations = Array.prototype.slice.call(document.querySelectorAll(".pl-station"));
-  var hls = null, url = "", wanted = false, viaRelay = video.dataset.always === "1", always = video.dataset.always === "1", relay = video.dataset.relay || "";   // relay: this channel's playlist through the server ('' when it is off)
+  var hls = null, ts = null, tsToken = 0, mpegtsLoading = null, url = "", wanted = false, viaRelay = video.dataset.always === "1", always = video.dataset.always === "1", relay = video.dataset.relay || "";   // relay: this channel's playlist through the server ('' when it is off)
   document.documentElement.classList.add("pl-js");
   video.controls = false;
 
@@ -27,7 +27,19 @@
     if (icon) icon.className = "pl-icon " + (wanted ? "pl-i-pause" : "pl-i-play");
     playBtn.setAttribute("aria-label", wanted ? "Leave the broadcast" : "Play");
   }
+  /* an MPEG-TS channel (a panel such as Dispatcharr serves raw transport streams): mpegts.js, loaded when first needed */
+  function needMpegts() {
+    if (window.mpegts) return Promise.resolve();
+    if (!mpegtsLoading) mpegtsLoading = new Promise(function (resolve, reject) {
+      var s = document.createElement("script");
+      s.src = video.dataset.mpegts; s.onload = resolve; s.onerror = function () { mpegtsLoading = null; reject(); };
+      document.head.appendChild(s);
+    });
+    return mpegtsLoading;
+  }
   function release() {
+    tsToken++;
+    if (ts) { try { ts.pause(); ts.unload(); ts.detachMediaElement(); ts.destroy(); } catch (e) { /* ignore */ } ts = null; }
     if (hls) { try { hls.destroy(); } catch (e) { /* ignore */ } hls = null; }
     video.removeAttribute("src");
     video.load();
@@ -56,8 +68,18 @@
     wanted = true; paint();
     var source = viaRelay && relay ? relay : url;
     var hlsAddress = /[.]m3u8(?:$|[?#])/i.test(url);
+    var tsAddress = !hlsAddress && !!video.dataset.mpegts && !/[.](?:mp4|webm|ogv|mp3|aac|ogg)(?:$|[?#])/i.test(url);       // not HLS: an MPEG transport stream
     var play = function () { var p = video.play(); if (p && p.catch) p.catch(function (e) { if (e && e.name === "NotAllowedError") { wanted = false; paint(); say("Tap play to start", 4000); } }); };
-    if (hlsAddress && window.Hls && window.Hls.isSupported()) {
+    if (tsAddress) {
+      var mine = tsToken;
+      needMpegts().then(function () {
+        if (mine !== tsToken || !wanted) return;
+        if (!window.mpegts || !window.mpegts.isSupported()) { failed(); return; }
+        ts = window.mpegts.createPlayer({ type: "mpegts", isLive: true, url: source }, { enableWorker: false, liveBufferLatencyChasing: true });
+        ts.on(window.mpegts.Events.ERROR, function () { if (mine === tsToken) failed(); });
+        ts.attachMediaElement(video); ts.load(); play();
+      }, function () { failed(); });
+    } else if (hlsAddress && window.Hls && window.Hls.isSupported()) {
       hls = new window.Hls({ enableWorker: false, lowLatencyMode: false });
       hls.on(window.Hls.Events.MANIFEST_PARSED, play);
       hls.on(window.Hls.Events.ERROR, function (event, data) { if (data && data.fatal) failed(); });

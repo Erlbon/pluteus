@@ -10,6 +10,14 @@ files; to upgrade, fetch a newer package with `npm pack`, check its integrity ha
 
 epub.js needs JSZip as a global, so jszip.min.js is loaded first.
 
+## mpegts.js (MPEG-TS channels)
+
+Copied unchanged from the npm package, plays the raw MPEG-TS streams that an IPTV panel such as Dispatcharr serves (hls.js plays only HLS).
+
+| File | Package | Version | Licence | npm integrity (sha512, of the whole package) |
+|---|---|---|---|---|
+| mpegts.min.js | mpegts.js (dist/mpegts.js, already minified) | 1.8.2 | Apache-2.0 (LICENSE-mpegtsjs.txt) | cZYMa5muASH55wrS6JK5IGkUqnCA96c0f+WdnW91jIK9s/N6NzjmTQDJNYg9A5u/G2Q5nj2b3w1Zwzze/9guxA== |
+
 ## pdf.js (PDF viewer)
 
 Copied unchanged from the npm package, **legacy build** (broader browser support), into `pdfjs/`:

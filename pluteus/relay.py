@@ -27,6 +27,8 @@ TIMEOUT = 15.0            # seconds to connect, and the longest a stream may sta
 CHUNK = 16384
 AUDIO = ("audio/", "application/ogg")
 FALLBACK_TYPE = "audio/mpeg"
+TS = ("video/mp2t", "video/mpeg", "video/x-mpegts", "video/x-ts")       # an MPEG transport stream (an IPTV panel's channel)
+TS_TYPE = "video/mp2t"
 
 
 class Refused(Exception):
@@ -180,7 +182,7 @@ def _split(url: str):
     return parts.scheme, parts.hostname, port, (parts.path or "/") + ("?" + parts.query if parts.query else "")
 
 
-def open_stream(url: str, extra: dict | None = None, accept=AUDIO, entry: dict | None = None):
+def open_stream(url: str, extra: dict | None = None, accept=AUDIO, entry: dict | None = None, fallback: str = FALLBACK_TYPE):
     """(connection, response, content type) for the stream, after the checks. The caller closes the connection. Raises Refused.
     `extra`: more request headers (the now-playing look-up asks for Icy-MetaData). `accept`: the content types allowed (audio by default;
     None for the pieces of an HLS stream, which are checked by what they contain). `entry`: a stored stream (vault.py): its login and headers are
@@ -214,10 +216,10 @@ def open_stream(url: str, extra: dict | None = None, accept=AUDIO, entry: dict |
             if accept is None:
                 return connection, response, kind
             if kind in ("", "application/octet-stream", "binary/octet-stream"):
-                kind = FALLBACK_TYPE                      # Shoutcast and old Icecast servers often send no type
+                kind = fallback                           # Shoutcast and old Icecast servers often send no type (an IPTV panel often sends none either)
             if not kind.startswith(accept):
                 connection.close()
-                raise Refused("That is not an audio stream (%s)." % (kind or "unknown type"), 415)
+                raise Refused("That is not %s (%s)." % ("a transport stream" if accept == TS else "an audio stream", kind or "unknown type"), 415)
             return connection, response, kind
         except Refused:
             raise

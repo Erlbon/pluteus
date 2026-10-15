@@ -681,10 +681,10 @@ def shell_page(ctx: Ctx, start_url: str) -> str:
     def btn(ident: str, label: str, icon: str) -> str:
         return ("<button type='button' class='pl-vol-btn' id='%s' aria-label='%s'><span class='pl-icon pl-i-%s'></span></button>"
                 % (ident, label, icon))
-    strip = ("<div class='pl-shell-player' id='sp' data-hls='%s' hidden>%s%s%s<img class='pl-shell-logo' id='sp-logo' alt='' hidden><span class='pl-shell-title' id='sp-title'></span>"
+    strip = ("<div class='pl-shell-player' id='sp' data-hls='%s' data-mpegts='%s' hidden>%s%s%s<img class='pl-shell-logo' id='sp-logo' alt='' hidden><span class='pl-shell-title' id='sp-title'></span>"
              "<a class='pl-shell-link' id='sp-link' target='shell-frame' href='#' hidden>Picture</a>"
              "<span class='pl-muted' id='sp-pos'></span>%s<div class='pl-shell-prog'><i id='sp-bar'></i></div></div>"
-             % (escape(ctx.urls.static("vendor/hls.min.js")), btn("sp-prev", "Previous", "prev"), btn("sp-play", "Play", "play"),
+             % (escape(ctx.urls.static("vendor/hls.min.js")), escape(ctx.urls.static("vendor/mpegts.min.js")), btn("sp-prev", "Previous", "prev"), btn("sp-play", "Play", "play"),
                 btn("sp-next", "Next", "next"),
                 "<button type='button' class='pl-vol-btn' id='sp-close' aria-label='Close the player'>&times;</button>"))
     frame = ("<iframe class='pl-shell-frame' id='shell-frame' name='shell-frame' title='Pluteus' src='%s' allow='fullscreen; autoplay'></iframe>"
@@ -715,10 +715,10 @@ def iptv_page(ctx: Ctx, title: str, *, stations: list, download_url: str, text_u
                  "<span class='pl-icon pl-i-play'></span></button></span></div>")
     logo = "<img class='pl-tv-logo' src='%s' alt=''>" % escape(logo_url) if logo_url else ""
     stage = ("<div class='pl-media-box pl-player pl-videobox pl-iptv'><div class='pl-track pl-tv-head'>%s<h1 class='pl-track-title' id='now'>%s</h1></div>"
-             "<div class='pl-videowrap'><video id='tv' controls playsinline data-url='%s' data-page='%s' data-logo='%s' data-relay='%s' data-always='%s'%s></video></div>%s%s%s"
+             "<div class='pl-videowrap'><video id='tv' controls playsinline data-url='%s' data-page='%s' data-logo='%s' data-relay='%s' data-always='%s' data-mpegts='%s'%s></video></div>%s%s%s"
              "<div class='pl-toast' id='status' hidden></div></div>"
              % (logo, escape(heading), escape(first_url), escape(page_url), escape(logo_url), escape(relays[0] if relays else ""), "1" if (always and always[0]) else "0",
-                " data-keep-sound='1'" if ctx.tv_sound else "", live_row, transport, listing))
+                escape(ctx.urls.static("vendor/mpegts.min.js")), " data-keep-sound='1'" if ctx.tv_sound else "", live_row, transport, listing))
     tools = _download_link(download_url) + _reader_scheme()
     foot = "<a href='%s'>Show as text</a>" % escape(text_url)
     scripts = (ctx.urls.static("vendor/hls.min.js"), ctx.urls.static("iptv.js"))

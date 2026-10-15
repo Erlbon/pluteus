@@ -91,7 +91,7 @@
   }
   function paintTest(s) {
     if (!s.testEl) return;
-    s.testEl.textContent = s.test === "ok" ? "plays" : s.test === "no" ? "fails" : s.test === "relay" ? "via the server?" : s.test === "busy" ? "testing…" : "";
+    s.testEl.textContent = s.test === "ok" ? "plays" : s.test === "no" ? "fails" : s.test === "relay" ? "via the server?" : s.test === "try" ? "play to try" : s.test === "busy" ? "testing…" : "";
     s.testEl.className = "test" + (s.test === "ok" ? " ok" : s.test === "no" ? " no" : "");
     if (s.why) s.testEl.title = s.why;
   }
@@ -132,6 +132,10 @@
 
   /* ---- test the ticked channels: can a web page read the manifest at all? (the usual reason a channel will not play in pluteus) ---- */
   function testOne(s) {
+    if (!/[.]m3u8(?:$|[?#])/i.test(s.url)) {                 // a transport stream (a panel such as Dispatcharr) never ends: it is tried by playing it
+      s.test = "try"; s.why = "An MPEG-TS stream cannot be checked from here. Save it and play it on its channel page."; paintTest(s);
+      return Promise.resolve();
+    }
     if (relayOn && secure && /^http:/i.test(s.url)) {        // a secure page cannot even ask a plain-http server: only the relay can say
       s.test = "relay"; s.why = "Plain http cannot be tested from this secure page. Saved, it plays through the server (relay)."; paintTest(s);
       return Promise.resolve();
@@ -162,7 +166,9 @@
     Promise.all(workers).then(function () {
       var bad = ticked().filter(function (s) { return s.test === "no"; }).length;
       var viaRelay = ticked().filter(function (s) { return s.test === "relay"; }).length;
-      say("Tested " + total + ": " + (total - bad - viaRelay) + " answer, " + bad + " do not" + (viaRelay ? ", " + viaRelay + " can only be tried through the server (keep them: the relay is on)" : "") + ". Untick the ones that fail.");
+      var untestable = ticked().filter(function (s) { return s.test === "try"; }).length;
+      say("Tested " + total + ": " + (total - bad - viaRelay - untestable) + " answer, " + bad + " do not" + (viaRelay ? ", " + viaRelay + " can only be tried through the server (keep them: the relay is on)" : "") +
+          (untestable ? ", " + untestable + " are transport streams that can only be tried by playing them" : "") + ". Untick the ones that fail.");
       update();
     });
   });

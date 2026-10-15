@@ -1268,7 +1268,8 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
         extra["logo_url"] = urls.cover(root, parts) if radio.find_logo(info.path) else ""
         extra["always"] = [bool(name) for name in radio.parse_streams(head[0])]      # a station that names a stored stream only plays through the server
         if cfg.relay and lib.uploads_enabled(user):          # the player may fall back to the server for a stream it cannot play
-            extra["relay_urls"] = [urls.relay(root, parts, i) + ("&hls=1" if page is web.iptv_page else "") for i in range(len(stations))]
+            extra["relay_urls"] = [urls.relay(root, parts, i) + (("&hls=1" if urlsplit(stations[i][1]).path.lower().endswith(".m3u8") else "&ts=1")
+                                                                 if page is web.iptv_page else "") for i in range(len(stations))]
         html = page(ctx_for(user), info.name, stations=stations, download_url=urls.download(root, parts),
                     text_url=urls.view(root, parts) + "?as=text", back_url=urls.browse(root, parts[:-1]), **extra)
         return html, (IPTV_CSP if page is web.iptv_page else RADIO_CSP)
@@ -1519,15 +1520,18 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
         if request.query_params.get("hls") == "1":           # a TV channel: its playlist, rewritten so every piece comes through the server
             return await hls_playlist(user, "%s/%s#%d" % (root, "/".join(parts), number), stations[number][1],
                                        stations[number][2], entry)
-        return await relay_audio(user, "%s/%s#%d" % (root, "/".join(parts), number), stations[number][1], entry)
+        return await relay_audio(user, "%s/%s#%d" % (root, "/".join(parts), number), stations[number][1], entry,
+                                 ts=request.query_params.get("ts") == "1")
 
-    async def relay_audio(user, label: str, url: str, entry):
-        """Pass a station's audio on (the relay's one audio path: the web player and the Subsonic stream both come here)."""
+    async def relay_audio(user, label: str, url: str, entry, ts: bool = False):
+        """Pass a station's audio on (the relay's one audio path: the web player and the Subsonic stream both come here). `ts`: the stream is an
+        MPEG transport stream (a TV channel from an IPTV panel), carried the same way under the same limits; the channel page plays it."""
         if not relay_limits.acquire(user.name):
             return PlainTextResponse("Too many streams are open through the server right now. Close one and try again.", 429,
                                      headers={"Retry-After": "10"})
         try:
-            connection, response, kind = await run_in_threadpool(relay.open_stream, url, None, relay.AUDIO, entry)
+            connection, response, kind = await (run_in_threadpool(relay.open_stream, url, None, relay.TS, entry, relay.TS_TYPE) if ts else
+                                                run_in_threadpool(relay.open_stream, url, None, relay.AUDIO, entry))
         except relay.Refused as e:
             relay_limits.release(user.name)
             return PlainTextResponse(e.message, e.status)
@@ -1535,7 +1539,7 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
             relay_limits.release(user.name)
             raise
 
-        handle = relay_limits.register(user.name, label, "radio")
+        handle = relay_limits.register(user.name, label, "tv" if ts else "radio")
 
         async def pump():
             try:

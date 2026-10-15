@@ -7,7 +7,7 @@
   if (!frame || !strip) return;
   var root = document.documentElement;
   /* one media element for everything; a (never shown) video element, so it can also play the sound of a TV channel */
-  var audio = document.createElement("video"), queue = [], index = -1, failures = 0, hls = null, hlsToken = 0, hlsLoading = null;
+  var audio = document.createElement("video"), queue = [], index = -1, failures = 0, hls = null, hlsToken = 0, hlsLoading = null, ts = null, mpegtsLoading = null;
   audio.preload = "auto";
   audio.playsInline = true;
   var el = function (id) { return document.getElementById(id); };
@@ -63,7 +63,21 @@
     try { frame.contentDocument.querySelectorAll("audio, video").forEach(function (m) { m.pause(); }); } catch (e) { /* not ready */ }
   }
   /* the sound of a TV channel: hls.js (loaded when first needed) plays the stream, at its lowest quality, into the media element */
-  function releaseHls() { hlsToken++; if (hls) { try { hls.destroy(); } catch (e) { /* ignore */ } hls = null; } }
+  function releaseHls() {
+    hlsToken++;
+    if (hls) { try { hls.destroy(); } catch (e) { /* ignore */ } hls = null; }
+    if (ts) { try { ts.pause(); ts.unload(); ts.detachMediaElement(); ts.destroy(); } catch (e) { /* ignore */ } ts = null; }
+  }
+  /* an MPEG-TS channel (a panel such as Dispatcharr serves raw transport streams): mpegts.js, loaded when first needed */
+  function needMpegts() {
+    if (window.mpegts) return Promise.resolve();
+    if (!mpegtsLoading) mpegtsLoading = new Promise(function (resolve, reject) {
+      var s = document.createElement("script");
+      s.src = strip.dataset.mpegts; s.onload = resolve; s.onerror = function () { mpegtsLoading = null; reject(); };
+      document.head.appendChild(s);
+    });
+    return mpegtsLoading;
+  }
   function needHls() {
     if (window.Hls) return Promise.resolve();
     if (!hlsLoading) hlsLoading = new Promise(function (resolve, reject) {
@@ -94,6 +108,22 @@
           hls.loadSource(item.viaRelay && item.relay ? item.relay : item.url);
           hls.attachMedia(audio);
         } else { audio.src = item.viaRelay && item.relay ? item.relay : item.url; go(); }           // a browser that plays HLS itself
+      }, function () { failedLive(item); });
+    } else if (item.tv && strip.dataset.mpegts && !/[.](?:mp3|aac|ogg|mp4|webm)(?:$|[?#])/i.test(item.url)) {
+      // a channel that is not HLS is an MPEG transport stream: mpegts.js plays it (the sound only is kept in the bar)
+      if (item.relay && !item.viaRelay && location.protocol === "https:" && /^http:/i.test(item.url)) item.viaRelay = true;
+      var tsToken = hlsToken;
+      needMpegts().then(function () {
+        if (tsToken !== hlsToken) return;
+        if (!window.mpegts || !window.mpegts.isSupported()) { failedLive(item); return; }
+        ts = window.mpegts.createPlayer({ type: "mpegts", isLive: true, hasVideo: false, url: item.viaRelay && item.relay ? item.relay : item.url },
+                                        { enableWorker: false, liveBufferLatencyChasing: true });
+        ts.on(window.mpegts.Events.ERROR, function () {
+          releaseHls();
+          if (item.relay && !item.viaRelay) { item.viaRelay = true; show(); load(item); return; }          // once through the server
+          failedLive(item);
+        });
+        ts.attachMediaElement(audio); ts.load(); go();
       }, function () { failedLive(item); });
     } else {
       // a plain http stream on this secure page cannot play directly: through the server when it offers that (the relay)
@@ -157,7 +187,7 @@
   });
   function dropStream() { stopNow(); releaseHls(); audio.pause(); audio.removeAttribute("src"); audio.load(); paint(); }     // live: pause = leave the broadcast
   playBtn.addEventListener("click", function () {
-    if (live() && !audio.getAttribute("src") && !hls) { load(queue[index]); startNow(); paint(); return; }          // joins the broadcast as it is now
+    if (live() && !audio.getAttribute("src") && !hls && !ts) { load(queue[index]); startNow(); paint(); return; }          // joins the broadcast as it is now
     if (audio.paused) { var p = audio.play(); if (p && p.catch) p.catch(function () { /* blocked */ }); }
     else if (live()) dropStream();
     else audio.pause();
