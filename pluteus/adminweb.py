@@ -182,16 +182,26 @@ def _relay_box(r) -> str:
     else:
         key = _light("bad", "stored streams off") + " <span class='pl-muted'>&middot; %s</span>" % escape(r["problem"] or "no key")
     now = time.time()
-    rows = [[escape(s["user"]), escape(s["kind"]), escape(s["label"]), escape(ago(s["since"], now)), _size(s["bytes"]),
+    def quality(s: dict) -> list:
+        """Rate and the two kinds of stall: the SOURCE being silent for over a second, and the BROWSER'S connection taking over a second to take data."""
+        seconds = max(1.0, now - s["since"])
+        rate = "%.0f kB/s" % (s["bytes"] / 1024 / seconds)
+        source = ("<span class='pl-error'>%d (longest %.1f s)</span>" % (s["stalls"], s["longest"])) if s["stalls"] else "0"
+        browser = ("<span class='pl-error'>%d</span>" % s["slow_client"]) if s["slow_client"] else "0"
+        return [rate, source, browser]
+    rows = [[escape(s["user"]), escape(s["kind"]), escape(s["label"]), escape(ago(s["since"], now)), _size(s["bytes"]), *quality(s),
              _post("/relay/stop", {"id": s["id"]}, "Stop", "Stop this stream? The listener's player will end.", True)] for s in r["open"]]
-    open_html = _table(["User", "Kind", "Station (file#number)", "Since", "Carried", ""], rows, "No audio stream is open.")
+    open_html = _table(["User", "Kind", "Station (file#number)", "Since", "Carried", "Rate", "Source stalls", "Slow browser link", ""], rows, "No audio stream is open.")
+    open_help = ("<p class='pl-muted'>A stream that is spotty shows where: <b>source stalls</b> mean the stream itself went quiet for over a second before it "
+                 "reached pluteus (the provider or Dispatcharr); <b>slow browser link</b> means pluteus had the data but the connection to the listener "
+                 "(upload speed, the proxy) could not take it fast enough.</p>") if rows else ""
     channel_rows = [[escape(user), escape(label), _post("/relay/stop-channel", {"user": user, "key": label}, "Stop",
                                                           "Stop this channel? It stays refused for two minutes.", True)] for user, label in r["channels"]]
     channels = _table(["User", "TV channel (file#number)", ""], channel_rows, "") if channel_rows else ""
     totals = ", ".join("%s %s" % (escape(n), _size(b)) for n, b in sorted(r["totals"].items())) or "nothing yet"
     stored = ", ".join("%s (%d)" % (escape(n), c) for n, c in sorted(r["stored"].items())) or "none"
-    return _box("Stream relay", "<p>%s &middot; limits %d per user, %d in all</p>%s%s<p>Carried since the start: %s.</p>"
-                "<p>Stored streams (logins and headers, encrypted; counts only): %s.</p>" % (key, r["per_user"], r["total"], open_html, channels, totals, stored))
+    return _box("Stream relay", "<p>%s &middot; limits %d per user, %d in all</p>%s%s%s<p>Carried since the start: %s.</p>"
+                "<p>Stored streams (logins and headers, encrypted; counts only): %s.</p>" % (key, r["per_user"], r["total"], open_html, open_help, channels, totals, stored))
 
 
 def status_page(ctx: Ctx, d: dict) -> str:

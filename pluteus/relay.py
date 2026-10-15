@@ -29,6 +29,7 @@ AUDIO = ("audio/", "application/ogg")
 FALLBACK_TYPE = "audio/mpeg"
 TS = ("video/mp2t", "video/mpeg", "video/x-mpegts", "video/x-ts")       # an MPEG transport stream (an IPTV panel's channel)
 TS_TYPE = "video/mp2t"
+STALL_SECONDS = 1.0           # a silent source (or a slow browser connection) longer than this counts as a stall
 
 
 class Refused(Exception):
@@ -77,7 +78,8 @@ class Limiter:
     def register(self, user: str, label: str, kind: str) -> dict:
         with self._lock:
             self._serial += 1
-            handle = {"id": self._serial, "user": user, "label": label, "kind": kind, "since": time.time(), "bytes": 0, "stop": False}
+            handle = {"id": self._serial, "user": user, "label": label, "kind": kind, "since": time.time(), "bytes": 0, "stop": False,
+                      "stalls": 0, "longest": 0.0, "slow_client": 0, "opened": 0.0}
             self._streams[self._serial] = handle
             return handle
 

@@ -98,6 +98,37 @@
   video.addEventListener("play", function () {                  // a queue playing in the shell gives way to the picture
     try { if (window.parent !== window && window.parent.plShell) window.parent.plShell.pause(); } catch (e) { /* ignore */ }
   });
+  /* Stream info (for a spotty channel): what the player knows about the stream right now. It tells the places apart: the speed the data arrives at, how much
+     is buffered ahead, how many frames were dropped, and how often (and how long) playback waited for data. */
+  var infoBtn = document.getElementById("info"), infoBox = document.getElementById("tvinfo"), infoTimer = null, stalls = 0, stallMs = 0, waitingSince = 0;
+  video.addEventListener("waiting", function () { if (!waitingSince && wanted) { waitingSince = Date.now(); stalls++; } });
+  video.addEventListener("playing", function () { if (waitingSince) { stallMs += Date.now() - waitingSince; waitingSince = 0; } });
+  function infoText() {
+    var quality = video.getVideoPlaybackQuality ? video.getVideoPlaybackQuality() : null, ahead = 0, lines = [];
+    try { if (video.buffered.length) ahead = video.buffered.end(video.buffered.length - 1) - video.currentTime; } catch (e) { /* no buffer yet */ }
+    lines.push("Coming from: " + (viaRelay ? "this server (the relay), which fetched it" : "the stream's own server, straight to this browser"));
+    lines.push("Picture: " + (video.videoWidth ? video.videoWidth + " x " + video.videoHeight : "none yet") + (video.paused ? " (paused)" : " (playing)"));
+    lines.push("Buffered ahead: " + ahead.toFixed(1) + " s");
+    if (quality) lines.push("Frames: " + quality.totalVideoFrames + " shown, " + quality.droppedVideoFrames + " dropped by the browser");
+    if (ts && ts.statisticsInfo) {
+      var st = ts.statisticsInfo;
+      lines.push("Data arriving at: " + Math.round(st.speed || 0) + " kB/s (a standard-definition channel needs about 400 to 1000, high definition 1000 to 2500)");
+      lines.push("Decoded frames: " + (st.decodedFrames || 0) + ", dropped by the player: " + (st.droppedFrames || 0));
+    }
+    if (hls) lines.push("Estimated bandwidth: " + Math.round((hls.bandwidthEstimate || 0) / 1000) + " kbit/s" + (hls.latency ? ", behind live by " + hls.latency.toFixed(1) + " s" : ""));
+    lines.push("Times playback waited for data: " + stalls + ", " + (stallMs / 1000).toFixed(1) + " s in all");
+    lines.push("Tip: if data arrives well below that speed, or often waits, the weak link is between the stream and this browser. The admin page's relay box says which side of the server.");
+    return lines.join("\n");
+  }
+  if (infoBtn && infoBox) {
+    infoBtn.hidden = false;
+    infoBtn.addEventListener("click", function () {
+      var open = infoBox.hidden;
+      infoBox.hidden = !open; infoBtn.setAttribute("aria-expanded", String(open));
+      clearInterval(infoTimer);
+      if (open) { infoBox.textContent = infoText(); infoTimer = setInterval(function () { infoBox.textContent = infoText(); }, 1000); }
+    });
+  }
   playBtn.addEventListener("click", toggle);
   video.addEventListener("click", toggle);                      // like the movie player: a click on the picture plays or pauses
 

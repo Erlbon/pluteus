@@ -1529,6 +1529,7 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
         if not relay_limits.acquire(user.name):
             return PlainTextResponse("Too many streams are open through the server right now. Close one and try again.", 429,
                                      headers={"Retry-After": "10"})
+        opening = time.monotonic()
         try:
             connection, response, kind = await (run_in_threadpool(relay.open_stream, url, None, relay.TS, entry, relay.TS_TYPE) if ts else
                                                 run_in_threadpool(relay.open_stream, url, None, relay.AUDIO, entry))
@@ -1540,20 +1541,34 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
             raise
 
         handle = relay_limits.register(user.name, label, "tv" if ts else "radio")
+        handle["opened"] = time.monotonic() - opening                 # how long the source took to answer
 
         async def pump():
             try:
                 while not handle["stop"]:                    # the admin's Stop sets the flag
+                    began = time.monotonic()
                     chunk = await run_in_threadpool(relay.read_chunk, response)
+                    waited = time.monotonic() - began       # the SOURCE was silent this long (a live stream never pauses for a second)
+                    if waited > relay.STALL_SECONDS and chunk:
+                        handle["stalls"] += 1
+                        handle["longest"] = max(handle["longest"], waited)
                     if not chunk:
                         break
                     handle["bytes"] += len(chunk)
+                    sent = time.monotonic()
                     yield chunk
+                    if time.monotonic() - sent > relay.STALL_SECONDS:        # the BROWSER'S connection (or the proxy) took this long to take it
+                        handle["slow_client"] += 1
             finally:                                         # the listener left, the stream ended or stalled: nothing stays open
                 try:
                     connection.close()
                 except Exception:                            # noqa: BLE001
                     pass
+                seconds = max(0.001, time.time() - handle["since"])
+                debug.record({"method": "RELAY", "target": label, "status": "ended", "client": "-",
+                              "note": "%.0f s, %d kB, average %.0f kB/s, opened in %.2f s, source stalls %d (longest %.1f s), slow browser connection %d times"
+                                      % (seconds, handle["bytes"] // 1024, handle["bytes"] / 1024 / seconds, handle["opened"], handle["stalls"],
+                                         handle["longest"], handle["slow_client"])})
                 relay_limits.unregister(handle)
                 relay_limits.release(user.name)
         return StreamingResponse(pump(), media_type=kind, headers={"Cache-Control": "no-store", "X-Content-Type-Options": "nosniff"})

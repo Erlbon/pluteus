@@ -17,6 +17,16 @@ class Panel(http.server.BaseHTTPRequestHandler):
         pass
 
     def do_GET(self):
+        if self.path.startswith("/proxy/ts/stream/stall"):                 # a source that goes quiet in the middle
+            self.send_response(200)
+            self.send_header("Content-Type", "video/mp2t")
+            self.end_headers()
+            self.wfile.write(TS_BYTES)
+            self.wfile.flush()
+            import time
+            time.sleep(0.7)
+            self.wfile.write(TS_BYTES)
+            return
         self.send_response(200)
         if self.path.startswith("/proxy/ts/stream/typed"):
             self.send_header("Content-Type", "video/MP2T")
@@ -71,3 +81,17 @@ def test_the_channel_page_offers_mpegts_and_a_ts_relay_address(cfg, tmp_path):
     assert me.get("/static/vendor/mpegts.min.js").status_code == 200 and me.get("/static/vendor/LICENSE-mpegtsjs.txt").status_code in (200, 404)
     shell = me.get("/shell", headers={"Accept": "text/html"}).text
     assert "data-mpegts='/static/vendor/mpegts.min.js'" in shell
+
+
+def test_a_source_that_goes_quiet_is_counted_as_a_stall_and_reported(cfg, tmp_path, panel, monkeypatch):
+    from pluteus import relay
+    monkeypatch.setattr(relay, "STALL_SECONDS", 0.3)
+    host = "127.0.0.1:%d" % panel
+    me, folder = signed_in(cfg, tmp_path, relay=True, relay_allow=(host,))
+    me.app.state.debuglog.enable()
+    put_tv(folder, "tv.m3u", "http://%s/proxy/ts/stream/stall" % host)
+    r = me.get("/relay/uploads/Radio/tv.m3u?i=0&ts=1")
+    assert r.status_code == 200 and r.content == TS_BYTES * 2
+    text = " | ".join(t for _, t in me.app.state.debuglog.lines())
+    assert "RELAY uploads/Radio/tv.m3u#0 -> ended" in text and "source stalls 1 (longest 0." in text and "slow browser connection 0 times" in text
+    assert "opened in " in text and "average " in text

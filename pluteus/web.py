@@ -715,8 +715,9 @@ def iptv_page(ctx: Ctx, title: str, *, stations: list, download_url: str, text_u
                  "<span class='pl-icon pl-i-play'></span></button></span></div>")
     logo = "<img class='pl-tv-logo' src='%s' alt=''>" % escape(logo_url) if logo_url else ""
     stage = ("<div class='pl-media-box pl-player pl-videobox pl-iptv'><div class='pl-track pl-tv-head'>%s<h1 class='pl-track-title' id='now'>%s</h1></div>"
-             "<div class='pl-videowrap'><video id='tv' controls playsinline data-url='%s' data-page='%s' data-logo='%s' data-relay='%s' data-always='%s' data-mpegts='%s'%s></video></div>%s%s%s"
-             "<div class='pl-toast' id='status' hidden></div></div>"
+             "<div class='pl-videowrap'><video id='tv' controls playsinline data-url='%s' data-page='%s' data-logo='%s' data-relay='%s' data-always='%s' data-mpegts='%s'%s></video><div class='pl-toast' id='status' hidden></div></div>%s%s%s"
+             "<p class='pl-tvinfo-bar'><button type='button' class='pl-btn pl-btn-small' id='info' aria-expanded='false' hidden>Stream info</button></p>"
+             "<pre class='pl-tvinfo pl-muted' id='tvinfo' hidden></pre></div>"
              % (logo, escape(heading), escape(first_url), escape(page_url), escape(logo_url), escape(relays[0] if relays else ""), "1" if (always and always[0]) else "0",
                 escape(ctx.urls.static("vendor/mpegts.min.js")), " data-keep-sound='1'" if ctx.tv_sound else "", live_row, transport, listing))
     tools = _download_link(download_url) + _reader_scheme()
