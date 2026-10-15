@@ -122,11 +122,24 @@
   }
   if (infoBtn && infoBox) {
     infoBtn.hidden = false;
+    /* A/B: the same channel directly from its server, or through this server (the relay), to see which one is smoother. Only offered when both are possible:
+       the server offers the relay for this channel, the channel does not need it, and a direct stream is allowed on this page. */
+    var viaBtn = document.createElement("button");
+    viaBtn.type = "button"; viaBtn.className = "pl-btn pl-btn-small"; viaBtn.hidden = true;
+    infoBtn.parentNode.appendChild(document.createTextNode(" "));
+    infoBtn.parentNode.appendChild(viaBtn);
+    function paintVia() {
+      var possible = !!relay && !always && !(location.protocol === "https:" && /^http:/i.test(url));
+      viaBtn.hidden = infoBox.hidden || !possible;
+      viaBtn.textContent = viaRelay ? "Play directly instead" : "Play through the server instead";
+    }
+    viaBtn.addEventListener("click", function () { viaRelay = !viaRelay; start(); paintVia(); });
     infoBtn.addEventListener("click", function () {
       var open = infoBox.hidden;
       infoBox.hidden = !open; infoBtn.setAttribute("aria-expanded", String(open));
+      paintVia();
       clearInterval(infoTimer);
-      if (open) { infoBox.textContent = infoText(); infoTimer = setInterval(function () { infoBox.textContent = infoText(); }, 1000); }
+      if (open) { infoBox.textContent = infoText(); infoTimer = setInterval(function () { infoBox.textContent = infoText(); paintVia(); }, 1000); }
     });
   }
   playBtn.addEventListener("click", toggle);

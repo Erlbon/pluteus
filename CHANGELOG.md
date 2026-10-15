@@ -3,6 +3,7 @@
 Release notes are taken from the section of the tagged version (`## 0.5.0 ...`).
 
 ## Unreleased
+- **Compare a channel directly and through the server.** The channel page's Stream info panel has a switch, "Play through the server instead" / "Play directly instead", offered when the relay is on and both paths are possible. A channel on your own network normally plays straight from its server, which is why the admin relay box stays empty for it; the switch puts the same channel through the relay so the box shows its rate and stalls, and you can see which path is smoother.
 - **Admin Status, Services: a tidier box.** A service that is off shows just "off" in the State column and, in the Address column, what is missing in one line ("webdav = not set in config.toml"), instead of squeezing the setting into the State column.
 - **`[[Wiki links]]` are removed.** Notes hold text, not links to traverse: `[[double brackets]]` are now shown as they are, no folder is searched for them, and the code that did it is gone. (They came with 0.9.8; nothing used them, and a note full of them made a folder page slow.) A release in a discography is matched with the album folders by pluteus itself, with no link in the note.
 - **Apostrophes do not count when a release is matched with a folder:** "What's Up?" matches a folder called "Whats Up".
