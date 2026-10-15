@@ -89,7 +89,7 @@ def test_the_cover_view_shows_a_picture_for_books_and_an_icon_for_the_rest(clien
     c, _ = client
     page = c.get("/browse/lib/A?view=grid", headers={**AUTH, **HTML}).text
     assert "pl-grid" in page and "src='/thumb/lib/A/three.epub?w=320'" in page and "grid.js" in page
-    assert "pl-tile-fallback" in page and "Three" in page
+    assert "pl-tile-fallback" in page and "three.epub<" in page                          # the file name labels the tile (its title is the same word, so nothing is added)
     assert "view=grid" in c.get("/browse/lib/A?view=grid&sort=size", headers={**AUTH, **HTML}).text      # the choice stays on the sort links
 
 

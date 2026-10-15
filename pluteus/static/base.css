@@ -128,6 +128,7 @@ a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible
 .pl-main h1 { font-size: 20px; margin: 4px 0; }
 .pl-main h2 { font-size: 16px; margin: 18px 0 4px; }
 .pl-crumbs, .pl-muted { color: var(--pl-dim); font-size: 13px; }
+.pl-book-meta { display: block; font-size: 12px; font-weight: 400; overflow-wrap: anywhere; }
 .pl-card {
   background: var(--pl-card-bg); border: var(--pl-card-border); border-radius: var(--pl-card-radius);
   box-shadow: var(--pl-card-shadow); padding: 16px;

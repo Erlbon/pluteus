@@ -150,6 +150,8 @@ def test_html_listing_shows_title_and_author(client, alice):
     html = client.get("/browse/books/Good%20Author", headers=alice).text
     assert "The Real Title" in html and "Good Author" in html and "Great Saga" in html
     assert "Plain Filename.epub" in html
+    assert "Real Book.epub<span class='pl-book-meta pl-muted'>The Real Title" in html            # the file name leads; the metadata is added under it
+    assert "Plain Filename.epub<span" not in html                                               # nothing to add when there is no metadata
 
 
 def test_metadata_can_be_switched_off(cfg, alice):

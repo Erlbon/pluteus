@@ -174,13 +174,17 @@ def roots_page(roots: list, ctx: Ctx, recent: list | None = None, read_next: lis
 
 
 def _book_label(entry, meta: dict) -> str:
-    if meta.get("title"):
-        by = " &ndash; " + escape(", ".join(meta["authors"])) if meta.get("authors") else ""
-        series = (" <span class='pl-muted'>(%s%s)</span>" % (
-            escape(meta["series"]), " #" + escape(meta["series_index"]) if meta.get("series_index") else "")
-            if meta.get("series") else "")
-        return escape(meta["title"]) + by + series
-    return escape(entry.name)
+    """The file name always leads (the owner's names are the browsing order); the book's own metadata (title, author, series) is added under it
+    in small type, and left out when the title says nothing the name does not."""
+    name = escape(entry.name)
+    title = (meta.get("title") or "").strip()
+    stem = entry.name.rsplit(".", 1)[0] if "." in entry.name else entry.name
+    if not title or title.casefold() == stem.casefold():
+        return name
+    by = " &ndash; " + escape(", ".join(meta["authors"])) if meta.get("authors") else ""
+    series = (" (%s%s)" % (escape(meta["series"]), " #" + escape(meta["series_index"]) if meta.get("series_index") else "")
+              if meta.get("series") else "")
+    return "%s<span class='pl-book-meta pl-muted'>%s%s%s</span>" % (name, escape(title), by, series)
 
 
 UPLOAD_MESSAGES = {
