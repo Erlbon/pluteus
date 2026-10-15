@@ -742,7 +742,6 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
         renderer as any .md page; a file that is too big, binary or unreadable is skipped."""
         files = {e.name.lower(): e for e in entries if not e.is_dir}
         overlay = root != UPLOADS_ROOT and lib.uploads_enabled(user)
-        finder = wiki_finder(user, root, parts)
         have: dict = {}
         for e in entries:                                            # the album folders next to the note: which releases the library has
             if e.is_dir:
@@ -754,7 +753,7 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
                 got = notes.read(lib, user, root, parts, wanted)
                 if got:
                     try:
-                        return markdown.render(got[0], urls, root, parts, wiki=finder, releases=releases), wanted
+                        return markdown.render(got[0], urls, root, parts, releases=releases), wanted
                     except markdown.TooLarge:
                         continue
             for wanted in names:
@@ -766,7 +765,7 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
                     raw, truncated = textview.read_head(info.path, markdown.MAX_RENDER_BYTES)
                     if truncated or textview.looks_binary(raw):
                         continue
-                    return markdown.render(textview.decode(raw, name=entry.name)[0], urls, root, parts, wiki=finder, releases=releases), wanted
+                    return markdown.render(textview.decode(raw, name=entry.name)[0], urls, root, parts, releases=releases), wanted
                 except (markdown.TooLarge, NotFound, PathError, OSError):
                     continue
             return "", ""
@@ -867,7 +866,7 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
             return page("", text, vers, where, error=notes.MESSAGES["name"], status=400)
         if action == "preview":
             try:
-                shown = await run_in_threadpool(markdown.render, text, urls, root, parts, wiki_finder(user, root, parts))
+                shown = await run_in_threadpool(markdown.render, text, urls, root, parts)
             except markdown.TooLarge:
                 return page(name, text, vers, where, error="That note is too large to preview.", status=400)
             return page(name, text, vers, where, preview=shown)
@@ -1189,80 +1188,13 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
             return None
         return textview.decode(raw, truncated)[0], len(raw), truncated
 
-    WIKI_DIRS = 120                                           # at most this many folders are listed, in all, to answer every [[wiki link]] of a page
-    WIKI_SECONDS = 4.0                                        # ... and at most this long (a slow network drive must not hold the page)
-    WIKI_EXTENSIONS = (".md", ".markdown", ".txt")
-
-    def wiki_key(text: str) -> str:
-        """What two spellings of a name share: lower case, the (year) and [tag] groups left out, everything that is not a letter or digit as one space.
-        "Violator (1990)", "violator" and "VIOLATOR!" are the same key."""
-        text = re.sub(r"[(\[][^)\]]*[)\]]", " ", text.lower())
-        return re.sub(r"[\W_]+", " ", text).strip()
-
-    def wiki_finder(user, root: str, folder: tuple):
-        """name -> URL of the page or folder [[name]] means, or None. ONE index per page, built the first time a link needs it: this folder and
-        everything below it (breadth first, a limited number of folders and a limited time), then each folder above it, one listing each. A
-        file wins over a folder of the same name; names match ignoring case, a (year) and punctuation, so the album folder "Violator (1990)" is
-        [[Violator]]. Nothing is searched outside these places: the old search of the whole library from its top made a page with many links
-        take minutes on a slow drive."""
-        index: dict = {}
-        built = [False]
-
-        def add(entry) -> None:
-            if entry.is_dir:
-                target, rank = urls.browse(root, entry.parts), 1
-                names = [entry.name]
-            elif kinds.kind_of(entry.name) in ("markdown", "text") and entry.name.lower().endswith(WIKI_EXTENSIONS):
-                target, rank = urls.view(root, entry.parts), 0
-                names = [entry.name, entry.name.rsplit(".", 1)[0]]
-            else:
-                return
-            for name in names:
-                for key in (name.lower(), wiki_key(name)):
-                    if key and (key not in index or rank < index[key][0]):
-                        index[key] = (rank, target)
-
-        def listing(where: tuple):
-            try:
-                return lib.list_dir(user, root, where, cfg.show_all_files, False)
-            except (NotFound, PathError, OSError):
-                return []
-
-        def build() -> None:
-            built[0] = True
-            deadline = time.monotonic() + WIKI_SECONDS
-            listed = 0
-            queue = [folder]
-            while queue and listed < WIKI_DIRS and time.monotonic() < deadline:       # this folder and below
-                entries = listing(queue.pop(0))
-                listed += 1
-                for e in entries:
-                    add(e)
-                    if e.is_dir:
-                        queue.append(e.parts)
-            for depth in range(len(folder) - 1, -1, -1):                               # then the folders above, one listing each
-                if time.monotonic() >= deadline:
-                    break
-                for e in listing(folder[:depth]):
-                    add(e)
-
-        def find(name: str):
-            name = (name or "").strip()
-            if not name or "/" in name or chr(92) in name or len(name) > 120:
-                return None
-            if not built[0]:
-                build()
-            hit = index.get(name.lower()) or index.get(wiki_key(name))
-            return hit[1] if hit else None
-        return find
-
     def markdown_view(user, root: str, parts: tuple, info):
         head = decoded_head(info)
         if head is None:
             return None
         text, shown, truncated = head
         try:
-            done = markdown.render_full(text, urls, root, parts[:-1], wiki=wiki_finder(user, root, parts[:-1]))
+            done = markdown.render_full(text, urls, root, parts[:-1])
         except markdown.TooLarge:
             return None                                       # too big to render: the plain text viewer takes over
         html = done.html

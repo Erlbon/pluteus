@@ -70,7 +70,7 @@ def test_plain_text_for_apps_drops_markdown_marks():
     assert len(subsonic.plain_text("word " * 5000)) <= 4000
 
 
-# ---- notebook conveniences: front matter, anchors and contents, wiki links ---------------------------------------------------------
+# ---- notebook conveniences: front matter, anchors and contents ---------------------------------------------------------
 def test_front_matter_is_hidden_and_gives_the_page_title(lib):
     (lib / "Kaizers" / "history.md").write_text("---\ntitle: The early years\ntags: [band, rock]\n---\n# Start\n\nText\n", encoding="utf-8")
     c = make(lib)
@@ -98,17 +98,12 @@ def test_long_documents_get_anchors_and_a_contents_list(lib):
     assert "pl-toc'" not in c.get("/view/music/Kaizers/short.md", headers={**AUTH, **HTML}).text
 
 
-def test_wiki_links_find_files_by_name_and_unknown_ones_are_plain_text(lib):
-    (lib / "Kaizers" / "notes.md").write_text("See [[Ompa notes]] and [[Top page|the top]] and [[nothing here]] and [[Solo]].\n", encoding="utf-8")
-    (lib / "Kaizers" / "Ompa").mkdir(exist_ok=True)
-    (lib / "Kaizers" / "Ompa" / "Ompa notes.md").write_text("x", encoding="utf-8")                 # below this folder
-    (lib / "Top page.md").write_text("x", encoding="utf-8")                                         # above it
+def test_double_brackets_in_a_note_are_just_text_and_nothing_is_searched(lib):
+    (lib / "Kaizers" / "notes.md").write_text("See [[Ompa notes]] and [[Top page|the top]].\n", encoding="utf-8")
+    (lib / "Kaizers" / "Ompa notes.md").write_text("x", encoding="utf-8")
     c = make(lib)
     html = c.get("/view/music/Kaizers/notes.md", headers={**AUTH, **HTML}).text
-    assert "href='/view/music/Kaizers/Ompa/Ompa%20notes.md'" in html or "Ompa%20notes.md" in html
-    assert ">the top</a>" in html and "Top%20page.md" in html
-    assert "nothing here" in html and "href='/view/music/nothing" not in html and ">nothing here</a>" not in html
-    assert "/browse/music/Solo" in html                                                             # a folder of that name counts
+    assert "[[Ompa notes]]" in html and "pl-wiki" not in html and "Ompa%20notes.md" not in html           # notes hold text: no link is made from it
 
 
 def test_the_player_queue_links_each_track_to_the_nearest_note(lib):
@@ -118,13 +113,6 @@ def test_the_player_queue_links_each_track_to_the_nearest_note(lib):
     assert items and all(i["page"] == "/browse/music/Kaizers" and i["linkText"] == "About" for i in items)       # albums below inherit the artist's note
     solo = c.get("/api/queue/music/Solo", headers=AUTH).json()["items"]
     assert solo and "page" not in solo[0]
-
-
-def test_wiki_links_work_in_a_folders_note_too(lib):
-    (lib / "Kaizers" / "artist.md").write_text("See [[history]] and [[nothing]].\n", encoding="utf-8")
-    (lib / "Kaizers" / "history.md").write_text("x", encoding="utf-8")
-    html = page(make(lib))
-    assert "href='/view/music/Kaizers/history.md'" in html and "[[" not in html and ">nothing<" not in html and "nothing" in html
 
 
 def test_the_reader_links_to_the_authors_note(cfg, library):

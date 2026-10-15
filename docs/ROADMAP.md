@@ -165,7 +165,7 @@ pluteus shows them on the folder page, in the music player and to Subsonic apps.
 pluteus already renders Markdown safely (raw HTML escaped, links and images only inside the library); this item adds the places where it is shown
 and a few notebook conveniences.
 
-**Status:** round 1 is done in 0.9.8: items 1 to 7 (folder notes, the player's About link, the Subsonic biography, anchors and contents, wiki links, front matter, the editor with the personal overlay) and the library opt-in (step 2: `notes = "edit"` on a root, the `notes` user right). Also done from round 3: `artist.nfo`, `album.nfo` and `metadata.opf` are read as the fallback about text, `album.md` and `series.md` are recognised, and `docs/notes-format.md` and `docs/library-layout.md` exist. The readers' About link and the single-book description fallback (EPUB, ComicInfo) are done too. Still to do: the converters and the filler in the Redactor apps (separate repositories), and the extended structure checker.
+**Status:** round 1 is done in 0.9.8: items 1 to 7 (folder notes, the player's About link, the Subsonic biography, anchors and contents, front matter, the editor with the personal overlay) and the library opt-in (step 2: `notes = "edit"` on a root, the `notes` user right). Also done from round 3: `artist.nfo`, `album.nfo` and `metadata.opf` are read as the fallback about text, `album.md` and `series.md` are recognised, and `docs/notes-format.md` and `docs/library-layout.md` exist. The readers' About link and the single-book description fallback (EPUB, ComicInfo) are done too. Still to do: the converters and the filler in the Redactor apps (separate repositories), and the extended structure checker.
 
 **Round 1 (about 15 to 20 minutes, a mockup of the folder page first):**
 1. **Folder notes:** a folder shows a note about itself. At the top, beside the cover: `artist.md` (also `artist.txt`, `artist.nfo`, the file
@@ -175,8 +175,7 @@ and a few notebook conveniences.
 3. **Subsonic:** `getArtistInfo2` and `getArtistInfo` answer with the biography from the artist note (plain text of the first paragraphs),
    so Tempo and other apps show it. No online look-up, on purpose.
 4. **Heading anchors and a table of contents** in rendered Markdown (a contents list for long documents, copyable heading links).
-5. **Wiki links** `[[Page name]]`: resolved by file name inside the library (the same folder first, then upwards, then the whole folder tree
-   below the top of the library, limited), no index. A name that is not found is shown as plain text.
+5. **Wiki links: dropped (owner, 2026-10-15).** Notes hold text, not links to traverse; that goes against the filesystem-first idea. Releases in a discography are matched with the album folders by pluteus itself (see notes-format.md).
 6. **Front matter** (`---` block with `title:` and `tags:`): read for the page title and hidden from the page.
 7. **Edit in the browser** (owner: must be in round 1): an Edit button on a rendered `.md` (and `.txt`) page opens a text area with a Preview and
    Save. A new note can be created from a folder page ("Add a note": `artist.md`, `author.md`, `about.md`, `README.md`). Safe by construction:

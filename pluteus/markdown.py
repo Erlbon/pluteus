@@ -85,9 +85,9 @@ def release_key(text: str) -> str:
 
 
 class _Renderer(mistune.HTMLRenderer):
-    def __init__(self, resolver: Resolver, anchors: bool = False, wiki=None, releases=None):
+    def __init__(self, resolver: Resolver, anchors: bool = False, releases=None):
         super().__init__(escape=True)
-        self.resolver, self.anchors, self.wiki = resolver, anchors, wiki
+        self.resolver, self.anchors = resolver, anchors
         self.releases = releases                          # None, or a function key -> folder name / None: which releases the folders have
         self.section = ""
         self.headings: list = []                           # (level, plain text, id) for the contents list
@@ -116,13 +116,6 @@ class _Renderer(mistune.HTMLRenderer):
         return ("<h%d id='%s'>%s <a class='pl-anchor' href='#%s' aria-label='Link to this heading'>#</a></h%d>\n"
                 % (level, escape(anchor, quote=True), text, escape(anchor, quote=True), level))
 
-    def wikilink(self, name, label=None):
-        shown = escape(label or name)
-        target = self.wiki(name.strip()) if self.wiki else None
-        if not target:
-            return shown                                   # not found: plain words, never a dead link
-        return "<a class='pl-wiki' href='%s'>%s</a>" % (escape(target, quote=True), shown)
-
     def link(self, text, url, title=None):
         target = self.resolver.link(url)
         if target is None:
@@ -142,17 +135,6 @@ class _Renderer(mistune.HTMLRenderer):
 
 class TooLarge(Exception):
     pass
-
-
-_WIKI = r"\[\[(?P<wiki>[^\[\]\n|]{1,120}?)(?:\|(?P<label>[^\[\]\n]{1,120}))?\]\]"
-
-
-def _wiki_plugin(md) -> None:
-    def parse(inline, m, state):
-        label = m.group("label")
-        state.append_token({"type": "wikilink", "raw": m.group("wiki"), "attrs": {"label": label.strip() if label else None}})
-        return m.end()
-    md.inline.register("wikilink", _WIKI, parse, before="link")
 
 
 def slug(text: str) -> str:
@@ -213,14 +195,13 @@ class Rendered:
     title: str = ""                                        # the front matter title, else the first heading
 
 
-def render_full(text: str, urls, root: str, folder: tuple, *, toc: bool = True, wiki=None) -> Rendered:
-    """A whole document: front matter read and hidden, headings with anchors, a contents list for a long one, wiki links resolved by `wiki`
-    (a function name -> url or None). Raises TooLarge like render()."""
+def render_full(text: str, urls, root: str, folder: tuple, *, toc: bool = True) -> Rendered:
+    """A whole document: front matter read and hidden, headings with anchors, a contents list for a long one. Raises TooLarge like render()."""
     if len(text.encode("utf-8", "ignore")) > MAX_RENDER_BYTES:
         raise TooLarge("larger than %d KB" % (MAX_RENDER_BYTES // 1024))
     meta, body = front_matter(text)
-    renderer = _Renderer(Resolver(urls, root, folder), anchors=True, wiki=wiki)
-    md = mistune.create_markdown(renderer=renderer, plugins=["table", "strikethrough", "task_lists", "url", _wiki_plugin])
+    renderer = _Renderer(Resolver(urls, root, folder), anchors=True)
+    md = mistune.create_markdown(renderer=renderer, plugins=["table", "strikethrough", "task_lists", "url"])
     try:
         html = md(body)
     except RecursionError:                                 # absurdly nested lists or quotes
@@ -233,13 +214,13 @@ def render_full(text: str, urls, root: str, folder: tuple, *, toc: bool = True, 
     return Rendered(html, meta, title)
 
 
-def render(text: str, urls, root: str, folder: tuple, wiki=None, releases=None) -> str:
+def render(text: str, urls, root: str, folder: tuple, releases=None) -> str:
     """HTML for a short Markdown text (a folder's note): front matter hidden, no anchors or contents. Raises TooLarge for text the
     renderer should not be asked to handle."""
     if len(text.encode("utf-8", "ignore")) > MAX_RENDER_BYTES:
         raise TooLarge("larger than %d KB" % (MAX_RENDER_BYTES // 1024))
-    md = mistune.create_markdown(renderer=_Renderer(Resolver(urls, root, folder), wiki=wiki, releases=releases),
-                                 plugins=["table", "strikethrough", "task_lists", "url", _wiki_plugin])
+    md = mistune.create_markdown(renderer=_Renderer(Resolver(urls, root, folder), releases=releases),
+                                 plugins=["table", "strikethrough", "task_lists", "url"])
     try:
         return md(front_matter(text)[1])
     except RecursionError:

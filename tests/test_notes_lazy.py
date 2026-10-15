@@ -92,15 +92,6 @@ def test_a_note_in_a_folder_with_no_album_folders_marks_nothing(lib):
     assert "pl-have" not in html and "pl-missing" not in html
 
 
-def test_many_unresolved_wiki_links_cost_one_bounded_search_not_one_each(lib):
-    (lib / "Kaizers" / "artist.md").write_text("".join("See [[Nothing %d]] and [[Nowhere %d]].\n\n" % (i, i) for i in range(60)), encoding="utf-8")
-    c = make(lib)
-    counts = count_calls(c, ["list_dir"])
-    html = c.get("/api/folder-note/music/Kaizers", headers=AUTH).json()["html"]
-    assert "Nothing 59" in html
-    assert counts["list_dir"] < 12                                                                    # one index of this folder, below it and above it
-
-
 def test_the_play_all_queue_lists_each_folder_once(lib):
     (lib / "Kaizers" / "artist.md").write_text("# K\n", encoding="utf-8")
     c = make(lib)

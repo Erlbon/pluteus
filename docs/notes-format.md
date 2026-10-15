@@ -26,7 +26,7 @@ Ordinary Markdown: headings, lists, task lists, tables, quotes, code, links and 
 links may only go to `http`, `https`, `mailto` or a file in the same library, and images only from the same library. A file over 256 KB is not
 rendered.
 
-Two additions, both optional:
+One addition, optional:
 
 - **Front matter**, a block at the very top between two lines of `---`:
 
@@ -48,9 +48,7 @@ Two additions, both optional:
   the other keys are kept for other tools (Obsidian, Jekyll and friends read the same block). A block that is not clean is left alone and shown
   as it is.
 
-- **Wiki links**, `[[Page name]]` or `[[Page name|words to show]]`, resolved by *file name* with no index: the same folder first, then the
-  folders above it, then the folders below the top of the library (a limited number of them). A folder of that name counts when no file does.
-  A name that is not found is shown as plain words.
+Notes hold text, not navigation: `[[double brackets]]` are not links and are shown as they are. The folders are the structure; a note does not need to point at them.
 
 In a full page (not in a folder's note box) headings get an anchor (`#heading`, a link you can copy) and a document with four or more headings
 gets a contents list.
