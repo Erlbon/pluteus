@@ -43,6 +43,7 @@
     if (hls) { try { hls.destroy(); } catch (e) { /* ignore */ } hls = null; }
     video.removeAttribute("src");
     video.load();
+    ccAt = -1; ccRefresh();                                    // the next channel has its own subtitles
   }
   function failed() {
     if (relay && !viaRelay && !always) { viaRelay = true; start(); return; }          // the direct stream failed (no CORS, refused): once through the server
@@ -110,6 +111,8 @@
       hls = new window.Hls(behind > 0 ? { enableWorker: false, lowLatencyMode: false, liveSyncDuration: behind, maxBufferLength: Math.max(30, behind * 2) }
                                       : { enableWorker: false, lowLatencyMode: false });
       hls.on(window.Hls.Events.MANIFEST_PARSED, play);
+      hls.on(window.Hls.Events.SUBTITLE_TRACKS_UPDATED, ccRefresh);
+      hls.on(window.Hls.Events.SUBTITLE_TRACK_SWITCH, ccRefresh);
       hls.on(window.Hls.Events.ERROR, function (event, data) { if (data && data.fatal) failed(); });
       hls.loadSource(source);
       hls.attachMedia(video);
@@ -193,20 +196,75 @@
     paintSeg();
   }
   playBtn.addEventListener("click", toggle);
-  video.addEventListener("click", toggle);                      // like the movie player: a click on the picture plays or pauses
+  var wasIdle = false;                                           // a tap that only brings the controls back in full screen must not also pause the channel
+  video.addEventListener("click", function () { if (wasIdle) { wasIdle = false; return; } toggle(); });      // like the movie player: a click on the picture plays or pauses
 
-  /* full screen: the whole player (picture and controls); a double click on the picture does the same */
-  var fsButton = document.getElementById("fs");
-  function fullscreen() {
+  /* subtitles (the CC button): shown only when the channel carries some. An HLS channel lists them through hls.js, a natively played stream
+     through the video's own text tracks. Each press steps to the next track and finally off. (A raw MPEG-TS channel has none the browser can show.) */
+  var ccButton = document.getElementById("cc"), ccAt = -1;
+  function ccTracks() {
+    if (hls && hls.subtitleTracks && hls.subtitleTracks.length) return hls.subtitleTracks.map(function (t, i) { return { name: t.name || t.lang || ("Track " + (i + 1)) }; });
+    var list = [];
+    for (var i = 0; i < video.textTracks.length; i++) { var t = video.textTracks[i]; if (t.kind === "subtitles" || t.kind === "captions") list.push({ name: t.label || t.language || ("Track " + (list.length + 1)), track: t }); }
+    return list;
+  }
+  function ccApply(index) {
+    ccAt = index;
+    if (hls && hls.subtitleTracks && hls.subtitleTracks.length) {            // off only hides the track: switching it off would drop what is downloaded
+      hls.subtitleDisplay = index >= 0;
+      if (index >= 0 && hls.subtitleTrack !== index) hls.subtitleTrack = index;
+    }
+    else { var n = -1; for (var i = 0; i < video.textTracks.length; i++) { var t = video.textTracks[i]; if (t.kind === "subtitles" || t.kind === "captions") { n++; t.mode = n === index ? "showing" : "disabled"; } } }
+    if (ccButton) { ccButton.classList.toggle("pl-on", index >= 0); ccButton.setAttribute("aria-pressed", String(index >= 0)); }
+  }
+  function ccRefresh() {
+    if (!ccButton) return;
+    var tracks = ccTracks();
+    ccButton.hidden = tracks.length === 0;
+    ccAt = -1;                                                 // what is showing now (a stream may mark a track as its default): the button follows it
+    if (hls && tracks.length) ccAt = hls.subtitleDisplay === false ? -1 : hls.subtitleTrack;
+    else for (var i = 0, n = -1; i < video.textTracks.length; i++) { var t = video.textTracks[i]; if (t.kind === "subtitles" || t.kind === "captions") { n++; if (t.mode === "showing") ccAt = n; } }
+    ccButton.classList.toggle("pl-on", ccAt >= 0); ccButton.setAttribute("aria-pressed", String(ccAt >= 0));
+  }
+  if (ccButton) {
+    ccButton.addEventListener("click", function () {
+      var tracks = ccTracks();
+      if (!tracks.length) return;
+      var next = ccAt + 1 >= tracks.length ? -1 : ccAt + 1;
+      ccApply(next);
+      say(next < 0 ? "Subtitles off" : "Subtitles: " + tracks[next].name, 2500);
+    });
+    if (video.textTracks && video.textTracks.addEventListener) video.textTracks.addEventListener("addtrack", ccRefresh);
+  }
+
+  /* full screen: the picture fills the screen and the controls lie over it; they fade away after a few seconds without movement and come
+     back with the mouse or a touch. A double click on the picture does the same. The maximize button keeps the older mode: the whole player
+     (controls under a smaller picture) fills the screen. (Safari on an iPhone has only its own video full screen.) */
+  var fsButton = document.getElementById("fs"), maxButton = document.getElementById("mx"), idleTimer = null, cinema = false;
+  function fullElement() { return document.fullscreenElement || document.webkitFullscreenElement; }
+  function wake() {
+    box.classList.remove("pl-idle");
+    clearTimeout(idleTimer);
+    if (cinema && fullElement() === box) idleTimer = setTimeout(function () { box.classList.add("pl-idle"); }, 3000);
+  }
+  function fullscreen(asCinema) {                              // cinema: the picture alone fills the screen; otherwise the whole player does (maximize)
     if (!box) return;
-    var inside = document.fullscreenElement || document.webkitFullscreenElement;
-    if (inside) { (document.exitFullscreen || document.webkitExitFullscreen).call(document); return; }
+    if (fullElement()) { (document.exitFullscreen || document.webkitExitFullscreen).call(document); return; }
+    cinema = asCinema !== false;
     if (box.requestFullscreen) box.requestFullscreen().catch(function () { /* refused */ });
     else if (box.webkitRequestFullscreen) box.webkitRequestFullscreen();
     else if (video.webkitEnterFullscreen) video.webkitEnterFullscreen();
   }
-  if (fsButton) fsButton.addEventListener("click", fullscreen);
-  video.addEventListener("dblclick", function (e) { e.preventDefault(); fullscreen(); });
+  function fullChanged() { var on = fullElement() === box; if (!on) cinema = false; box.classList.toggle("pl-full", on && cinema); wake(); }
+  if (box) {
+    document.addEventListener("fullscreenchange", fullChanged);
+    document.addEventListener("webkitfullscreenchange", fullChanged);
+    box.addEventListener("pointerdown", function () { wasIdle = box.classList.contains("pl-idle"); }, true);
+    ["mousemove", "pointerdown", "touchstart", "keydown"].forEach(function (name) { box.addEventListener(name, wake, { passive: true }); });
+  }
+  if (fsButton) fsButton.addEventListener("click", function () { fullscreen(true); });
+  if (maxButton) maxButton.addEventListener("click", function () { fullscreen(false); });
+  video.addEventListener("dblclick", function (e) { e.preventDefault(); fullscreen(true); });
 
   /* volume (shown on wide screens only, see base.css): remembered in this browser; the icon is a mute switch */
   var volume = document.getElementById("volume"), mute = document.getElementById("mute");

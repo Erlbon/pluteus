@@ -113,3 +113,18 @@ def test_a_transport_stream_address_opens_as_a_channel_without_any_marker():
         assert radio.looks_like_tv("", [("C", address)]), address
     for address in ("http://h/stream", "https://h/radio.mp3", "http://h/listen/ts-radio", "http://h:8000/live.aac"):
         assert not radio.looks_like_tv("", [("R", address)]), address
+
+
+def test_a_channel_page_has_subtitle_maximize_and_full_screen_buttons_and_the_script_handles_them(client):
+    c, auth = client
+    (c.folder / "Channel.m3u").write_text(TV, encoding="utf-8")
+    page = c.get("/view/radio/Channel.m3u", headers={**auth, **HTML}).text
+    assert "id='cc'" in page and "id='cc' class='pl-vol-btn pl-cc-btn' aria-label='Subtitles' aria-pressed='false' hidden" in page    # shown by the script only when the channel has subtitles
+    assert page.index("id='cc'") < page.index("id='mx'") < page.index("id='fs'")
+    assert "pl-i-maximize" in page and "pl-i-fullscreen" in page
+    js = c.get("/static/iptv.js").text
+    assert "subtitleTracks" in js and "SUBTITLE_TRACKS_UPDATED" in js and "textTracks" in js
+    assert 'getElementById("mx")' in js and '"pl-full"' in js and '"pl-idle"' in js
+    css = c.get("/static/base.css").text
+    assert ".pl-videobox.pl-iptv.pl-full video" in css and "object-fit: contain" in css and "pl-idle" in css
+    assert c.get("/theme/night/icons/maximize.svg").status_code == 200

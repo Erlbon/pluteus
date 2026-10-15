@@ -719,7 +719,9 @@ def iptv_page(ctx: Ctx, title: str, *, stations: list, download_url: str, text_u
     live_row = ("<div class='pl-scrub pl-live-row'><span class='pl-live'><span class='pl-live-dot'></span>LIVE</span><span class='pl-live-fill'></span>"
                 "<span class='pl-vol'><button type='button' id='mute' class='pl-vol-btn' aria-label='Mute'><span class='pl-icon pl-i-volume'></span></button>"
                 "<input type='range' id='volume' min='0' max='100' value='100' aria-label='Volume'></span>"
-                "<button type='button' id='fs' class='pl-vol-btn pl-fs-btn' aria-label='Full screen'><span class='pl-icon pl-i-fullscreen'></span></button></div>")
+                "<button type='button' id='cc' class='pl-vol-btn pl-cc-btn' aria-label='Subtitles' aria-pressed='false' hidden>CC</button>"
+                "<button type='button' id='mx' class='pl-vol-btn pl-fs-btn' aria-label='Maximize: fill the screen with the controls under the picture' title='Maximize (controls under the picture)'><span class='pl-icon pl-i-maximize'></span></button>"
+                "<button type='button' id='fs' class='pl-vol-btn pl-fs-btn' aria-label='Full screen: the picture fills the screen' title='Full screen (picture only, controls fade away)'><span class='pl-icon pl-i-fullscreen'></span></button></div>")
     transport = ("<div class='pl-transport'><span class='pl-play-wrap'><button class='pl-btn pl-play' id='play' type='button' aria-label='Play'>"
                  "<span class='pl-icon pl-i-play'></span></button></span></div>")
     logo = "<img class='pl-tv-logo' src='%s' alt=''>" % escape(logo_url) if logo_url else ""

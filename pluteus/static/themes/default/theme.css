@@ -27,6 +27,7 @@
 .pl-i-moon       { -webkit-mask-image: url(../_/icons/moon.svg);       mask-image: url(../_/icons/moon.svg); }
 .pl-i-rew        { -webkit-mask-image: url(../_/icons/rew.svg);        mask-image: url(../_/icons/rew.svg); }
 .pl-i-ff         { -webkit-mask-image: url(../_/icons/ff.svg);         mask-image: url(../_/icons/ff.svg); }
+.pl-i-maximize   { -webkit-mask-image: url(../_/icons/maximize.svg);   mask-image: url(../_/icons/maximize.svg); }
 .pl-i-song-prev  { -webkit-mask-image: url(../_/icons/song-prev.svg);  mask-image: url(../_/icons/song-prev.svg); }
 .pl-i-song-next  { -webkit-mask-image: url(../_/icons/song-next.svg);  mask-image: url(../_/icons/song-next.svg); }
 .pl-i-volume      { -webkit-mask-image: url(../_/icons/volume.svg);      mask-image: url(../_/icons/volume.svg); }
