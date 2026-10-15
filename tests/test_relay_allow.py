@@ -60,3 +60,24 @@ def test_without_the_setting_the_same_station_is_refused(cfg, tmp_path, local_st
     put(folder, "a.m3u", "http://127.0.0.1:%d/stream" % local_station)
     refused = me.get("/relay/uploads/Radio/a.m3u?i=0")
     assert refused.status_code == 502 and "not a public address" in refused.text
+
+
+def test_a_setting_written_twice_or_curly_quotes_get_a_plain_words_hint(tmp_path):
+    from pluteus.config import load_config
+    (tmp_path / "lib").mkdir()
+    tail = '\n[[roots]]\nname = "a"\npath = "%s"\n\n[[users]]\nname = "u"\npassword_hash = "scrypt$16384$8$1$x"\n' % (tmp_path / "lib").as_posix()
+    twice = tmp_path / "twice.toml"
+    twice.write_text('[server]\nrelay = true\nrelay_allow = ["a:80"]\nrelay_allow = ["b:80"]\n' + tail, encoding="utf-8")
+    with pytest.raises(ConfigError) as e:
+        load_config(str(twice))
+    assert "Cannot overwrite a value" in str(e.value) and "written twice" in str(e.value) and "ONE line" in str(e.value)
+    curly = tmp_path / "curly.toml"
+    curly.write_text("[server]\nrelay_allow = [“a:80”]\n" + tail, encoding="utf-8")
+    with pytest.raises(ConfigError) as e:
+        load_config(str(curly))
+    assert "curly quotes" in str(e.value)
+    plain = tmp_path / "plain.toml"
+    plain.write_text('[server\nrelay = true\n' + tail, encoding="utf-8")
+    with pytest.raises(ConfigError) as e:
+        load_config(str(plain))
+    assert "not valid TOML" in str(e.value) and "written twice" not in str(e.value) and "curly" not in str(e.value)

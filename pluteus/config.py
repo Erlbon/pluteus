@@ -330,6 +330,17 @@ def users_without_folders(cfg: Config) -> list:
     return [u.name for u in cfg.users.values() if not u.roots]
 
 
+def _toml_hint(message: str, raw: bytes) -> str:
+    """A plain-words hint for the two TOML slips seen most: a setting written twice, and curly quotes pasted from a chat or a word processor."""
+    if "Cannot overwrite a value" in message:
+        return (". A setting is written twice in the same table: each setting may appear only once. Look for a second copy of the same name near that line "
+                "(for a list such as relay_allow, put every entry in ONE line: [\"a:1\", \"b:2\"])")
+    text = raw.decode("utf-8", "replace")
+    if any(c in text for c in "“”‘’"):
+        return ". The file contains curly quotes (“ ”); TOML needs plain straight quotes (\")"
+    return ""
+
+
 def load_config(path: str, check_roots: bool = True) -> Config:
     try:
         with open(path, "rb") as f:
@@ -340,7 +351,7 @@ def load_config(path: str, check_roots: bool = True) -> Config:
     except UnicodeDecodeError as e:
         raise ConfigError("%s is not UTF-8 text: %s" % (path, e))
     except tomllib.TOMLDecodeError as e:
-        raise ConfigError("%s is not valid TOML: %s" % (path, e))
+        raise ConfigError("%s is not valid TOML: %s%s" % (path, e, _toml_hint(str(e), raw)))
     cfg = parse_config(data, check_roots)
     if cfg.uploads_dir and _is_inside(path, cfg.uploads_dir):
         raise ConfigError("the config file %r is inside uploads_dir: users could list it (it holds password hashes)" % path)
