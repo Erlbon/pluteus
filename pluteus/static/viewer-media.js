@@ -366,6 +366,14 @@
     if (link && link.tagName === "A") link.addEventListener("click", function (e) { e.preventDefault(); location.replace(link.href); });
   });
 
+  /* the song buttons in the transport row: previous restarts a song that has played for a few seconds, else goes to the one before */
+  var songPrev = document.getElementById("prev-song"), songNext = document.getElementById("next-song");
+  if (songPrev) songPrev.addEventListener("click", function () {
+    if ((media.currentTime || 0) > 4 || !prevUrl) { try { media.currentTime = 0; } catch (e) { /* not seekable yet */ } return; }
+    location.replace(withAutoplay(prevUrl));
+  });
+  if (songNext) songNext.addEventListener("click", function () { if (nextUrl) location.replace(withAutoplay(nextUrl)); });
+
   /* ---- the end of a file: play the next one, unless the sleep timer says stop ---- */
   media.addEventListener("ended", function () {
     clearInterval(timer);

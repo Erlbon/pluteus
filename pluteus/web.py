@@ -627,8 +627,14 @@ def media_viewer_page(ctx: Ctx, title: str, *, kind: str, raw_url: str, mime: st
                  "<span class='pl-vol'><button type='button' id='mute' class='pl-vol-btn' aria-label='Mute'><span class='pl-icon pl-i-volume'></span></button>"
                  "<input type='range' id='volume' min='0' max='100' value='100' aria-label='Volume'></span>%s%s</div>" % (captions, fullscreen))
     tracks = "".join("<track kind='subtitles' src='%s' label='%s'>" % (escape(url), escape(label)) for url, label in subtitles) if kind == "video" else ""
-    transport_row = ("<div class='pl-transport'>%s%s<span class='pl-play-wrap'>%s%s</span>%s%s</div>"
-                     % (speed_down, skip_back, speed_val, button("play", "Play", "play", extra="pl-play"), skip_fwd, speed_up))
+    # a song also gets previous / next song buttons just inside the - and + (a movie keeps its five buttons). Previous always works
+    # (on the first song it restarts it); next is greyed on the last one
+    song_prev = song_next = ""
+    if kind != "video":
+        song_prev = button("prev-song", "Previous song", "song-prev")
+        song_next = button("next-song", "Next song", "song-next").replace("<button ", "<button %s" % ("" if next_url else "disabled "), 1)
+    transport_row = ("<div class='pl-transport'>%s%s%s<span class='pl-play-wrap'>%s%s</span>%s%s%s</div>"
+                     % (speed_down, song_prev, skip_back, speed_val, button("play", "Play", "play", extra="pl-play"), skip_fwd, song_next, speed_up))
     if kind == "video":
         stage = ("<div class='pl-media-box pl-player pl-videobox'>%s<div class='pl-videowrap'><video id='media' controls preload='metadata' playsinline src='%s'>%s"
                  "<p>Your browser cannot play this file; <a href='%s'>download it</a>.</p></video></div>%s%s<div class='pl-tools'>%s</div>%s"

@@ -536,6 +536,17 @@ body.pl-shell-page { display: flex; flex-direction: column; height: 100vh; heigh
 .pl-transport .pl-play { width: 64px; height: 64px; border-radius: 50%; justify-content: center; padding: 0;
   background: var(--pl-btn-primary-bg); border: var(--pl-btn-primary-border); }
 .pl-transport .pl-play .pl-icon { width: 36px; height: 36px; color: var(--pl-btn-primary-fg); }
+/* a song's row has seven buttons: smaller below 420px (about 340px wide in all) so it still fits a 360px phone */
+@media (max-width: 420px) {
+  .pl-transport { gap: 4px; }
+  .pl-transport .pl-btn { min-width: 44px; min-height: 44px; padding: 0; }
+  .pl-transport .pl-icon { width: 26px; height: 26px; }
+  .pl-btn.pl-speed-step { width: 40px; min-width: 40px; height: 40px; min-height: 40px; font-size: 30px; }
+  .pl-transport .pl-play { width: 56px; height: 56px; min-width: 56px; min-height: 56px; }
+  .pl-transport .pl-play .pl-icon { width: 30px; height: 30px; }
+  .pl-play-wrap { margin: 0; }
+}
+.pl-transport .pl-btn:disabled { opacity: .35; cursor: default; }
 .pl-lyrics { width: min(100%, 560px); max-height: 38vh; overflow-y: auto; text-align: center; padding: 12px 8px; border-radius: 14px;
   background: color-mix(in srgb, var(--pl-card) 70%, transparent); scroll-behavior: smooth; }
 .pl-lyrics[hidden] { display: none; }

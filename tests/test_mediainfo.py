@@ -345,3 +345,19 @@ def test_a_quiet_folder_is_remembered_and_a_busy_one_is_not(tmp_path, monkeypatc
     busy = tmp_path / "busy"
     busy.mkdir()
     assert mediainfo.folder_cover(str(busy)) == "" and str(busy) not in mediainfo._folder_cache   # just made: never remembered
+
+
+def test_a_song_has_previous_and_next_song_buttons_inside_the_speed_buttons_and_a_movie_does_not(music):
+    client, auth = make_client(music)
+    page = client.get("/view/music/Album/spark.mp3", headers={**auth, **HTML}).text
+    order = ["speed-down", "prev-song", "back30", "play", "fwd30", "next-song", "speed-up"]
+    assert [page.index("id='%s'" % i) for i in order] == sorted(page.index("id='%s'" % i) for i in order)
+    assert "pl-i-song-prev" in page and "pl-i-song-next" in page and "pl-i-rew" in page and "pl-i-ff" in page      # the skips keep their icons
+    (music / "Album" / "clip.mp4").write_bytes(b"\x00\x00\x00\x18ftypmp42" + b"\x00" * 64)
+    movie = client.get("/view/music/Album/clip.mp4", headers={**auth, **HTML}).text
+    assert "prev-song" not in movie and "next-song" not in movie
+    css = client.get("/static/base.css").text
+    assert "max-width: 420px" in css
+    js = client.get("/static/viewer-media.js").text
+    assert "prev-song" in js and "next-song" in js
+    assert client.get("/theme/night/icons/song-prev.svg").status_code == 200
