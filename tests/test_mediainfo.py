@@ -102,12 +102,15 @@ def test_player_page_shows_the_tags(music):
         assert text in page
     assert "data-artist='Kaizers Orchestra'" in page and "id='scrub'" in page and "id='play'" in page
     assert "data-t='1.0'" in page and "pl-lyrics-synced" in page             # the .lrc file wins over the plain tag text
+    assert "id='lyrics'>" in page and "id='lyrics' hidden" not in page      # timed lyrics are open from the start, below the controls
+    assert "id='lyrics-btn' data-panel='lyrics' type='button' aria-label='Show: Lyrics' aria-expanded='true'" in page
 
 
 def test_plain_lyrics_come_from_the_tag_when_there_is_no_lrc(music):
     client, auth = make_client(music)
     page = client.get("/view/music/Album/spark.mp3", headers={**auth, **HTML}).text
     assert "pl-lyrics-plain" in page and "Andre linje" in page
+    assert "id='lyrics' hidden" in page and "aria-label='Show: Lyrics' aria-expanded='false'" in page      # plain lyrics wait behind the button
 
 
 def test_a_file_without_tags_still_gets_a_page_named_after_the_file(music):

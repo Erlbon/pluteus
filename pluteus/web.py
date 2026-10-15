@@ -532,10 +532,12 @@ def text_viewer_page(ctx: Ctx, title: str, *, text: str, encoding: str, size: in
 
 
 def _lyrics_html(synced: list, plain: str) -> str:
-    """The lyrics panel: timed lines (each knows its second, the script highlights the current one) or the plain text."""
+    """The lyrics panel: timed lines (each knows its second, the script highlights the current one) or the plain text. Timed lyrics (a .lrc file
+    next to the song, or timed lines in its tag) are shown from the start, below the controls; the Lyrics button folds them away. Plain lyrics
+    stay folded until the button is pressed."""
     if synced:
         lines = "".join("<p data-t='%s'>%s</p>" % (t, escape(words) or "&nbsp;") for t, words in synced)
-        return "<div class='pl-lyrics pl-lyrics-synced' id='lyrics' hidden>%s</div>" % lines
+        return "<div class='pl-lyrics pl-lyrics-synced' id='lyrics'>%s</div>" % lines
     if plain:
         return "<div class='pl-lyrics pl-lyrics-plain' id='lyrics' hidden>%s</div>" % escape(plain)
     return ""
@@ -604,10 +606,10 @@ def media_viewer_page(ctx: Ctx, title: str, *, kind: str, raw_url: str, mime: st
         speed_down = speed_up = speed_val = speed_chip = sleep = ""
     if not audiobook:
         bookmarks_url = ""
-    def panel_button(panel: str, label: str) -> str:
+    def panel_button(panel: str, label: str, is_open: bool = False) -> str:
         return ("<button class='pl-btn pl-panel-btn' id='%s-btn' data-panel='%s' type='button' aria-label='Show: %s' "
-                "aria-expanded='false'><span class='pl-btn-text'>%s</span></button>" % (panel, panel, label, label))
-    words_button = (panel_button("lyrics", "Lyrics") if lyrics else "") + (panel_button("chapters", "Chapters") if chapters else "") + \
+                "aria-expanded='%s'><span class='pl-btn-text'>%s</span></button>" % (panel, panel, label, "true" if is_open else "false", label))
+    words_button = (panel_button("lyrics", "Lyrics", is_open=bool(synced)) if lyrics else "") + (panel_button("chapters", "Chapters") if chapters else "") + \
         (panel_button("bookmarks", "Bookmarks") if bookmarks_url else "")
     lyrics += _chapters_html(chapters) + (_bookmarks_html() if bookmarks_url else "")
     info = ("<div class='pl-track'><h1 class='pl-track-title'>%s</h1>%s%s</div>"

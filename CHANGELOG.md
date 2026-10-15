@@ -3,6 +3,7 @@
 Release notes are taken from the section of the tagged version (`## 0.5.0 ...`).
 
 ## Unreleased
+- **Timed lyrics are shown from the start.** When a song has an `.lrc` file next to it (or timed lines in its tag), the lyrics sit below the player controls as soon as the page opens, with the current line lit and scrolling along. The Lyrics button folds them away. Plain-text lyrics still wait behind the button.
 - **Finding out why a stream is spotty.** The admin relay box now shows, for each open stream, the rate and two kinds of stall: *source stalls* (the stream itself went quiet for over a second before it reached pluteus: the provider or Dispatcharr) and *slow browser link* (pluteus had the data but the connection to the listener took over a second to take it: upload speed, the proxy). With debug logging on, each relayed stream also leaves one line when it ends (length, average rate, how long the source took to answer, the stall counts). The channel page has a **Stream info** button: the speed the data arrives at, how much is buffered, dropped frames, picture size, and how often and how long playback waited for data.
 - **The "Connecting…" message sits in the middle of the picture** on the channel page, no longer over the play button.
 - **Clearer config errors for the two commonest slips.** A setting written twice in one table (TOML says "Cannot overwrite a value") now also says so in plain words and how to fix it (a list such as `relay_allow` goes in ONE line), and a config pasted with curly quotes says that TOML needs straight quotes.
