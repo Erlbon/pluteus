@@ -127,12 +127,22 @@ class AccessLog:
         if scope["type"] != "http":
             return await self.app(scope, receive, send)
         status = [0]
+        started = time.monotonic()
+        sent = {"bytes": 0, "type": "", "length": ""}
         note: dict = {}
         scope["pluteus_debug"] = note                 # resolve() adds what it learned about the login; read when the response is done
 
         async def wrapped(message):
             if message["type"] == "http.response.start":
                 status[0] = message["status"]
+                for key, value in message.get("headers", ()):
+                    name = key.decode("latin-1").lower()
+                    if name == "content-type":
+                        sent["type"] = value.decode("latin-1")[:60]
+                    elif name == "content-length":
+                        sent["length"] = value.decode("latin-1")[:12]
+            elif message["type"] == "http.response.body":
+                sent["bytes"] += len(message.get("body", b""))
             await send(message)
         try:
             await self.app(scope, receive, wrapped)
@@ -140,7 +150,12 @@ class AccessLog:
             client = scope.get("client")
             access_log.info('%s - "%s %s" %s', client[0] if client else "-", scope.get("method", "-"), _logged_target(scope), status[0])
             if self.debug is not None and self.debug.active():
-                self.debug.record(self.debug_entry(scope, status[0], note))
+                entry = self.debug_entry(scope, status[0], note)
+                entry["took"] = "%.2f s" % (time.monotonic() - started)
+                entry["answer"] = "%s, %d bytes sent%s" % (sent["type"] or "no content type", sent["bytes"],
+                                                           (" (declared %s)" % sent["length"]) if sent["length"] else "")
+                entry["http"] = scope.get("http_version", "")
+                self.debug.record(entry)
 
 
 def csp_for_page() -> str:
