@@ -461,6 +461,16 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
         if mode == "web" and "text/html" in request.headers.get("accept", ""):
             here = cfg.base_path + request.url.path + ("?" + request.url.query if request.url.query else "")
             return RedirectResponse(urls.login(here), 303)
+        if request.url.path.startswith("/opds"):
+            # Newer reader apps expect an OPDS Authentication Document with a 401 (OPDS Authentication for Distributed Environments 1.0): a
+            # small description of how to log in. Without it some of them report an authorisation error and never send the login at all.
+            # The Basic challenge stays in the header, so a browser still shows its login box.
+            document = {"id": "urn:pluteus:authentication", "title": cfg.realm,
+                        "description": "Sign in with your pluteus user name and password (or your app key as the password).",
+                        "authentication": [{"type": "http://opds-spec.org/auth/basic",
+                                            "labels": {"login": "User name", "password": "Password"}}]}
+            return Response(json.dumps(document), 401, media_type="application/opds-authentication+json",
+                            headers={**challenge, "Cache-Control": "no-store"})
         return PlainTextResponse("Authentication required", 401, headers=challenge)
 
     def guarded(mode: str, from_browser_navigation: bool = False):

@@ -79,3 +79,18 @@ def test_the_log_hints_at_the_usual_reader_app_slips(tmp_path, caplog):
         c.get("/opds", headers=header("Erlend ", "", "utf-8"))
     assert "wrong password (%d characters; the password has a space" % (len(PASSWORD) + 1) in caplog.text
     assert "the password is empty" in caplog.text and PASSWORD not in caplog.text
+
+
+def test_an_opds_401_carries_an_authentication_document_and_the_basic_challenge(tmp_path):
+    import json
+    c = client(tmp_path)
+    for path in ("/opds", "/opds/", "/opds/books"):
+        r = c.get(path)
+        assert r.status_code == 401 and r.headers["www-authenticate"] == 'Basic realm="pluteus"', path
+        assert r.headers["content-type"].startswith("application/opds-authentication+json")
+        doc = json.loads(r.text)
+        assert doc["authentication"][0]["type"] == "http://opds-spec.org/auth/basic" and doc["title"] == "pluteus" and doc["id"]
+    assert c.get("/healthz").status_code == 200
+    other = c.get("/download-nothing")                                                  # everything else keeps the plain answer
+    assert other.status_code in (401, 404) and "opds-authentication" not in other.headers.get("content-type", "")
+    assert c.get("/opds", headers=header("erlend", PASSWORD, "utf-8")).status_code == 200
