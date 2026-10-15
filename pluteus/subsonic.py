@@ -35,6 +35,7 @@ from .auth import verify_password
 from .bodies import read_limited
 from .config import UPLOADS_ROOT
 from .fs import NotFound, PathError, clamp_time
+from .state import passing_by
 
 API_VERSION = "1.16.1"
 SEP = "\x1f"
@@ -748,7 +749,7 @@ class Subsonic:
             parts = tuple(row["path"].split("/"))
             if row["updated"] <= newer_than:
                 return None                                           # the saved queue is newer than anything the web player did
-            if len(parts) < 2 or kinds.kind_of(parts[-1]) != "audio" or row["percent"] >= 0.98 or not self.lib.has_root(user, row["root"]):
+            if len(parts) < 2 or kinds.kind_of(parts[-1]) != "audio" or row["percent"] >= 0.98 or passing_by(row["path"], row["locator"]) or not self.lib.has_root(user, row["root"]):
                 continue
             match = re.fullmatch(r"t:(\d+(?:[.]\d+)?)", row["locator"] or "")
             try:

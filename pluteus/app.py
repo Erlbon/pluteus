@@ -42,7 +42,7 @@ from .meta import MetaCache, MetaService
 from .ratelimit import FailureLimiter
 from .reload import UsersReloader
 from .sessions import COOKIE, DEVICE_COOKIE, DEVICE_DAYS, SessionManager
-from .state import StateDB
+from .state import StateDB, passing_by
 from .themes import DEFAULT, Themes
 from .urls import Urls, with_page
 
@@ -615,7 +615,7 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
         for r in state.recent_progress(user.name, 40):
             kind = kinds.kind_of(r["path"])
             if lib.has_root(user, r["root"]) and r["percent"] < 0.98 \
-                    and kind in kinds.KINDS_WITH_PROGRESS:
+                    and kind in kinds.KINDS_WITH_PROGRESS and not passing_by(r["path"], r["locator"]):
                 parts = tuple(r["path"].split("/"))
                 try:                                   # skip books that are now hidden, excluded or gone
                     lib.file_info(user, r["root"], parts, cfg.show_all_files)

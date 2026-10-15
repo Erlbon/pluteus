@@ -49,6 +49,20 @@ CREATE TABLE IF NOT EXISTS kosync (
     device TEXT NOT NULL, device_id TEXT NOT NULL, timestamp REAL NOT NULL, PRIMARY KEY (username, document));
 """
 
+MIN_SONG_SECONDS = 20           # a song heard for less than this was passed on the way (skipped), not one to pick up again
+_SONG_TYPES = (".mp3", ".flac", ".ogg", ".oga", ".opus", ".m4a", ".aac", ".wav", ".wma")      # an audiobook (.m4b) keeps its place however short
+
+
+def passing_by(path: str, locator: str) -> bool:
+    """True for a saved position that only records a skipped song: a song with fewer than MIN_SONG_SECONDS played. Such a row stays out of
+    "pick up where you left off" (the home page and the Subsonic resume), so skipping through an album does not fill the list with its songs."""
+    if os.path.splitext(path)[1].lower() not in _SONG_TYPES or not (locator or "").startswith("t:"):
+        return False
+    try:
+        return float(locator[2:]) < MIN_SONG_SECONDS
+    except ValueError:
+        return False
+
 
 class StateDB:
     def __init__(self, data_dir: str = ""):

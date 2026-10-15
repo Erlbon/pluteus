@@ -73,17 +73,17 @@ def test_without_a_saved_queue_the_web_players_position_is_the_resume_point(lib)
     assert queue["changedBy"] == "pluteus web player"
     state.put_progress("alice", "music", "Kaizers/Ompa/02 other.mp3", "t:0", 1.0, now=2000)           # finished: not a resume point
     assert body(get(c, "getPlayQueue"))["playQueue"]["current"] == SPARK
-    state.put_progress("alice", "music", "Kaizers/Ompa/02 other.mp3", "t:7", 0.2, now=3000)           # opened later: the queue continues from here
+    state.put_progress("alice", "music", "Kaizers/Ompa/02 other.mp3", "t:70", 0.2, now=3000)           # opened later: the queue continues from here
     queue = body(get(c, "getPlayQueue"))["playQueue"]
-    assert [e["id"] for e in queue["entry"]] == [OTHER] and queue["position"] == 7000
+    assert [e["id"] for e in queue["entry"]] == [OTHER] and queue["position"] == 70000
 
 
 def test_a_queue_saved_by_an_app_wins_when_it_is_newer_than_the_web_position(lib):
     import time
     c = make(lib)
-    c.app.state.state.put_progress("alice", "music", "Solo/single.mp3", "t:5", 0.5, now=time.time() - 3600)
+    c.app.state.state.put_progress("alice", "music", "Solo/single.mp3", "t:50", 0.5, now=time.time() - 3600)
     c.get("/rest/savePlayQueue.view", params={"u": "alice", "p": KEY, "f": "json", "id": [SPARK], "current": SPARK, "position": "1000", "c": "Tempo"})
     queue = body(get(c, "getPlayQueue"))["playQueue"]
     assert queue["changedBy"] == "Tempo" and queue["current"] == SPARK
-    c.app.state.state.put_progress("alice", "music", "Solo/single.mp3", "t:9", 0.5, now=time.time() + 60)    # the web player was used after
+    c.app.state.state.put_progress("alice", "music", "Solo/single.mp3", "t:90", 0.5, now=time.time() + 60)    # the web player was used after
     assert body(get(c, "getPlayQueue"))["playQueue"]["current"] == SINGLE

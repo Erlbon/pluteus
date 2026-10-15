@@ -370,3 +370,18 @@ def test_the_lyrics_and_chapter_boxes_scroll_by_the_rows_place_inside_the_box_no
     assert "lines[current].offsetTop" not in js and "chapterRows[found].offsetTop" not in js
     assert js.count("getBoundingClientRect().top - lyricsBox.getBoundingClientRect().top + lyricsBox.scrollTop") == 1
     assert "getBoundingClientRect().top - box.getBoundingClientRect().top + box.scrollTop" in js
+
+
+# ---- skipped songs stay out of "pick up where you left off" -------------------------------------------------------------------------------------
+def test_a_skipped_song_is_not_a_place_to_pick_up_but_a_song_heard_for_a_while_is(music):
+    from pluteus.state import passing_by
+    assert passing_by("Album/a.mp3", "t:3.5") and not passing_by("Album/a.mp3", "t:95.0")
+    assert not passing_by("Book/b.m4b", "t:3.5") and not passing_by("Film/c.mp4", "t:3.5") and not passing_by("Album/a.mp3", "page:3")
+    client, auth = make_client(music)
+    put = {"origin": "http://testserver", **auth}
+    client.put("/api/progress/music/Album/plain.mp3", json={"locator": "t:4.0", "percent": 0.02}, headers=put)             # skipped after 4 seconds
+    client.put("/api/progress/music/Album/spark.mp3", json={"locator": "t:75.0", "percent": 0.3}, headers=put)             # listened to for over a minute
+    home = client.get("/", headers={**auth, **HTML}).text
+    assert "spark" in home and "plain" not in home
+    js = client.get("/static/viewer-media.js").text
+    assert "t < 20 && data.kind === \"audio\"" in js

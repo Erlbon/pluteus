@@ -34,6 +34,8 @@
   function send(done, keepalive) {
     var t = media.currentTime || 0, d = media.duration || 0;
     if (!done && Math.abs(t - lastSent) < 1) return;
+    /* a song left after a few seconds was skipped, not listened to: it must not become a place to pick up again (an audiobook keeps any place) */
+    if (!done && t < 20 && data.kind === "audio" && !/[.]m4b(?:$|[?#])/i.test(media.currentSrc || "")) return;
     lastSent = t;
     fetch(progressUrl, {
       method: "PUT", credentials: "same-origin", keepalive: !!keepalive,
