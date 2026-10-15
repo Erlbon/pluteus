@@ -321,6 +321,9 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
                 limiter.success(name, device_id)
                 return user, 0
             note_failure(name, ip, device_id, known)
+            log.warning("login refused for %r from %s: %s", (name or "")[:40], ip,
+                        "the Authorization header could not be read" if creds is None else
+                        ("wrong password" if name in auth.users else "no such user"))
             return None, 0
         if cfg.anonymous_user:
             return auth.users.get(cfg.anonymous_user), 0

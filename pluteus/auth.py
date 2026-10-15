@@ -88,9 +88,13 @@ class Authenticator:
         if not header or header[:6].lower() != "basic ":
             return None
         try:
-            raw = base64.b64decode(header[6:].strip(), validate=True).decode("utf-8")
-        except (ValueError, UnicodeDecodeError):
+            data = base64.b64decode(header[6:].strip(), validate=True)
+        except ValueError:
             return None
+        try:
+            raw = data.decode("utf-8")
+        except UnicodeDecodeError:
+            raw = data.decode("latin-1")             # older reader apps send a name or password with ø, å, é ... as Latin-1, not UTF-8
         name, sep, password = raw.partition(":")
         return (name, password) if sep else None
 
