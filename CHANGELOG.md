@@ -2,7 +2,7 @@
 
 Release notes are taken from the section of the tagged version (`## 0.5.0 ...`).
 
-## Unreleased
+## 0.9.9 - 2026-10-16
 - **Fixed: Back from the folder landed on the video again.** The arrow in a viewer's or reader's top bar was an ordinary link, so after watching a few files and pressing it, the folder was added to the history a second time, and the browser's Back from the folder went to the video. When the file was opened from that folder, the arrow now steps back in the history (moving between files already replaced the entry, so the folder is one step behind however many files were played). Opened from anywhere else (the home list, an address), it is an ordinary link as before. The arrow's markup, copied in three places, is one helper now.
 - **Fixed: the other screen button left full screen.** Pressing Full screen while maximized (or Maximize while in full screen) took you back to the normal view. It now switches to that mode and stays full screen; only the button of the current mode leaves it.
 - **One subtitle button for movies and channels.** The CC button of the movie page (your `.srt` / `.vtt` files) and of the channel page (a stream's own tracks) is now one piece of code in `player-common.js`. Both step through the tracks and off, show the same message, follow what is really showing, and remember the choice by name in this browser (before, only the movie page remembered it): a track with that name is picked again the next time it appears. The button stays hidden when there are no tracks.

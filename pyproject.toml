@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pluteus"
-version = "0.9.8"
+version = "0.9.9"
 description = "Filesystem-first book and comic server: OPDS, web browsing, download"
 license = "MIT"
 license-files = ["LICENSE"]
