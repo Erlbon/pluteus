@@ -138,7 +138,7 @@ def test_folders_and_directory_browsing(lib):
     songs = album["child"]
     assert [s["title"] for s in songs] == ["Spark På Leggen", "02 other"]            # tagged first (track 5), then untagged
     assert songs[0]["artist"] == "Kaizers Orchestra" and songs[0]["track"] == 5 and songs[0]["year"] == 2001
-    assert songs[0]["contentType"] == "audio/mpeg" and songs[0]["coverArt"] == album["id"]
+    assert songs[0]["contentType"] == "audio/mpeg" and songs[0]["coverArt"] == songs[0]["id"]        # each song has its own cover id: a queue shows the right one per track
     idx = body(call(c, "getIndexes"))["indexes"]
     assert [g["name"] for g in idx["index"]] == ["K", "S"]
 
@@ -158,6 +158,19 @@ def test_tag_style_browsing(lib):
     listing = body(call(c, "getAlbumList2", type="alphabeticalByName", size="10"))["albumList2"]["album"]
     assert [a["name"] for a in listing] == ["Ompa", "Solo"]
     assert len(body(call(c, "getRandomSongs", size="5"))["randomSongs"]["song"]) >= 1
+
+
+def test_artists_only_lists_folders_with_music(lib):
+    (lib / "Comics" / "Batman").mkdir(parents=True)
+    (lib / "Comics" / "Batman" / "01.cbz").write_bytes(b"PK")
+    (lib / "Empty").mkdir()
+    (lib / "Kaizers" / "Artwork").mkdir()
+    (lib / "Kaizers" / "Artwork" / "a.jpg").write_bytes(JPEG)
+    c = make(lib)
+    names = [a["name"] for g in body(call(c, "getArtists"))["artists"]["index"] for a in g["artist"]]
+    assert names == ["Kaizers", "Solo"]
+    artist = body(call(c, "getArtist", id=subsonic.make_id("music", ("Kaizers",))))["artist"]
+    assert artist["albumCount"] == 1                                                  # the picture-only folder is no album
 
 
 def test_search(lib):
@@ -190,6 +203,8 @@ def test_cover_art_from_the_folder_and_from_the_file(lib):
     assert folder.status_code == 200 and folder.content == JPEG
     embedded = c.get("/rest/getCoverArt", params={"u": "alice", "p": KEY, "id": subsonic.make_id("music", ("Solo", "single.mp3"))})
     assert embedded.status_code == 404                                                # no picture anywhere
+    song = c.get("/rest/getCoverArt", params={"u": "alice", "p": KEY, "id": subsonic.make_id("music", ("Kaizers", "Ompa", "02 other.mp3"))})
+    assert song.status_code == 200 and song.content == JPEG                           # no embedded picture: the folder's
     artist = c.get("/rest/getCoverArt", params={"u": "alice", "p": KEY, "id": subsonic.make_id("music", ("Kaizers",))})
     assert artist.status_code == 200 and artist.content == JPEG                        # an artist folder uses its first album's
 

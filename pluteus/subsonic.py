@@ -333,7 +333,7 @@ class Subsonic:
             "title": tags.get("title") or os.path.splitext(entry.name)[0], "album": tags.get("album") or folder,
             "artist": tags.get("artist") or tags.get("albumartist") or (self.lib.display_name(parts[0]) if len(parts) > 2 else ""),
             "track": tags.get("track"), "discNumber": tags.get("disc"), "year": int(tags["year"]) if str(tags.get("year", "")).isdigit() else None,
-            "genre": tags.get("genre"), "coverArt": make_id(root, parts[:-1]), "size": entry.size,
+            "genre": tags.get("genre"), "coverArt": make_id(root, parts), "size": entry.size,
             "contentType": kinds.AUDIO.get(ext, "audio/mpeg"), "suffix": ext[1:], "duration": duration,
             "bitRate": tags.get("bitrate"), "path": "/".join(parts), "type": "music", "isVideo": False,
             "albumId": make_id(root, parts[:-1]), "artistId": make_id(root, parts[:1]) if len(parts) > 2 else None,
@@ -386,8 +386,24 @@ class Subsonic:
             except (NotFound, OSError):
                 continue
             out += [{"id": make_id(r.name, d.parts), "name": self.lib.display_name(d.name), "coverArt": make_id(r.name, d.parts),
-                     "albumCount": counts.get((r.name, d.parts[0]), 0)} for d in dirs]
+                     "albumCount": counts.get((r.name, d.parts[0]), 0)} for d in dirs if counts.get((r.name, d.parts[0]), 0)]
         return out
+
+    def _has_audio(self, user, root: str, parts) -> bool:
+        """True when the folder holds a song, or a folder inside it does (CD1/CD2 layouts)."""
+        try:
+            dirs, songs = self._list(user, root, parts)
+        except (NotFound, OSError):
+            return False
+        if songs:
+            return True
+        for d in dirs[:20]:
+            try:
+                if self._list(user, root, d.parts)[1]:
+                    return True
+            except (NotFound, OSError):
+                continue
+        return False
 
     def _all_albums(self, user) -> list:
         """[(root, entry)] of every album folder (the folders inside the top folders; a top folder with songs and no folders
@@ -413,7 +429,7 @@ class Subsonic:
                         sub = self.lib.list_dir(user, r.name, artist.parts, True, True)      # with dates: read once, kept with the list
                     except (NotFound, OSError):
                         continue
-                    albums = [e for e in sub if e.is_dir]
+                    albums = [e for e in sub if e.is_dir and self._has_audio(user, r.name, e.parts)]      # no folders without music
                     if albums:
                         found += [(r.name, e) for e in albums]
                     elif any(kinds.kind_of(e.name) == "audio" for e in sub if not e.is_dir):
@@ -676,7 +692,8 @@ class Subsonic:
                 _, inside = self._list(user, root, d.parts)
             except (NotFound, OSError):
                 inside = []
-            albums.append(self._album_item(root, d, len(inside)))
+            if inside or self._has_audio(user, root, d.parts):
+                albums.append(self._album_item(root, d, len(inside)))
         if not dirs and songs:
             albums.append(self._album_item(root, SimpleNamespace(parts=parts), len(songs)))
         name = self._name(root, parts)
@@ -906,6 +923,8 @@ class Subsonic:
         found = None
         if parts and kinds.kind_of(parts[-1]) == "audio":
             found = mediainfo.read_cover(self.lib.file_info(user, root, parts, True).path)
+            if found is None and len(parts) > 1:                     # no embedded picture: the folder's cover
+                found = self._folder_art(user, root, parts[:-1], 0)
         else:
             found = self._folder_art(user, root, parts, 1)
         if found is None:
