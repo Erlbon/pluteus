@@ -923,8 +923,6 @@ class Subsonic:
         found = None
         if parts and kinds.kind_of(parts[-1]) == "audio":
             found = mediainfo.read_cover(self.lib.file_info(user, root, parts, True).path)
-            if found is None and len(parts) > 1:                     # no embedded picture: the folder's cover
-                found = self._folder_art(user, root, parts[:-1], 0)
         else:
             found = self._folder_art(user, root, parts, 1)
         if found is None:

@@ -204,7 +204,11 @@ def test_cover_art_from_the_folder_and_from_the_file(lib):
     embedded = c.get("/rest/getCoverArt", params={"u": "alice", "p": KEY, "id": subsonic.make_id("music", ("Solo", "single.mp3"))})
     assert embedded.status_code == 404                                                # no picture anywhere
     song = c.get("/rest/getCoverArt", params={"u": "alice", "p": KEY, "id": subsonic.make_id("music", ("Kaizers", "Ompa", "02 other.mp3"))})
-    assert song.status_code == 200 and song.content == JPEG                           # no embedded picture: the folder's
+    assert song.status_code == 200 and song.content == JPEG                           # no embedded picture: the folder.jpg beside it
+    shutil.copy(TAGGED, lib / "Solo" / "01 tagged.mp3")                               # Solo has a song with art, but no folder.jpg
+    (lib / "Solo" / "other.mp3").write_bytes(b"ID3" + b"\x00" * 300)
+    neighbour = c.get("/rest/getCoverArt", params={"u": "alice", "p": KEY, "id": subsonic.make_id("music", ("Solo", "other.mp3"))})
+    assert neighbour.status_code == 404                                               # never another song's picture
     artist = c.get("/rest/getCoverArt", params={"u": "alice", "p": KEY, "id": subsonic.make_id("music", ("Kaizers",))})
     assert artist.status_code == 200 and artist.content == JPEG                        # an artist folder uses its first album's
 
