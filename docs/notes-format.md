@@ -77,6 +77,10 @@ it would only repeat what pluteus shows and go out of date. No links are needed 
 - List releases as plain `- Title (Year)` lines (see Discographies above): no `[[links]]`, no "in this library" annotations.
 - Use the file name for the level (see [library-layout.md](library-layout.md)).
 - Plain text under about 64 KB is the sweet spot; the editor in pluteus refuses more than that.
+- Extra front matter keys are fine: pluteus reads only `title` and ignores the rest. The Redactor apps stamp their notes with `generator: <app and version>`, `note-format: <shape number>`
+  and `body-sha: <fingerprint of the generated text>` (plain `key: value` lines). The viewer does not show them, and the editor shows the whole file, front matter included, and saves exactly
+  what is in the box, so the keys survive an edit untouched. After a person has edited a note the fingerprint no longer matches the text, which is how the Redactor apps see that it was
+  edited by hand and never replace it.
 
 ## What pluteus does not do with notes
 

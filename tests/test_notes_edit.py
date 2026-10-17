@@ -141,3 +141,25 @@ def test_the_space_limit_applies(up):
         assert e.code == "quota"
     else:
         raise AssertionError("the space limit was not applied")
+
+
+STAMPED = ("---\ntitle: Depeche Mode\nstatus: draft\ngenerator: mp3redactor 2026-10-17#01\nnote-format: 2\nbody-sha: 0123456789abcdef\n---\n"
+           "# Depeche Mode\n\nFrom Basildon.\n")
+
+
+def test_editing_a_stamped_note_keeps_every_front_matter_key_and_hides_them_from_the_page(up):
+    """The Redactor apps stamp their notes with generator / note-format / body-sha. The editor shows the whole file, so a save keeps those keys as
+    they are (the stamp then no longer matches the changed text, which is how the apps see that a person edited it); the viewer shows only the body."""
+    me, app, folder = up
+    mine = folder / "alice"
+    mine.mkdir(parents=True, exist_ok=True)
+    (mine / "artist.md").write_text(STAMPED, encoding="utf-8")
+    shown = me.get("/view/uploads/artist.md", headers=HTML).text
+    assert "From Basildon" in shown and "body-sha" not in shown and "note-format" not in shown and "generator" not in shown
+    editor = me.get("/note/uploads?name=artist.md", headers=HTML).text
+    assert "body-sha: 0123456789abcdef" in editor and "note-format: 2" in editor and "generator: mp3redactor 2026-10-17#01" in editor
+    text = STAMPED.replace("From Basildon.", "From Basildon, Essex.")
+    r = post(me, "/note/uploads", name="artist.md", text=text, version=version_of(editor), action="save")
+    saved = (mine / "artist.md").read_text(encoding="utf-8")
+    assert r.status_code == 303 and saved == text
+    assert all(line in saved for line in ("generator: mp3redactor 2026-10-17#01", "note-format: 2", "body-sha: 0123456789abcdef", "status: draft"))
