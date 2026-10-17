@@ -270,8 +270,7 @@
   function applyRate() {
     media.defaultPlaybackRate = rate;
     media.playbackRate = rate;
-    /* Written along the play button only when it is not normal speed; the chip on a video always shows it */
-    if (speedButton) setLabel(speedButton, rate === 1 && speedButton.classList.contains("pl-speed-arc") ? "" : rateText());
+    if (speedButton) setLabel(speedButton, rateText());               // the readout under the play button always shows it
   }
   applyRate();
   media.addEventListener("loadedmetadata", applyRate);              // some browsers reset it when a file loads
@@ -282,15 +281,7 @@
     applyRate();
     say("Speed " + rateText(), 1200);
   }
-  /* the readout in the middle is a switch: normal -> 1.25 -> 1.5 -> 2 -> normal (the - and + beside it fine-tune) */
-  var QUICK = [1, 1.25, 1.5, 2];
-  if (speedButton) speedButton.addEventListener("click", function () {
-    var i = QUICK.indexOf(rate);
-    rate = QUICK[(i + 1) % QUICK.length];                            // from any other speed the first click goes to the next quick one
-    try { localStorage.setItem("pluteus-media-rate", String(rate)); } catch (e) { /* storage blocked */ }
-    applyRate();
-    say("Speed " + rateText(), 1200);
-  });
+  /* the readout between the - and + is only a readout: tapping it changes nothing */
   if (slower) slower.addEventListener("click", function () { stepRate(-1); });
   if (faster) faster.addEventListener("click", function () { stepRate(1); });
 

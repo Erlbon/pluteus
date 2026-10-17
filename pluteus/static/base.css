@@ -407,20 +407,16 @@ html[data-icons="aurora"] .pl-ico-upload  { color: light-dark(#1f7ae0, #7cc8ff);
 .pl-tools .pl-btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 0 16px; min-width: 112px; min-height: 0; }
 .pl-tools .pl-icon { width: 1.15em; height: 1.15em; color: var(--pl-accent); vertical-align: 0; }
 .pl-tools .pl-btn[aria-expanded="true"] { border-color: var(--pl-accent); color: var(--pl-accent); }
-/* - and +: round, gold, bold, outside the skip buttons */
-.pl-btn.pl-speed-step { width: 52px; min-width: 52px; height: 52px; min-height: 52px; padding: 0; border-radius: 50%; justify-content: center;
-  font-size: 38px; font-weight: 700; line-height: 1; color: var(--pl-accent); }
-/* the speed on video: a plain gold chip */
-.pl-speed-val { font: inherit; font-size: 17px; font-weight: 600; font-variant-numeric: tabular-nums; min-width: 64px; height: 36px; padding: 0 14px;
-  border: 1px solid var(--pl-line); border-radius: 999px; background: var(--pl-btn-bg); color: var(--pl-accent); cursor: pointer; }
-/* the speed on audio: written along the top of the play button, almost touching it. It takes no room in the row, so every
-   button stays on one centre line. The button itself ignores the pointer; only the band along the arc (.hit) takes taps. */
+/* the speed, music and movies alike: a small - 1x + pill hanging under the play button. It takes no room in the row, so the five
+   buttons stay on one centre line; the transport's bottom margin leaves room for it. */
 .pl-play-wrap { position: relative; display: inline-flex; margin: 0 4px; }
-.pl-speed-arc { position: absolute; left: -18px; top: -18px; width: 100px; height: 50px; padding: 0; background: none; border: 0;
-  color: var(--pl-accent); pointer-events: none; overflow: visible; }
-.pl-speed-arc svg { width: 100%; height: 100%; overflow: visible; display: block; }
-.pl-speed-arc text { fill: currentColor; font-size: 17px; font-weight: 600; font-variant-numeric: tabular-nums; pointer-events: none; }
+.pl-speedpill { position: absolute; left: 50%; top: 100%; transform: translateX(-50%); margin-top: 6px; display: inline-flex; align-items: center;
+  border: 1px solid var(--pl-line); border-radius: 999px; background: var(--pl-btn-bg); color: var(--pl-accent); white-space: nowrap; }
+.pl-speedpill .pl-speed-step { font: inherit; font-size: 20px; font-weight: 700; line-height: 1; width: 36px; height: 30px; padding: 0; border: 0;
+  background: none; color: var(--pl-accent); cursor: pointer; border-radius: 999px; }
+.pl-speed-readout { font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums; min-width: 36px; text-align: center; }
 .pl-transport { margin-top: 26px; }
+.pl-mediaview .pl-transport { margin-top: 6px; margin-bottom: 44px; }
 
 /* ---- the player: cover, tags, scrubber, transport, lyrics ---- */
 .pl-mediaview .pl-media-stage { align-items: flex-start; padding-top: 8px; }
@@ -476,6 +472,7 @@ html[data-icons="aurora"] .pl-ico-upload  { color: light-dark(#1f7ae0, #7cc8ff);
   .pl-videobox:fullscreen { padding: 6px 16px; gap: 4px; }
   .pl-videobox:fullscreen video { max-height: calc(100vh - 140px); }
   .pl-videobox:fullscreen .pl-transport { margin-top: 4px; }
+  .pl-mediaview .pl-videobox:fullscreen .pl-transport { margin-bottom: 40px; }
 }
 /* a narrow phone: the five buttons must fit the width, or the page scrolls sideways */
 @media (max-width: 480px) {
@@ -547,7 +544,7 @@ body.pl-shell-page { display: flex; flex-direction: column; height: 100vh; heigh
 .pl-videobox.pl-full:not(.pl-iptv) .pl-track .pl-track-title { color: #fff; margin: 0; font-size: 20px; }
 .pl-videobox.pl-full:not(.pl-iptv) .pl-track .pl-track-by, .pl-videobox.pl-full:not(.pl-iptv) .pl-chips { display: none; }
 .pl-videobox.pl-full:not(.pl-iptv) .pl-scrub { bottom: 0; padding: 10px 20px 14px; background: rgba(0, 0, 0, .7); }
-.pl-videobox.pl-full:not(.pl-iptv) .pl-transport { bottom: 58px; justify-content: center; }
+.pl-videobox.pl-full:not(.pl-iptv) .pl-transport { bottom: 98px; justify-content: center; }
 .pl-videobox.pl-full:not(.pl-iptv) .pl-vol { display: inline-flex; }
 .pl-videobox.pl-full:not(.pl-iptv) .pl-tools, .pl-videobox.pl-full:not(.pl-iptv) .pl-lyrics, .pl-videobox.pl-full:not(.pl-iptv) .pl-panel { display: none; }
 .pl-videobox.pl-full.pl-idle:not(.pl-iptv) { cursor: none; }
@@ -571,12 +568,11 @@ body.pl-shell-page { display: flex; flex-direction: column; height: 100vh; heigh
 .pl-transport .pl-play { width: 64px; height: 64px; border-radius: 50%; justify-content: center; padding: 0;
   background: var(--pl-btn-primary-bg); border: var(--pl-btn-primary-border); }
 .pl-transport .pl-play .pl-icon { width: 36px; height: 36px; color: var(--pl-btn-primary-fg); }
-/* a song's row has seven buttons: smaller below 420px (about 340px wide in all) so it still fits a 360px phone */
+/* the row is five buttons: a little smaller below 420px so it still fits a 360px phone */
 @media (max-width: 420px) {
   .pl-transport { gap: 4px; }
   .pl-transport .pl-btn { min-width: 44px; min-height: 44px; padding: 0; }
   .pl-transport .pl-icon { width: 26px; height: 26px; }
-  .pl-btn.pl-speed-step { width: 40px; min-width: 40px; height: 40px; min-height: 40px; font-size: 30px; }
   .pl-transport .pl-play { width: 56px; height: 56px; min-width: 56px; min-height: 56px; }
   .pl-transport .pl-play .pl-icon { width: 30px; height: 30px; }
   .pl-play-wrap { margin: 0; }

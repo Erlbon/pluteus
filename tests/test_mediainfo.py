@@ -165,7 +165,7 @@ def test_a_movie_page_has_the_music_players_controls_and_a_full_screen_button(mu
     for ident in ("scrub", "cur", "dur", "volume", "mute", "play", "back30", "fwd30", "speed-down", "speed-up", "fs"):
         assert "id='%s'" % ident in page, ident
     assert "<video id='media' controls" in page and "pl-videobox" in page            # native controls remain until the script takes over
-    assert "pl-speed-arc" in page and "id='sleep'" not in page                      # the speed on the play button; no sleep timer on a movie
+    assert "pl-speedpill" in page and "id='sleep'" not in page                      # the speed pill under the play button; no sleep timer on a movie
     song = client.get("/view/music/Album/spark.mp3", headers={**auth, **HTML}).text
     assert "id='fs'" not in song                                                    # full screen is for movies only
 
@@ -177,14 +177,18 @@ def test_the_script_handles_clicks_and_full_screen_for_movies():
 
 
 # ---- the transport row ----------------------------------------------------------------------------------------------------------------------
-def test_the_speed_is_written_along_the_play_button_and_the_row_has_no_text_labels(music):
+def test_the_speed_pill_hangs_under_the_play_button_and_the_row_has_no_text_labels(music):
+    (music / "Album" / "clip.mp4").write_bytes(b"\x00\x00\x00\x18ftypmp42" + b"\x00" * 64)
     client, auth = make_client(music)
-    page = client.get("/view/music/Album/spark.mp3", headers={**auth, **HTML}).text
-    assert "pl-speed-arc" in page and "<textPath" in page and "id='speed-down'" in page and "id='speed-up'" in page
-    assert page.index("id='speed-down'") < page.index("id='back30'") < page.index("id='play'") < page.index("id='fwd30'") < page.index("id='speed-up'")
-    assert ">30 s<" not in page                                                   # the skip buttons are icons only (the label is for screen readers)
-    assert "<button class='pl-speed-arc'" not in page and "class='hit'" not in page             # the speed text is a readout: tapping it changes nothing
-    assert "pl-speed-arc .hit" not in client.get("/static/base.css").text
+    for name in ("spark.mp3", "clip.mp4"):                                        # music and movies get the same row
+        page = client.get("/view/music/Album/" + name, headers={**auth, **HTML}).text
+        assert "pl-speedpill" in page and "id='speed-down'" in page and "id='speed-up'" in page and "id='speed'" in page
+        order = ["prev-song", "back30", "play", "speed-down", "speed", "speed-up", "fwd30", "next-song"]
+        assert [page.index("id='%s'" % i) for i in order] == sorted(page.index("id='%s'" % i) for i in order), name
+        assert ">30 s<" not in page                                               # the skip buttons are icons only (the label is for screen readers)
+        assert "<button class='pl-speed-readout'" not in page and "pl-speed-arc" not in page        # the speed text is a readout: tapping it changes nothing
+    js = open(os.path.join(HERE, "..", "pluteus", "static", "viewer-media.js"), encoding="utf-8").read()
+    assert "speedButton.addEventListener" not in js
 
 
 def test_sleep_and_bookmarks_are_for_audiobooks_only(music):
@@ -197,10 +201,10 @@ def test_sleep_and_bookmarks_are_for_audiobooks_only(music):
 
 
 # ---- the player script keeps the listener's place --------------------------------------------------------------------------------------------
-def test_normal_speed_is_not_written_on_the_play_button():
+def test_the_speed_readout_always_shows_the_speed():
     js = open(os.path.join(HERE, "..", "pluteus", "static", "viewer-media.js"), encoding="utf-8").read()
-    assert 'rate === 1 && speedButton.classList.contains("pl-speed-arc") ? "" : rateText()' in js
-    assert js.count('say("Speed " + rateText()') == 2
+    assert "setLabel(speedButton, rateText())" in js
+    assert js.count('say("Speed " + rateText()') == 1
 
 
 def test_the_autoplay_flag_is_taken_off_the_address_and_keys_are_left_alone_in_fields():
@@ -349,15 +353,15 @@ def test_a_quiet_folder_is_remembered_and_a_busy_one_is_not(tmp_path, monkeypatc
     assert mediainfo.folder_cover(str(busy)) == "" and str(busy) not in mediainfo._folder_cache   # just made: never remembered
 
 
-def test_a_song_has_previous_and_next_song_buttons_inside_the_speed_buttons_and_a_movie_does_not(music):
+def test_songs_and_movies_both_have_previous_and_next_file_buttons(music):
     client, auth = make_client(music)
     page = client.get("/view/music/Album/spark.mp3", headers={**auth, **HTML}).text
-    order = ["speed-down", "prev-song", "back30", "play", "fwd30", "next-song", "speed-up"]
+    order = ["prev-song", "back30", "play", "fwd30", "next-song"]
     assert [page.index("id='%s'" % i) for i in order] == sorted(page.index("id='%s'" % i) for i in order)
     assert "pl-i-song-prev" in page and "pl-i-song-next" in page and "pl-i-rew" in page and "pl-i-ff" in page      # the skips keep their icons
     (music / "Album" / "clip.mp4").write_bytes(b"\x00\x00\x00\x18ftypmp42" + b"\x00" * 64)
     movie = client.get("/view/music/Album/clip.mp4", headers={**auth, **HTML}).text
-    assert "prev-song" not in movie and "next-song" not in movie
+    assert "id='prev-song'" in movie and "id='next-song'" in movie and "Next file" in movie
     css = client.get("/static/base.css").text
     assert "max-width: 420px" in css
     js = client.get("/static/viewer-media.js").text
@@ -407,11 +411,10 @@ def test_the_players_share_one_copy_of_the_volume_and_screen_mode_code():
     assert "pluteus-subs" in common and "subtitleTracks" in common and "textTracks" in common
 
 
-def test_the_speed_text_on_the_play_button_has_a_valid_arc_offset(music):
-    """The offset was written as 50%% (a doubled percent sign that nothing turned into one), which the browser rejects: the speed text sat off the arc."""
+def test_the_player_page_has_no_doubled_percent_signs(music):
+    """A doubled percent sign nothing turned into one was once written into the page (the speed text sat off its arc)."""
     client, auth = make_client(music)
-    page = client.get("/view/music/Album/spark.mp3", headers={**auth, **HTML}).text
-    assert "startOffset='50%'" in page and "%%" not in page
+    assert "%%" not in client.get("/view/music/Album/spark.mp3", headers={**auth, **HTML}).text
 
 
 def test_a_movie_page_has_both_a_maximize_and_a_full_screen_button_like_a_channel(music):

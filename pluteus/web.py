@@ -594,22 +594,15 @@ def media_viewer_page(ctx: Ctx, title: str, *, kind: str, raw_url: str, mime: st
     skip_back = button("back30", "Back 30 seconds", "rew")                    # the old tape-deck double triangles, no text
     skip_fwd = button("fwd30", "Forward 30 seconds", "ff")
     if extras:
-        speed_down = "<button class='pl-btn pl-speed-step' id='speed-down' type='button' aria-label='Slower'>&minus;</button>"
-        speed_up = "<button class='pl-btn pl-speed-step' id='speed-up' type='button' aria-label='Faster'>+</button>"
-        tip = "Tap to switch between normal, 1.25, 1.5 and 2 times"
-        # audio: the speed is written along the top edge of the play button. It is only a readout (the - and + beside the play button
-        # change it): tapping the text does nothing, so a thumb reaching for play or the title above it cannot change the speed by accident
-        speed_val = ("<span class='pl-speed-arc' id='speed' role='img' aria-label='Playback speed'>"
-                     "<svg viewBox='0 0 100 50' aria-hidden='true'><path id='pl-arc' d='M 14 50 A 36 36 0 0 1 86 50' fill='none'/>"
-                     "<text><textPath href='#pl-arc' startOffset='50%' text-anchor='middle' class='pl-btn-text'>1&times;</textPath></text>"
-                     "</svg></span>")
-        # video: a plain gold chip between the skip buttons
-        speed_chip = ("<button class='pl-speed-val' id='speed' type='button' title='%s'>"
-                      "<span class='pl-btn-text'>1&times;</span></button>" % tip)
+        # music and movies alike: a small - 1x + pill right under the play button. The 1x is only a readout (tapping it does nothing),
+        # so a thumb reaching for play cannot change the speed by accident; the - and + step through the speeds
+        speed_val = ("<span class='pl-speedpill'><button class='pl-speed-step' id='speed-down' type='button' aria-label='Slower'>&minus;</button>"
+                     "<span class='pl-speed-readout' id='speed' role='img' aria-label='Playback speed'>1&times;</span>"
+                     "<button class='pl-speed-step' id='speed-up' type='button' aria-label='Faster'>+</button></span>")
         # sleep timer and bookmarks are for audiobooks (m4b), where you stop in the middle and fall asleep; not for a song
         sleep = button("sleep", "Sleep timer: pause after a while", "moon", "Sleep") if audiobook else ""
     else:
-        speed_down = speed_up = speed_val = speed_chip = sleep = ""
+        speed_val = sleep = ""
     if not audiobook:
         bookmarks_url = ""
     def panel_button(panel: str, label: str, is_open: bool = False) -> str:
@@ -633,14 +626,13 @@ def media_viewer_page(ctx: Ctx, title: str, *, kind: str, raw_url: str, mime: st
                  "<span class='pl-vol'><button type='button' id='mute' class='pl-vol-btn' aria-label='Mute'><span class='pl-icon pl-i-volume'></span></button>"
                  "<input type='range' id='volume' min='0' max='100' value='100' aria-label='Volume'></span>%s%s</div>" % (captions, fullscreen))
     tracks = "".join("<track kind='subtitles' src='%s' label='%s'>" % (escape(url), escape(label)) for url, label in subtitles) if kind == "video" else ""
-    # a song also gets previous / next song buttons just inside the - and + (a movie keeps its five buttons). Previous always works
-    # (on the first song it restarts it); next is greyed on the last one
-    song_prev = song_next = ""
-    if kind != "video":
-        song_prev = button("prev-song", "Previous song", "song-prev")
-        song_next = button("next-song", "Next song", "song-next").replace("<button ", "<button %s" % ("" if next_url else "disabled "), 1)
-    transport_row = ("<div class='pl-transport'>%s%s%s<span class='pl-play-wrap'>%s%s</span>%s%s%s</div>"
-                     % (speed_down, song_prev, skip_back, speed_val, button("play", "Play", "play", extra="pl-play"), skip_fwd, song_next, speed_up))
+    # the row is five buttons for a song and a movie alike: previous / next file, the 30 second skips, play. Previous always works
+    # (on the first file it restarts it); next is greyed on the last one. The speed pill hangs under the play button.
+    song_prev = button("prev-song", "Previous file" if kind == "video" else "Previous song", "song-prev")
+    song_next = button("next-song", "Next file" if kind == "video" else "Next song", "song-next").replace(
+        "<button ", "<button %s" % ("" if next_url else "disabled "), 1)
+    transport_row = ("<div class='pl-transport'>%s%s<span class='pl-play-wrap'>%s%s</span>%s%s</div>"
+                     % (song_prev, skip_back, button("play", "Play", "play", extra="pl-play"), speed_val, skip_fwd, song_next))
     if kind == "video":
         stage = ("<div class='pl-media-box pl-player pl-videobox'>%s<div class='pl-videowrap'><video id='media' controls preload='metadata' playsinline src='%s'>%s"
                  "<p>Your browser cannot play this file; <a href='%s'>download it</a>.</p></video></div>%s%s<div class='pl-tools'>%s</div>%s"
