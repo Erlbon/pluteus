@@ -46,11 +46,13 @@ def layout(title: str, body: str, ctx: Ctx, *, head: str = "", scripts: tuple = 
             # a new tab: the admin page is another site (its own port), so opening it here would stop a playing song
             # hidden until adminlink.js has found the admin page reachable from this browser: from the public address it is not,
             # and a link that opens an empty page looks silly
-            admin = ("<a href='%s' target='_blank' rel='noopener' hidden data-admin>Admin</a>" % escape(ctx.admin_link)) if ctx.admin_link else ""
+            admin = ("<a class='pl-bar-link' href='%s' target='_blank' rel='noopener' hidden data-admin title='Admin' aria-label='Admin'>"
+                     "<span class='pl-icon pl-i-admin'></span><span class='pl-lbl'>Admin</span></a>" % escape(ctx.admin_link)) if ctx.admin_link else ""
             if admin:
                 scripts = scripts + (u.static("adminlink.js"),)
-            who = (admin + "<form method='post' action='%s'><button class='pl-btn' type='submit'>Sign out<span class='pl-who'> (%s)</span></button></form>"
-                   % (escape(u.logout()), escape(ctx.user)))
+            who = (admin + "<form method='post' action='%s'><button class='pl-btn pl-bar-link' type='submit' title='Sign out (%s)' aria-label='Sign out (%s)'>"
+                   "<span class='pl-icon pl-i-logout'></span><span class='pl-lbl'>Sign out<span class='pl-who'> (%s)</span></span></button></form>"
+                   % (escape(u.logout()), escape(ctx.user), escape(ctx.user), escape(ctx.user)))
         chrome = ("<header class='pl-bar'><a class='pl-brand' href='%s'%s>Pluteus</a> <span class='pl-muted pl-ver'>%s</span>%s"
                   "<span class='pl-spacer'></span>%s%s</header>"
                   % (escape(u.home()), into_frame, escape(__version__), nav, scheme_button(), who))
@@ -989,5 +991,6 @@ def settings_page(ctx: Ctx, themes: list, saved: bool = False, stations: bool = 
                         "move between them (Enter presses, Back goes back). It is kept in this browser only, so your phone is not changed.</p>"
                         "<p><a class='pl-btn' target='_top' href='%s?tv=1'>Turn on for this device</a> "
                         "<a class='pl-btn' target='_top' href='%s?tv=0'>Turn off</a></p></section>"
-                        "<p><a href='%s'>&larr; Back to the library</a></p></main>" % (escape(ctx.urls.shell()), escape(ctx.urls.shell()), escape(ctx.urls.home())), 1)
+                        "<p><a href='%s'>&larr; Back to the library</a></p><p class='pl-version pl-muted'>pluteus %s</p></main>"
+                        % (escape(ctx.urls.shell()), escape(ctx.urls.shell()), escape(ctx.urls.home()), escape(__version__)), 1)
     return layout("Settings", body, ctx)

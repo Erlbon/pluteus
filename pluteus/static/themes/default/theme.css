@@ -34,6 +34,14 @@
 .pl-i-mute        { -webkit-mask-image: url(../_/icons/mute.svg);        mask-image: url(../_/icons/mute.svg); }
 .pl-i-play       { -webkit-mask-image: url(../_/icons/play.svg);       mask-image: url(../_/icons/play.svg); }
 .pl-i-pause      { -webkit-mask-image: url(../_/icons/pause.svg);      mask-image: url(../_/icons/pause.svg); }
+.pl-i-status    { -webkit-mask-image: url(../_/icons/status.svg); mask-image: url(../_/icons/status.svg); }
+.pl-i-libraries { -webkit-mask-image: url(../_/icons/libraries.svg); mask-image: url(../_/icons/libraries.svg); }
+.pl-i-security  { -webkit-mask-image: url(../_/icons/security.svg); mask-image: url(../_/icons/security.svg); }
+.pl-i-users     { -webkit-mask-image: url(../_/icons/users.svg); mask-image: url(../_/icons/users.svg); }
+.pl-i-debug     { -webkit-mask-image: url(../_/icons/debug.svg); mask-image: url(../_/icons/debug.svg); }
+.pl-i-logout    { -webkit-mask-image: url(../_/icons/logout.svg); mask-image: url(../_/icons/logout.svg); }
+.pl-i-admin     { -webkit-mask-image: url(../_/icons/admin.svg); mask-image: url(../_/icons/admin.svg); }
+.pl-i-external  { -webkit-mask-image: url(../_/icons/external.svg); mask-image: url(../_/icons/external.svg); }
 
 /* The book icon above the sign-in form. A theme can hide it (.pl-logo { display: none; }) or swap the image
    (background-image: url(logo.png), relative to that theme's folder). ../../static is the site's /static/. */

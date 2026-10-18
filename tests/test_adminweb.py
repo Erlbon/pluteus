@@ -345,7 +345,7 @@ def test_main_site_links_to_the_admin_page_only_for_an_admin_on_the_local_networ
     site = {"host": "192.168.1.99:8100", **BOSS}
     home = lan.get("/", headers=site)
     # a new tab (keeps the player going), hidden until adminlink.js finds the admin page reachable from this browser
-    assert "href='http://192.168.1.99:8101/' target='_blank' rel='noopener' hidden data-admin>Admin<" in home.text
+    assert "href='http://192.168.1.99:8101/' target='_blank' rel='noopener' hidden data-admin title='Admin'" in home.text
     assert "adminlink.js" in home.text
     assert "connect-src 'self' http://192.168.1.99:8101;" in home.headers["content-security-policy"]     # the probe may ask that address only
     assert "Admin<" not in lan.get("/", headers=dict(site, **{"x-forwarded-for": "8.8.8.8"})).text       # through Caddy
@@ -361,8 +361,8 @@ def test_admin_header_shows_the_version_and_links_back_to_the_site(admin):
     html = client.get("/", headers=dict(BOSS, host="192.168.1.99:8101")).text
     head = html[html.index("<header"):html.index("</header>")]
     assert __version__ in head
-    assert "href='http://192.168.1.99:8080/'>Pluteus<" in head              # site_port unset: the main port
-    assert "8080/'>Pluteus<" not in client.get("/", headers=dict(BOSS, host="x'><y:1")).text   # an odd host name: no link
+    assert "href='http://192.168.1.99:8080/' title='Pluteus'" in head              # site_port unset: the main port
+    assert "8080/' title='Pluteus'" not in client.get("/", headers=dict(BOSS, host="x'><y:1")).text   # an odd host name: no link
 
 
 def test_site_port_overrides_the_port_in_the_back_link(tmp_path):
@@ -371,7 +371,7 @@ def test_site_port_overrides_the_port_in_the_back_link(tmp_path):
     cfg = load_config(str(path))
     assert cfg.site_port == 8100
     client = TestClient(create_admin_app(create_app(cfg, config_path=str(path), reload_interval=0.0)), follow_redirects=False)
-    assert "href='http://10.0.0.5:8100/'>Pluteus<" in client.get("/", headers=dict(BOSS, host="10.0.0.5:8101")).text
+    assert "href='http://10.0.0.5:8100/' title='Pluteus'" in client.get("/", headers=dict(BOSS, host="10.0.0.5:8101")).text
 
 
 def test_a_user_added_with_no_folder_ticked_gets_none_and_the_all_box_means_every_root(admin):
@@ -406,7 +406,7 @@ def test_admin_url_shows_the_admin_link_to_administrators_even_behind_a_proxy(tm
     app = create_app(cfg, config_path=str(path), reload_interval=0.0)
     proxied = TestClient(app, client=("203.0.113.9", 50000), follow_redirects=False)      # arrives through a reverse proxy
     behind = {"host": "pluteus.lan:8443", "x-forwarded-for": "10.0.0.5", "x-forwarded-proto": "https", **BOSS}
-    assert "href='http://pluteus.lan:8101/' target='_blank' rel='noopener' hidden data-admin>Admin<" in proxied.get("/", headers=behind).text
+    assert "href='http://pluteus.lan:8101/' target='_blank' rel='noopener' hidden data-admin title='Admin'" in proxied.get("/", headers=behind).text
     # without admin_url the same request gets no link (the default: nothing about the admin page behind a proxy)
     path.write_text(path.read_text().replace('admin_url = "http://pluteus.lan:8101/"\n', ""))
     plain = TestClient(create_app(load_config(str(path)), config_path=str(path), reload_interval=0.0), client=("203.0.113.9", 50000))

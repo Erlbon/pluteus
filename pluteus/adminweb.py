@@ -10,8 +10,8 @@ from html import escape
 from . import __version__
 from .web import Ctx, _size, layout, scheme_button
 
-NAV = (("status", "/", "Status"), ("libraries", "/libraries", "Libraries"), ("security", "/security", "Security"), ("users", "/users", "Users"),
-       ("debug", "/debug", "Debug"))
+NAV = (("status", "/", "Status", "status"), ("libraries", "/libraries", "Libraries", "libraries"), ("security", "/security", "Security", "security"),
+       ("users", "/users", "Users", "users"), ("debug", "/debug", "Debug", "debug"))
 FLASH = {
     "unlocked": "The lock is cleared.", "nothing": "There was nothing to clear.", "forgot": "That device is forgotten.",
     "signedout": "Signed out everywhere (sessions and known devices removed).",
@@ -45,17 +45,20 @@ current_site_link: contextvars.ContextVar = contextvars.ContextVar("current_site
 
 
 def _header(active: str) -> str:
-    links = "".join("<a class='pl-admin-tab%s' href='%s'>%s</a>" % (" pl-admin-on" if key == active else "", path, label)
-                    for key, path, label in NAV)
+    # Two rows on a wide screen (name and the tools, then the tabs with their labels); one row of icons on a phone (base.css).
+    links = "".join("<a class='pl-admin-tab%s' href='%s' title='%s' aria-label='%s'><span class='pl-icon pl-i-%s'></span><span class='pl-lbl'>%s</span></a>"
+                    % (" pl-admin-on" if key == active else "", path, label, label, icon, label) for key, path, label, icon in NAV)
     site = current_site_link.get()
-    # The right-hand side is laid out like the main site's bar: contrast button, the link to the other site ("Admin" there,
-    # "Pluteus" here), then Sign out.
-    other = "<a href='%s'>Pluteus</a>" % escape(site) if site else ""
-    return ("<header class='pl-bar'><span class='pl-brand'>Pluteus Admin</span> <span class='pl-muted pl-ver'>%s</span>"
+    # The right-hand side is laid out like the main site's bar: the link to the other site ("Admin" there, "Pluteus" here),
+    # contrast button, then Sign out.
+    other = ("<a class='pl-bar-link' href='%s' title='Pluteus' aria-label='Pluteus'><span class='pl-icon pl-i-external'></span>"
+             "<span class='pl-lbl'>Pluteus</span></a>" % escape(site)) if site else ""
+    return ("<header class='pl-bar pl-admin-bar'><span class='pl-brand'>Pluteus<span class='pl-lbl'> Admin</span></span> <span class='pl-muted pl-ver'>%s</span>"
             "<nav class='pl-admin-nav'>%s</nav><span class='pl-spacer'></span>%s%s"
             "<form class='pl-inline' method='post' action='/logout'>"
-            "<button class='pl-btn' type='submit'>Sign out</button></form></header>"
-            % (escape(__version__), links, scheme_button(), other))
+            "<button class='pl-btn pl-bar-link' type='submit' title='Sign out' aria-label='Sign out'>"
+            "<span class='pl-icon pl-i-logout'></span><span class='pl-lbl'>Sign out</span></button></form></header>"
+            % (escape(__version__), links, other, scheme_button()))
 
 
 def signed_out_page(ctx: Ctx) -> str:
@@ -249,6 +252,7 @@ def status_page(ctx: Ctx, d: dict) -> str:
         light, where = _light("ok", "ok"), "<code>%s</code>" % escape(st["path"])
     boxes.append(_box("State (sessions, progress)", "<p>%s &middot; %s &middot; %s &middot; %d backup(s), %s</p>"
                       % (light, where, _size(st["size"]), st["backups"], escape(backup))))
+    boxes.append("<p class='pl-version pl-muted'>pluteus %s</p>" % escape(__version__))        # the top bar has no room for it on a phone
     return page(ctx, "Status", "status", _security_alert(d.get("update")) + "".join(boxes))
 
 

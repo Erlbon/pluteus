@@ -637,6 +637,24 @@ body.pl-reader-page, .pl-reader-stage { overscroll-behavior: contain; }
 .pl-admin-tab { padding: 6px 12px; border-radius: 10px; color: var(--pl-fg); text-decoration: none; }
 .pl-admin-tab:hover { background: color-mix(in srgb, var(--pl-accent) 14%, transparent); text-decoration: none; }
 .pl-admin-on { color: var(--pl-accent); font-weight: 600; box-shadow: inset 0 -2px 0 var(--pl-accent); border-radius: 10px 10px 0 0; }
+/* bar links with an icon: Admin, Pluteus, Sign out (both bars). Wide: icon and text side by side; phone: the icon alone (title and aria-label carry the text) */
+.pl-bar-link { display: inline-flex; align-items: center; gap: 6px; }
+.pl-bar-link[hidden] { display: none; }
+.pl-admin-bar { flex-wrap: wrap; row-gap: 0; }
+.pl-admin-bar .pl-admin-nav { order: 9; flex: 0 0 100%; margin: 4px 0 0; justify-content: flex-start; }
+.pl-admin-tab { display: flex; flex-direction: column; align-items: center; gap: 1px; min-width: 72px; padding: 4px 8px; font-size: 12px; }
+.pl-admin-tab .pl-icon { font-size: 16px; }
+.pl-admin-on { font-weight: 500; }
+@media (max-width: 600px) {           /* a phone: one row of icons */
+  .pl-bar { gap: 2px; padding: 6px 8px; }
+  .pl-bar .pl-lbl, .pl-bar .pl-who { display: none; }
+  .pl-admin-bar { flex-wrap: nowrap; }
+  .pl-admin-bar .pl-admin-nav { order: 0; flex: 0 1 auto; margin: 0 0 0 4px; gap: 0; }
+  .pl-admin-tab { min-width: 0; padding: 6px; flex-direction: row; }
+  .pl-admin-tab .pl-icon { font-size: 18px; }
+  .pl-bar .pl-btn.pl-bar-link, .pl-bar .pl-scheme, .pl-bar a.pl-bar-link { padding: 6px; }
+  .pl-bar .pl-brand { margin-right: 2px; }
+}
 .pl-admin { max-width: 980px; }
 .pl-admin-box { margin: 18px 0; padding: 4px 20px 16px; }
 .pl-admin-scroll { overflow-x: auto; }
