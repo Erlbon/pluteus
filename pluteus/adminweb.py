@@ -80,16 +80,17 @@ def page(ctx: Ctx, title: str, active: str, body: str, flash: str = "", error: s
                   scripts=(ctx.urls.static("uploads.js"),) + tuple(scripts))
 
 
-def _table(headers: list, rows: list, empty: str, labels: bool = False) -> str:
+def _table(headers: list, rows: list, empty: str, labels: bool = False, split: int = -1) -> str:
     """labels=True: each cell also carries its column name, which a phone shows in front of the value (base.css) because the
-    header row is hidden there; leave it off where the values explain themselves (names, paths)."""
+    header row is hidden there; leave it off where the values explain themselves (names, paths). split=N: on a phone a rule is drawn
+    above column N, to group the values before it (the dates) apart from the ones after it (the address)."""
     if not rows:
         return "<p class='pl-muted'>%s</p>" % escape(empty)
     head = "".join("<th>%s</th>" % escape(h) for h in headers)
 
     def cell(i: int, value) -> str:
         label = " data-label='%s'" % escape(headers[i]) if labels and headers[i] else ""
-        return "<td%s>%s</td>" % (label, value)
+        return "<td%s%s>%s</td>" % (label, " class='pl-split'" if i == split else "", value)
     return "<div class='pl-admin-scroll'><table class='pl-admin-table'><thead><tr>%s</tr></thead><tbody>%s</tbody></table></div>" % (
         head, "".join("<tr>%s</tr>" % "".join(cell(i, c) for i, c in enumerate(row)) for row in rows))
 
@@ -331,7 +332,7 @@ def security_page(ctx: Ctx, locks: list, devices: list, sessions: dict, flash: s
                  _post("/security/forget", {"id": d["id"]}, "Forget", "Forget this device? It will be treated like a stranger.")]
                 for d in devices]
     dev_html = _box("Known devices (browsers that have signed in)", _table(
-        ["User", "First seen", "Last seen", "Last address", ""], dev_rows, "No known devices yet.", labels=True))
+        ["User", "First seen", "Last seen", "Last address", ""], dev_rows, "No known devices yet.", labels=True, split=3))
     names = sorted(set(sessions) | {d["username"] for d in devices})
     out_rows = [[escape(n), str(sessions.get(n, 0)),
                  _post("/security/signout", {"name": n}, "Sign out everywhere", "Sign %s out of every browser and forget their devices?" % n, True)]

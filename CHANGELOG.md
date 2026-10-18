@@ -5,7 +5,7 @@ Release notes are taken from the section of the tagged version (`## 0.5.0 ...`).
 ## Unreleased
 - **Top bars with icons, usable on a phone.** Admin and Sign out in the site's bar are icons with a text label on wide screens (the user name is in the Sign out tooltip). The admin bar is two rows on a wide screen (name, version and tools above; the five tabs below with icon and label) and one row of icons on a phone, with the version moved to the Status page. New icons: status, libraries, security, users, debug, logout, admin, external. The site's own Settings page now shows the version at the bottom.
 - **Admin: library folders and the Uploads box are on the Libraries page only.** The Status page no longer repeats them; the Libraries page carries the full state of a folder (slow, low disk space, not available).
-- **Admin cards name their values on a phone.** Where a row has several unlabelled numbers or dates (Security, Users, Services, relay), each value is a line with its column name on the left and the value on the right.
+- **Admin cards name their values on a phone.** Where a row has several unlabelled numbers or dates (Security, Users, Services, relay), each value is a line with its column name on the left and the value on the right. A known device groups its two dates, then a rule, then the address.
 - **Admin tables fit a phone.** Below 600 px every admin table row becomes a small card (name first, the folder path on its own line, actions at the end) instead of squeezing five narrow columns. Applies to Libraries, Status, Users, Security and Debug.
 - **Admin: the local-network notice at the bottom is centred too.**
 - **Admin tab icons are centred** (in the row of tabs on a wide screen, and between the name and the tools on a phone).
