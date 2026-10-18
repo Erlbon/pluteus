@@ -738,3 +738,18 @@ html.pl-tv .pl-shell-player .pl-vol-btn { width: 56px; height: 56px; }
 /* timed lyrics follow the song, so the box scrolls by itself: no visible scrollbar to jump around, and the movement glides (the wheel and a finger still scroll it) */
 .pl-lyrics-synced { scrollbar-width: none; scroll-behavior: smooth; }
 .pl-lyrics-synced::-webkit-scrollbar { display: none; }
+
+/* ---- a folder of station files: one flat grid of logo tiles (streams.js filters it) ---- */
+.pl-live-kind { color: var(--pl-accent); }
+.pl-stream-tools { display: flex; gap: 8px; margin: 10px 0 8px; }
+.pl-stream-tools input[type=search] { flex: 1; min-width: 0; }
+.pl-stream-chips { display: flex; justify-content: flex-start; gap: 6px; overflow-x: auto; padding-bottom: 6px; margin-bottom: 8px; }
+.pl-stream-chips .pl-chip { flex: none; cursor: pointer; font: inherit; font-size: 13px; padding: 4px 12px; border-radius: 999px;
+  border: 1px solid var(--pl-line); background: none; color: var(--pl-fg); }
+.pl-stream-chips .pl-chip-on { background: color-mix(in srgb, var(--pl-accent) 18%, transparent); border-color: var(--pl-accent); color: var(--pl-accent); }
+.pl-streams .pl-tile-art { aspect-ratio: 1; border-radius: 12px; }
+.pl-streams .pl-tile-art .pl-icon { width: 46%; height: 46%; color: var(--pl-accent); }
+.pl-list.pl-streams.pl-streams-tv { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
+.pl-streams.pl-streams-tv .pl-tile-art { aspect-ratio: 16 / 9; }
+.pl-stream[hidden] { display: none; }
+@media (max-width: 600px) { .pl-list.pl-streams { grid-template-columns: repeat(3, minmax(0, 1fr)); } .pl-list.pl-streams.pl-streams-tv { grid-template-columns: repeat(2, minmax(0, 1fr)); } }

@@ -42,6 +42,8 @@
 .pl-i-logout    { -webkit-mask-image: url(../_/icons/logout.svg); mask-image: url(../_/icons/logout.svg); }
 .pl-i-admin     { -webkit-mask-image: url(../_/icons/admin.svg); mask-image: url(../_/icons/admin.svg); }
 .pl-i-external  { -webkit-mask-image: url(../_/icons/external.svg); mask-image: url(../_/icons/external.svg); }
+.pl-i-radio     { -webkit-mask-image: url(../_/icons/radio.svg);     mask-image: url(../_/icons/radio.svg); }
+.pl-i-tv        { -webkit-mask-image: url(../_/icons/tv.svg);        mask-image: url(../_/icons/tv.svg); }
 
 /* The book icon above the sign-in form. A theme can hide it (.pl-logo { display: none; }) or swap the image
    (background-image: url(logo.png), relative to that theme's folder). ../../static is the site's /static/. */

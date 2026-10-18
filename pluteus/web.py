@@ -147,9 +147,13 @@ def roots_page(roots: list, ctx: Ctx, recent: list | None = None, read_next: lis
     items = "".join("<li class='pl-row'><a class='pl-root-link' href='%s'><span class='pl-kind'>%s</span>%s</a></li>"
                     % (escape(ctx.urls.browse(r.name)), UPLOADS_ICON if r.name == "uploads" else ROOT_ICON, escape(r.name))
                     for r in roots)
-    # the user's saved radio stations and TV channels (folders inside their upload folder) are shown at the top level too
-    items += "".join("<li class='pl-row'><a class='pl-root-link' href='%s'><span class='pl-kind'>%s</span>%s</a></li>"
-                     % (escape(href), kind_icon(kind), escape(label)) for label, href, kind in (stations or []))
+    # the user's saved radio stations and TV channels (folders inside their upload folder) get a card of their own, above Browse
+    live = ""
+    if stations:
+        live = ("<section class='pl-card pl-home-box pl-live-box' aria-label='Live'><h2>Live</h2><ul class='pl-list pl-roots'>%s</ul></section>"
+                % "".join("<li class='pl-row'><a class='pl-root-link' href='%s'><span class='pl-kind pl-live-kind'>"
+                          "<span class='pl-icon pl-i-%s'></span></span>%s</a></li>"
+                          % (escape(href), "tv" if kind == "video" else "radio", escape(label)) for label, href, kind in stations))
     # Two boxes (cards): "Continue reading" (only when there is something) and "Browse", then the small print below them.
     # (the lists carry .pl-roots / .pl-recent and the boxes .pl-home-box, so a theme can restyle them)
     cont = ""
@@ -167,11 +171,11 @@ def roots_page(roots: list, ctx: Ctx, recent: list | None = None, read_next: lis
         cont = ("<section class='pl-card pl-home-box' aria-label='%s'><h2>%s</h2>"
                 "<ul class='pl-list pl-recent'>%s</ul></section>" % (RECENT_TITLE, RECENT_TITLE, rows))
     cont += _shelf_box("Read next", read_next or [], True) + _shelf_box("Favourites", favourites or [], False)
-    body = ("<main class='pl-main'><h1>File Library</h1>%s"
+    body = ("<main class='pl-main'><h1>File Library</h1>%s%s"
             "<section class='pl-card pl-home-box' aria-label='Browse'><h2>Browse</h2>"
             "<ul class='pl-list pl-roots'>%s</ul></section>"
             "<p class='pl-muted pl-foot'><a href='%s'>OPDS feed</a> for reader apps &middot; pluteus %s</p></main>"
-            % (cont, items, escape(ctx.urls.opds()), escape(__version__)))
+            % (live, cont, items, escape(ctx.urls.opds()), escape(__version__)))
     return layout("File Library", body, ctx, scripts=(ctx.urls.static("shelf.js"),) if (read_next or favourites) else ())
 
 
@@ -344,6 +348,44 @@ def listing_page(root: str, parts: tuple, entries: list, page: int, pages: int, 
                + ((urls.static("notes-lazy.js"),) if note_lazy else ())
                + (urls.static("shelf.js"), urls.static("queue.js")))
     return layout(title, body, ctx, scripts=scripts)
+
+
+def station_folder_page(root: str, parts: tuple, stations: list, countries: list, cut: bool, ctx: Ctx, shuffle: bool = True, others: int = 0) -> str:
+    """A folder of station files as one flat grid of logo tiles: search box, country chips (the sub-folders), a random pick. streams.js filters
+    in the browser, so nothing is fetched while typing. Radio logos are square, channel logos 16:9."""
+    urls = ctx.urls
+    title = parts[-1] if parts else root
+    crumbs = ["<a href='%s'>File Library</a>" % escape(urls.home()), "<a href='%s'>%s</a>" % (escape(urls.browse(root)), escape(root))]
+    for i, seg in enumerate(parts):
+        crumbs.append("<a href='%s'>%s</a>" % (escape(urls.browse(root, parts[:i + 1])), escape(seg)))
+    tv = sum(1 for s in stations if s["kind"] == "tv") * 2 > len(stations)
+    tiles = []
+    for st in stations:
+        full = parts + st["parts"]
+        icon = "<span class='pl-icon pl-i-%s'></span>" % ("tv" if st["kind"] == "tv" else "radio")
+        art = icon
+        if radio.find_logo(st["path"]):
+            art = ("<img class='pl-tile-img pl-logo-img' src='%s' alt='' loading='lazy'><span class='pl-tile-fallback'>%s</span>"
+                   % (escape(urls.cover(root, full)), icon))
+        tiles.append("<li class='pl-tile pl-stream' data-name='%s' data-country='%s'><a href='%s' title='%s'><span class='pl-tile-art'>%s</span>"
+                     "<span class='pl-tile-name'>%s</span></a></li>"
+                     % (escape(st["name"].lower()), escape(st["country"]), escape(urls.view(root, full)), escape(st["name"]), art, escape(st["name"])))
+    chips = ""
+    if countries:
+        chips = ("<div class='pl-chips pl-stream-chips' role='group' aria-label='Country'><button type='button' class='pl-chip pl-chip-on' data-country=''>All</button>%s</div>"
+                 % "".join("<button type='button' class='pl-chip' data-country='%s'>%s</button>" % (escape(c), escape(c)) for c in countries))
+    note = "<p class='pl-muted'>Only the first %d are shown.</p>" % len(stations) if cut else ""
+    body = ("<main class='pl-main pl-streams-main'><div class='pl-crumbs'>%s</div><h1>%s</h1>"
+            "<div class='pl-muted'><span id='stream-count'>%d</span> %s &middot; <a href='%s?plain=1'>%s</a></div>"
+            "<div class='pl-stream-tools'><input type='search' id='stream-search' placeholder='Search %s' aria-label='Search' autocomplete='off'>%s</div>%s%s"
+            "<ul class='pl-list pl-grid pl-streams%s' id='streams'>%s</ul>"
+            "<p class='pl-muted' id='stream-none' hidden>Nothing matches.</p></main>"
+            % (" / ".join(crumbs), escape(title), len(stations), "channels" if tv else "stations", escape(urls.browse(root, parts)),
+               ("Show %d other file%s too" % (others, "" if others == 1 else "s")) if others else "Show as an ordinary folder",
+               "channels" if tv else "stations",
+               "<button type='button' class='pl-btn' id='stream-random'>Random</button>" if shuffle else "", chips, note,
+               " pl-streams-tv" if tv else "", "".join(tiles)))
+    return layout(title, body, ctx, scripts=(urls.static("grid.js"), urls.static("streams.js")))
 
 
 def _note_box(html: str, where: str, edit_url: str = "") -> str:

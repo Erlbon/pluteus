@@ -261,7 +261,7 @@ def test_a_stations_picture_is_not_listed_as_a_file_but_a_lonely_picture_is(up):
         (d / ("Station " + name + ".png")).write_bytes(png_bytes((16, 16)))
         (d / "Lonely.png").write_bytes(png_bytes((16, 16)))
     for name in ("Radio", "IPTV"):
-        page = me.get("/browse/uploads/" + name, headers=HTML).text
+        page = me.get("/browse/uploads/" + name + "?plain=1", headers=HTML).text          # the ordinary listing
         assert "Station %s.m3u" % name in page and "Station%%20%s.png" % name not in page and "Station %s.png" % name not in page
         assert "Lonely.png" in page and "2 items" in page                                       # the count follows the listing
 

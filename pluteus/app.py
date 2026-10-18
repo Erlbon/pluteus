@@ -32,7 +32,7 @@ from starlette.responses import (FileResponse, HTMLResponse, JSONResponse, Plain
                                  RedirectResponse, Response, StreamingResponse)
 from starlette.routing import Route
 
-from . import aboutfiles, cbz, debuglog, fetchimage, keypath, kinds, m3uimport, markdown, mediainfo, notes, opds, opds2, radio, relay, stationsave, subtitles, tabular, thumbs, textview, uploads, vault, web, ziputil
+from . import aboutfiles, cbz, debuglog, fetchimage, keypath, kinds, m3uimport, markdown, mediainfo, notes, opds, opds2, radio, relay, stationsave, streams, subtitles, tabular, thumbs, textview, uploads, vault, web, ziputil
 from .auth import Authenticator
 from .bodies import read_limited
 from .cbz import CbzError
@@ -924,6 +924,17 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
         # (one system call per file: about 0.7 ms each across a Docker bind mount, so 900 files would cost 0.6 s).
         entries = await run_in_threadpool(lib.list_dir, user, root, parts, cfg.show_all_files, sort in ("size", "date"))
         entries = radio.hide_logos(entries)                      # a station's picture is its cover, not a second item in the list
+        if request.query_params.get("plain") != "1":
+            def stream_folder():
+                try:
+                    path = lib.folder_path(user, root, parts)
+                except (NotFound, PathError, OSError):
+                    return None
+                return streams.collect(path) if streams.is_stream_folder(path) else None
+            found = await run_in_threadpool(stream_folder)
+            if found and found[0]:
+                others = sum(1 for e in entries if not e.is_dir and not radio.is_radio_file(e.name))      # files the grid does not show
+                return HTMLResponse(web.station_folder_page(root, parts, found[0], found[1], found[2], ctx_for(user), others=others))
         if sort != "name" or desc:
             entries = sort_entries(entries, sort, desc)
         shown, page, pages = opds.paginate(entries, _page_number(request), cfg.page_size)

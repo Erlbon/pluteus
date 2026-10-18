@@ -124,11 +124,11 @@ class CountingEntry:
     def __init__(self, entry):
         self._e, self.name, self.path = entry, entry.name, entry.path
 
-    def is_dir(self):
-        return self._e.is_dir()
+    def is_dir(self, **kw):
+        return self._e.is_dir(**kw)
 
-    def is_file(self):
-        return self._e.is_file()
+    def is_file(self, **kw):
+        return self._e.is_file(**kw)
 
     def stat(self):
         CountingEntry.calls += 1
