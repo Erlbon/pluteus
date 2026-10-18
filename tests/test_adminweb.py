@@ -494,3 +494,15 @@ def test_services_that_are_on_show_their_address_and_the_key_count(tmp_path):
     assert "1 of 3 users have a key" in html and "/pluteus/dav/" in html
     assert "subsonic = true" not in html.split("Subsonic (music apps")[1].split("</tr>")[0]       # on: no switch line shown
     assert "kosync = not set in config.toml" in html and "a-key-123456" not in html               # a key is never shown
+
+
+def test_about_page_shows_version_credits_and_the_shipped_changelog(admin):
+    from pluteus import __version__
+    client, _, _ = admin
+    html = client.get("/about", headers=BOSS).text
+    assert "<h1>About</h1>" in html and __version__ in html and "MIT licence" in html
+    assert "radio-browser.info" in html and "vendor/LICENSE-hlsjs.txt" in html
+    assert "<summary>Unreleased" in html and "<details class='pl-changelog'" in html          # the changelog is rendered, section by section
+    assert "<script" not in html.split("<h2>Changelog</h2>")[1]                               # raw HTML in the file is never run
+    assert "href='/about'" in client.get("/", headers=BOSS).text                              # reachable from the Status page
+    assert client.get("/about", follow_redirects=False).status_code in (303, 401, 403)        # like every admin page: not without a login

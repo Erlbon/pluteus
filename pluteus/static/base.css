@@ -660,6 +660,9 @@ body.pl-reader-page, .pl-reader-stage { overscroll-behavior: contain; }
 .pl-admin { max-width: 980px; }
 .pl-admin-box { margin: 18px 0; padding: 4px 20px 16px; }
 .pl-admin-scroll { overflow-x: auto; }
+.pl-changelog { border-top: 1px solid var(--pl-line); padding: 6px 0; }
+.pl-changelog summary { cursor: pointer; font-weight: 600; padding: 4px 0; }
+.pl-changelog ul { margin: 6px 0; padding-left: 20px; }
 .pl-admin-table { border-collapse: collapse; width: 100%; }
 .pl-admin-table th, .pl-admin-table td { padding: 7px 10px; border-bottom: 1px solid var(--pl-line); text-align: left; vertical-align: top; }
 .pl-admin-table thead th { color: var(--pl-dim); font-weight: 600; font-size: 13px; }

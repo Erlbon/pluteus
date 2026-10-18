@@ -4,8 +4,13 @@ results are fixed sentences chosen by a code."""
 from __future__ import annotations
 
 import contextvars
+import functools
+import re
 import time
 from html import escape
+from pathlib import Path
+
+import mistune
 
 from . import __version__
 from .web import Ctx, _size, layout, scheme_button
@@ -233,6 +238,7 @@ def status_page(ctx: Ctx, d: dict) -> str:
                                   ["Active sessions", str(d["counts"]["sessions"]), counted(n.get("sessions", {}))],
                                   ["Known devices", str(d["counts"]["devices"]), counted(n.get("devices", {}))],
                                   ["Locked names", str(d["counts"]["locked"]), escape(", ".join(n.get("locked", [])))]], "")
+    facts += "<p><a href='/about'>About pluteus, credits and the changelog</a></p>"
     services = _services_box(d.get("services"))
     boxes = [_box("Server", facts)] + ([services] if services else []) + ([_relay_box(d.get("relay"))] if d.get("relay") else [])
     st = d["state"]
@@ -247,6 +253,50 @@ def status_page(ctx: Ctx, d: dict) -> str:
                       % (light, where, _size(st["size"]), st["backups"], escape(backup))))
     boxes.append("<p class='pl-version pl-muted'>pluteus %s</p>" % escape(__version__))        # the top bar has no room for it on a phone
     return page(ctx, "Status", "status", _security_alert(d.get("update")) + "".join(boxes))
+
+
+# ---- about ------------------------------------------------------------------------------------------------------------------
+VENDORED = (("hls.js (live TV)", "hlsjs"), ("mpegts.js (live TV)", "mpegtsjs"), ("epub.js (the EPUB reader)", "epubjs"),
+            ("JSZip (the EPUB reader)", "jszip"))
+
+
+@functools.lru_cache(maxsize=1)
+def _changelog_sections() -> tuple:
+    """The shipped CHANGELOG.md as (heading, markdown body) pairs, newest first; () if the file is not there."""
+    try:
+        text = Path(__file__).with_name("CHANGELOG.md").read_text(encoding="utf-8")
+    except OSError:
+        return ()
+    parts = re.split(r"^## ", text, flags=re.M)[1:]
+    return tuple((heading.strip(), body) for heading, _, body in (part.partition("\n") for part in parts))
+
+
+def _changelog_box() -> str:
+    sections = _changelog_sections()
+    if not sections:
+        return _box("Changelog", "<p class='pl-muted'>The changelog file is not part of this installation.</p>")
+    md = mistune.create_markdown(escape=True)          # raw HTML in the file is shown as text, never run
+    out = []
+    for heading, body in sections:
+        current = heading.startswith("Unreleased") or heading.split(" ")[0] == __version__
+        out.append("<details class='pl-changelog'%s><summary>%s</summary>%s</details>"
+                   % (" open" if current else "", escape(heading), md(body)))
+    return _box("Changelog", "".join(out))
+
+
+def about_page(ctx: Ctx, update=None, static=lambda path: "/" + path) -> str:
+    licences = "".join("<li>%s: <a href='%s'>licence</a></li>" % (escape(name), escape(static("vendor/LICENSE-%s.txt" % key)))
+                       for name, key in VENDORED)
+    about = ("<p><strong>pluteus %s</strong> %s</p>"
+             "<p>A filesystem-first server for books, comics, music, radio, TV channels and video, with apps (OPDS, Subsonic, WebDAV, KOReader) "
+             "and a web reader and player.</p>"
+             "<p class='pl-muted'>A <em>pluteus</em> is the sloped reading desk of a medieval library, and the low screen wall between two columns.</p>"
+             "<p>MIT licence. Copyright &copy; 2026 Erlend Bonderud.</p>" % (escape(__version__), _update_cell(update)))
+    credits = ("<p>Radio and TV channels are found in two public directories, <strong>radio-browser.info</strong> and <strong>iptv-org</strong>, "
+               "searched from your own browser; nothing from them is stored except the stations you save.</p>"
+               "<p>Included software:</p><ul>%s</ul>"
+               "<p class='pl-muted'>Python packages used by the server (Starlette, uvicorn, mistune, Pillow, tinytag, qrcodegen) keep their own licences.</p>" % licences)
+    return page(ctx, "About", "status", _box("About", about) + _box("Credits", credits) + _changelog_box())
 
 
 # ---- libraries --------------------------------------------------------------------------------------------------------------

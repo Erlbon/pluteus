@@ -1,6 +1,6 @@
 name: Release
 
-# Push a tag like v0.5.0 (it must equal "v" + the version in pluteus/__init__.py, and CHANGELOG.md needs a "## 0.5.0" section) to build
+# Push a tag like v0.5.0 (it must equal "v" + the version in pluteus/__init__.py, and pluteus/CHANGELOG.md needs a "## 0.5.0" section) to build
 # pluteus.exe on Windows and pluteus-linux-x86_64.tar.gz on Linux, test both, and publish them as a GitHub Release.
 # Re-running on an existing tag (Actions > Release > Run workflow) uploads the files again instead of failing.
 
@@ -37,8 +37,8 @@ jobs:
         run: |
           version=$(python -c "import pluteus; print(pluteus.__version__)")
           [ "$TAG" = "v$version" ] || { echo "Tag $TAG does not match version $version"; exit 1; }
-          awk -v v="$version" '/^## /{p = (index($0, "## " v " ") == 1)} p' CHANGELOG.md > release_notes.md
-          [ -s release_notes.md ] || { echo "CHANGELOG.md has no section for $version"; exit 1; }
+          awk -v v="$version" '/^## /{p = (index($0, "## " v " ") == 1)} p' pluteus/CHANGELOG.md > release_notes.md
+          [ -s release_notes.md ] || { echo "pluteus/CHANGELOG.md has no section for $version"; exit 1; }
           cat release_notes.md
       - run: python -m pytest -q
       - name: Build pluteus.exe

@@ -8,7 +8,7 @@ hidden = collect_submodules("uvicorn") + collect_submodules("starlette") + ["h11
 a = Analysis(
     ["tools/pluteus_entry.py"],
     pathex=["."],
-    datas=[("pluteus/static", "pluteus/static")],
+    datas=[("pluteus/static", "pluteus/static"), ("pluteus/CHANGELOG.md", "pluteus")],
     hiddenimports=hidden,
     excludes=["tkinter", "_tkinter", "pytest", "matplotlib", "numpy"],
     noarchive=False,

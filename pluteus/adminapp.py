@@ -212,6 +212,10 @@ def create_admin_app(main_app) -> Starlette:
                       "locked": sorted(locked)}}
 
     @guarded
+    async def about(request, user):
+        return HTMLResponse(adminweb.about_page(ctx, updates.status() if updates else None, ctx.urls.static))
+
+    @guarded
     async def status(request, user):
         return HTMLResponse(adminweb.status_page(ctx, await run_in_threadpool(collect_status)))
 
@@ -481,7 +485,7 @@ def create_admin_app(main_app) -> Starlette:
         Route("/debug", debug_page), Route("/debug/on", debug_on, methods=["POST"]), Route("/debug/off", debug_off, methods=["POST"]),
         Route("/debug/clear", debug_clear, methods=["POST"]), Route("/debug/download", debug_download),
         Route("/users/appkey", make_appkey, methods=["POST"]), Route("/users/appkey/revoke", revoke_appkey, methods=["POST"]),
-        Route("/", status), Route("/logout", logout, methods=["POST"]), Route("/security", security),
+        Route("/", status), Route("/about", about), Route("/logout", logout, methods=["POST"]), Route("/security", security),
         Route("/libraries", libraries), Route("/libraries/add", library_add, methods=["POST"]),
         Route("/libraries/remove", library_remove, methods=["POST"]), Route("/libraries/browse", library_browse),
         Route("/security/unlock", unlock, methods=["POST"]), Route("/security/forget", forget, methods=["POST"]),

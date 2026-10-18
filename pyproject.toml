@@ -25,7 +25,7 @@ packages = ["pluteus"]
 
 # The CSS, scripts, icons and built-in themes are served from inside the package, so they must ship with it.
 [tool.setuptools.package-data]
-pluteus = ["static/*", "static/**/*"]
+pluteus = ["static/*", "static/**/*", "CHANGELOG.md"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
