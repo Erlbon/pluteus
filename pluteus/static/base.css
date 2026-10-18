@@ -664,6 +664,16 @@ body.pl-reader-page, .pl-reader-stage { overscroll-behavior: contain; }
 .pl-admin-table th, .pl-admin-table td { padding: 7px 10px; border-bottom: 1px solid var(--pl-line); text-align: left; vertical-align: top; }
 .pl-admin-table thead th { color: var(--pl-dim); font-weight: 600; font-size: 13px; }
 .pl-admin-table code { font-size: .9em; overflow-wrap: anywhere; }
+@media (max-width: 600px) {           /* a phone: each row is a small card; the name first, a folder path on its own line last */
+  .pl-admin-table thead { display: none; }
+  .pl-admin-table, .pl-admin-table tbody { display: block; }
+  .pl-admin-table tr { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 12px; padding: 8px 0; border-bottom: 1px solid var(--pl-line); }
+  .pl-admin-table td { display: block; border: 0; padding: 2px 0; min-width: 0; }
+  .pl-admin-table td { order: 3; }
+  .pl-admin-table td:first-child { order: 0; font-weight: 500; flex: 1 1 auto; }
+  .pl-admin-table td:has(form) { order: 1; }                    /* a Remove / Clear button sits on the name's line */
+  .pl-admin-table td:has(code) { order: 4; flex: 1 1 100%; }
+}
 .pl-inline { display: inline-block; margin: 0; }
 .pl-ok { color: var(--pl-accent); }
 .pl-picker { border: 1px solid var(--pl-line); border-radius: 10px; margin: 8px 0 14px; max-height: 320px; overflow: auto; }
