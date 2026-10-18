@@ -394,6 +394,7 @@ html[data-icons="aurora"] .pl-ico-upload  { color: light-dark(#1f7ae0, #7cc8ff);
 .pl-recent-text .pl-title { overflow-wrap: anywhere; }
 .pl-where { font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pl-foot { margin-top: 28px; }
+.pl-admin > .pl-foot { text-align: center; }
 
 /* ---- audio/video viewer: buttons made for a thumb ---- */
 .pl-media-controls { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; margin: 14px 0 4px; }
