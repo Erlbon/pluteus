@@ -42,7 +42,7 @@ def layout(title: str, body: str, ctx: Ctx, *, head: str = "", scripts: tuple = 
         if ctx.user:
             # Laid out like the admin page's bar: brand, version and the page links on the left; contrast button, the link
             # to the admin page (an administrator on the local network only) and Sign out on the right.
-            nav = "<nav class='pl-admin-nav'><a class='pl-admin-tab' href='%s'%s>Settings</a></nav>" % (escape(u.settings()), into_frame)
+            nav = "<nav class='pl-admin-nav'><a class='pl-admin-tab pl-reader-btn' href='%s'%s title='Settings' aria-label='Settings'><span class='pl-icon pl-i-settings'></span></a></nav>" % (escape(u.settings()), into_frame)
             # a new tab: the admin page is another site (its own port), so opening it here would stop a playing song
             # hidden until adminlink.js has found the admin page reachable from this browser: from the public address it is not,
             # and a link that opens an empty page looks silly

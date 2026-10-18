@@ -3,6 +3,8 @@
 Release notes are taken from the section of the tagged version (`## 0.5.0 ...`).
 
 ## Unreleased
+- **The site's Settings link is the sliders icon from the EPUB reader.** Same icon in the top bar, with "Settings" as its tooltip and label.
+- **Fixed: two dark/light buttons on top of a book or comic.** Inside the shell the reader's bar repeated the contrast button that the shell's bar already has. The reader's copy is hidden there (the reading-settings button stays; it is a different thing from the site's Settings). Opened on its own, outside the shell, the reader keeps its button.
 - **Notes: extra front matter keys are kept (documented and tested).** The Redactor apps stamp their notes with `generator`, `note-format` and `body-sha`. The editor already saved the whole file as typed; a test now proves an edit keeps those keys and the page does not show them, and `docs/notes-format.md` says so for tools that write notes.
 
 ## 0.9.9 - 2026-10-16
