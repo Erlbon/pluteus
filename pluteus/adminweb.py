@@ -80,12 +80,18 @@ def page(ctx: Ctx, title: str, active: str, body: str, flash: str = "", error: s
                   scripts=(ctx.urls.static("uploads.js"),) + tuple(scripts))
 
 
-def _table(headers: list, rows: list, empty: str) -> str:
+def _table(headers: list, rows: list, empty: str, labels: bool = False) -> str:
+    """labels=True: each cell also carries its column name, which a phone shows in front of the value (base.css) because the
+    header row is hidden there; leave it off where the values explain themselves (names, paths)."""
     if not rows:
         return "<p class='pl-muted'>%s</p>" % escape(empty)
     head = "".join("<th>%s</th>" % escape(h) for h in headers)
+
+    def cell(i: int, value) -> str:
+        label = " data-label='%s'" % escape(headers[i]) if labels and headers[i] else ""
+        return "<td%s>%s</td>" % (label, value)
     return "<div class='pl-admin-scroll'><table class='pl-admin-table'><thead><tr>%s</tr></thead><tbody>%s</tbody></table></div>" % (
-        head, "".join("<tr>%s</tr>" % "".join("<td>%s</td>" % cell for cell in row) for row in rows))
+        head, "".join("<tr>%s</tr>" % "".join(cell(i, c) for i, c in enumerate(row)) for row in rows))
 
 
 def _post(action: str, fields: dict, label: str, confirm: str = "", danger: bool = False) -> str:
@@ -179,7 +185,7 @@ def _services_box(services) -> str:
         rows.append([escape(s["name"]), state, address, keys])
     note = ("<p class='pl-muted'>Switch a service on with its line under <code>[server]</code> in <code>config.toml</code> and restart. "
             "The address is added to your site address (the part before it).</p>")
-    return _box("Services", _table(["Service", "State", "Address", "Login"], rows, "") + note)
+    return _box("Services", _table(["Service", "State", "Address", "Login"], rows, "", labels=True) + note)
 
 
 def _relay_box(r) -> str:
@@ -200,7 +206,7 @@ def _relay_box(r) -> str:
         return [rate, source, browser]
     rows = [[escape(s["user"]), escape(s["kind"]), escape(s["label"]), escape(ago(s["since"], now)), _size(s["bytes"]), *quality(s),
              _post("/relay/stop", {"id": s["id"]}, "Stop", "Stop this stream? The listener's player will end.", True)] for s in r["open"]]
-    open_html = _table(["User", "Kind", "Station (file#number)", "Since", "Carried", "Rate", "Source stalls", "Slow browser link", ""], rows, "No audio stream is open.")
+    open_html = _table(["User", "Kind", "Station (file#number)", "Since", "Carried", "Rate", "Source stalls", "Slow browser link", ""], rows, "No audio stream is open.", labels=True)
     open_help = ("<p class='pl-muted'>A stream that is spotty shows where: <b>source stalls</b> mean the stream itself went quiet for over a second before it "
                  "reached pluteus (the provider or Dispatcharr); <b>slow browser link</b> means pluteus had the data but the connection to the listener "
                  "(upload speed, the proxy) could not take it fast enough.</p>") if rows else ""
@@ -228,15 +234,6 @@ def status_page(ctx: Ctx, d: dict) -> str:
                                   ["Locked names", str(d["counts"]["locked"]), escape(", ".join(n.get("locked", [])))]], "")
     services = _services_box(d.get("services"))
     boxes = [_box("Server", facts)] + ([services] if services else []) + ([_relay_box(d.get("relay"))] if d.get("relay") else [])
-    up = d["uploads"]
-    if up:
-        rows = [[escape(u["name"]), _size(u["size"])] for u in up["users"]]
-        space = "%s free of %s" % (_size(up["free"]), _size(up["total"])) if up["free"] is not None else ""
-        quota = "no per-user limit" if not up["quota_mb"] else "limit %d MB per user" % up["quota_mb"]
-        low = _disk_level(up["free"], up["total"])
-        light = _light(*low) if low else _light("ok", "ok")
-        boxes.append(_box("Uploads", "<p>%s &middot; Folder <code>%s</code> &middot; %s &middot; %s</p>%s"
-                          % (light, escape(up["dir"]), escape(space), escape(quota), _table(["User", "Size"], rows, "Nothing uploaded yet."))))
     st = d["state"]
     backup = "newest %s" % ago(st["newest_backup"]) if st["newest_backup"] else "none yet"
     if not st["persistent"]:
@@ -252,10 +249,22 @@ def status_page(ctx: Ctx, d: dict) -> str:
 
 
 # ---- libraries --------------------------------------------------------------------------------------------------------------
-def libraries_page(ctx: Ctx, roots: list, can_browse: bool, can_edit: bool, flash: str = "", error: str = "") -> str:
+def _uploads_box(up) -> str:
+    if not up:
+        return ""
+    rows = [[escape(u["name"]), _size(u["size"])] for u in up["users"]]
+    space = "%s free of %s" % (_size(up["free"]), _size(up["total"])) if up["free"] is not None else ""
+    quota = "no per-user limit" if not up["quota_mb"] else "limit %d MB per user" % up["quota_mb"]
+    low = _disk_level(up["free"], up["total"])
+    light = _light(*low) if low else _light("ok", "ok")
+    return _box("Uploads", "<p>%s &middot; Folder <code>%s</code> &middot; %s &middot; %s</p>%s"
+                % (light, escape(up["dir"]), escape(space), escape(quota), _table(["User", "Size"], rows, "Nothing uploaded yet.")))
+
+
+def libraries_page(ctx: Ctx, roots: list, can_browse: bool, can_edit: bool, flash: str = "", error: str = "", up=None) -> str:
     if not can_edit:
         return page(ctx, "Libraries", "libraries", "<p>This server was started without a configuration file, so libraries cannot be "
-                    "changed here.</p>", flash, error)
+                    "changed here.</p>" + _uploads_box(up), flash, error)
     rows = []
     for r in roots:
         space = "%s free of %s" % (_size(r["free"]), _size(r["total"])) if r["free"] is not None else ""
@@ -279,7 +288,7 @@ def libraries_page(ctx: Ctx, roots: list, can_browse: bool, can_edit: bool, flas
     note = ("<p class='pl-muted'>A new library is available as soon as you add it. Users whose folders are set to <strong>All "
             "folders</strong> see it at once; for the others tick it on the Users tab. Pluteus only reads these folders.</p>")
     scripts = (ctx.urls.static("admin-libraries.js"),) if can_browse else ()
-    return page(ctx, "Libraries", "libraries", _box("Libraries", table + note) + _box("Add a library", add), flash, error, scripts)
+    return page(ctx, "Libraries", "libraries", _box("Libraries", table + note) + _box("Add a library", add) + _uploads_box(up), flash, error, scripts)
 
 
 # ---- security ---------------------------------------------------------------------------------------------------------------
@@ -315,19 +324,19 @@ def security_page(ctx: Ctx, locks: list, devices: list, sessions: dict, flash: s
                           _post("/security/unlock", {"name": r["name"]}, "Clear")])
     locks_html = _box("Wrong passwords and locks", _table(
         ["Name", "State", "Locks so far", "Recent wrong passwords", ""], lock_rows,
-        "No wrong passwords at the moment.") + "<p class='pl-muted'>A name is locked after 5 wrong passwords from a device "
+        "No wrong passwords at the moment.", labels=True) + "<p class='pl-muted'>A name is locked after 5 wrong passwords from a device "
         "that has not signed in as that user before; each lock is longer than the last (5 min, 30 min, 3 h, 6 h). "
         "Known devices are not stopped by a lock. A restart also clears every lock.</p>")
     dev_rows = [[escape(d["username"]), escape(ago(d["first_seen"])), escape(ago(d["last_seen"])), escape(d["last_ip"] or "?"),
                  _post("/security/forget", {"id": d["id"]}, "Forget", "Forget this device? It will be treated like a stranger.")]
                 for d in devices]
     dev_html = _box("Known devices (browsers that have signed in)", _table(
-        ["User", "First seen", "Last seen", "Last address", ""], dev_rows, "No known devices yet."))
+        ["User", "First seen", "Last seen", "Last address", ""], dev_rows, "No known devices yet.", labels=True))
     names = sorted(set(sessions) | {d["username"] for d in devices})
     out_rows = [[escape(n), str(sessions.get(n, 0)),
                  _post("/security/signout", {"name": n}, "Sign out everywhere", "Sign %s out of every browser and forget their devices?" % n, True)]
                 for n in names]
-    out_html = _box("Sign a user out everywhere", _table(["User", "Active sessions", ""], out_rows, "Nobody is signed in.") +
+    out_html = _box("Sign a user out everywhere", _table(["User", "Active sessions", ""], out_rows, "Nobody is signed in.", labels=True) +
                     "<p class='pl-muted'>Removes every login session and known device of that user. Do this if a password may have "
                     "leaked, together with changing the password.</p>")
     return page(ctx, "Security", "security", locks_html + dev_html + out_html, flash)
@@ -408,7 +417,7 @@ def users_page(ctx: Ctx, users: list, root_names: list, me: str, flash: str = ""
                                                   "Remove %s? Their upload folder and reading progress stay on the server." % u.name, True))))
         rows.append([USER_ICON + escape(u.name) + (" <span class='pl-muted'>(you)</span>" if u.name == me else ""),
                      roots_cell(u.roots)] + rights + [edit])
-    table = _table(["User", "Folders"] + [label for label, _ in RIGHTS] + [""], rows, "No users.")
+    table = _table(["User", "Folders"] + [label for label, _ in RIGHTS] + [""], rows, "No users.", labels=True)
     add = ("<form class='pl-admin-form' method='post' action='/users/add'>"
            "<label class='pl-field'><span>User name</span><input type='text' name='name' autocapitalize='off' required></label>"
            "<label class='pl-field'><span>Password (at least 8 characters)</span><input type='password' name='password' "

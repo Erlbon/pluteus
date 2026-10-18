@@ -146,7 +146,7 @@ def create_admin_app(main_app) -> Starlette:
                 "problem": vstate["problem"], "open": lim.streams(), "channels": lim.lease_list(), "totals": lim.totals(),
                 "stored": {n: c for n, c in stored.items() if c}}
 
-    def collect_status() -> dict:
+    def library_roots() -> list:
         roots = []
         for r in st.library.cfg.roots.values():
             free, total = disk(r.path)
@@ -160,12 +160,17 @@ def create_admin_app(main_app) -> Starlette:
                     ok = False
             roots.append({"name": r.name, "path": r.path, "ok": ok, "free": free, "total": total,
                           "seconds": time.monotonic() - began})
-        up = None
-        if cfg.uploads_dir:
-            free, total = disk(cfg.uploads_dir)
-            users = [{"name": u.name, "size": uploads.tree_size(os.path.join(cfg.uploads_dir, u.name))}
-                     for u in auth.users.values() if u.upload and u.name != cfg.anonymous_user]
-            up = {"dir": cfg.uploads_dir, "free": free, "total": total, "quota_mb": cfg.upload_quota_mb, "users": users}
+        return roots
+
+    def uploads_info():
+        if not cfg.uploads_dir:
+            return None
+        free, total = disk(cfg.uploads_dir)
+        users = [{"name": u.name, "size": uploads.tree_size(os.path.join(cfg.uploads_dir, u.name))}
+                 for u in auth.users.values() if u.upload and u.name != cfg.anonymous_user]
+        return {"dir": cfg.uploads_dir, "free": free, "total": total, "quota_mb": cfg.upload_quota_mb, "users": users}
+
+    def collect_status() -> dict:
         backups = os.path.join(cfg.data_dir, "backups") if cfg.data_dir else ""
         names = [n for n in os.listdir(backups) if n.startswith("state-")] if backups and os.path.isdir(backups) else []
         try:
@@ -199,8 +204,7 @@ def create_admin_app(main_app) -> Starlette:
             "update": updates.status() if updates else None,
             "bsdtar": bool(cbz.bsdtar()),
             "version": __version__, "python": platform.python_version(), "uptime": time.time() - st.started,
-            "roots": roots, "uploads": up,
-            "state": {"persistent": state.persistent, "path": state.path, "size": size, "backups": len(names), "newest_backup": newest},
+                        "state": {"persistent": state.persistent, "path": state.path, "size": size, "backups": len(names), "newest_backup": newest},
             "counts": {"users": len(auth.users), "sessions": sum(sessions.values()),
                        "devices": len(devices), "locked": len(locked)},
             "names": {"users": sorted(auth.users), "sessions": dict(sessions),
@@ -254,11 +258,8 @@ def create_admin_app(main_app) -> Starlette:
         return folderpick.allowed(request.client.host if request.client else "", cfg.library_bases)
 
     def libraries_html(can_browse: bool, flash: str = "", error: str = "", status_code: int = 200):
-        roots = []
-        for r in st.library.cfg.roots.values():
-            free, total = disk(r.path)
-            roots.append({"name": r.name, "path": r.path, "ok": os.path.isdir(longpath(r.path)), "free": free, "total": total})
-        return HTMLResponse(adminweb.libraries_page(ctx, roots, can_browse, bool(config_path), flash, error), status_code)
+        roots, up = library_roots(), uploads_info()
+        return HTMLResponse(adminweb.libraries_page(ctx, roots, can_browse, bool(config_path), flash, error, up), status_code)
 
     @guarded
     async def libraries(request, user):

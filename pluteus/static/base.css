@@ -673,6 +673,7 @@ body.pl-reader-page, .pl-reader-stage { overscroll-behavior: contain; }
   .pl-admin-table td:first-child { order: 0; font-weight: 500; flex: 1 1 auto; }
   .pl-admin-table td:has(form) { order: 1; }                    /* a Remove / Clear button sits on the name's line */
   .pl-admin-table td:has(code) { order: 4; flex: 1 1 100%; }
+  .pl-admin-table td[data-label]:not(:first-child)::before { content: attr(data-label) ": "; color: var(--pl-dim); font-size: 12px; }
 }
 .pl-inline { display: inline-block; margin: 0; }
 .pl-ok { color: var(--pl-accent); }
