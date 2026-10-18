@@ -137,10 +137,13 @@ def test_status_shows_libraries_uploads_and_state(admin, tmp_path):
     html = client.get("/", headers=BOSS).text
     from pluteus import __version__
     assert __version__ in html and "<h1>Status</h1>" in html and "pl-dot-ok'></span>ok" in html and "NOT available" not in html
-    assert "books" in html and "comics" in html and "alice" in html and "2.9 KB" in html or "3000 B" in html
+    assert "alice" in html and ("2.9 KB" in html or "3000 B" in html)
+    assert "<h2>Libraries</h2>" not in html                                                   # the folders have their own page
     assert "do not route or forward" in html                                                  # the standing warning
+    libs = client.get("/libraries", headers=BOSS).text
+    assert "books" in libs and "comics" in libs and "NOT available" not in libs
     (tmp_path / "comics").rmdir()
-    assert "NOT available" in client.get("/", headers=BOSS).text
+    assert "NOT available" in client.get("/libraries", headers=BOSS).text
 
 
 # ---- security ----------------------------------------------------------------------------------------------------------------------

@@ -226,13 +226,8 @@ def status_page(ctx: Ctx, d: dict) -> str:
                                   ["Active sessions", str(d["counts"]["sessions"]), counted(n.get("sessions", {}))],
                                   ["Known devices", str(d["counts"]["devices"]), counted(n.get("devices", {}))],
                                   ["Locked names", str(d["counts"]["locked"]), escape(", ".join(n.get("locked", [])))]], "")
-    roots = []
-    for r in d["roots"]:
-        state = _root_light(r)
-        space = "%s free of %s" % (_size(r["free"]), _size(r["total"])) if r["free"] is not None else ""
-        roots.append([escape(r["name"]), "<code>%s</code>" % escape(r["path"]), state, escape(space)])
     services = _services_box(d.get("services"))
-    boxes = [_box("Server", facts)] + ([services] if services else []) + ([_relay_box(d.get("relay"))] if d.get("relay") else []) + [_box("Libraries", _table(["Name", "Folder", "State", "Disk"], roots, "No libraries."))]
+    boxes = [_box("Server", facts)] + ([services] if services else []) + ([_relay_box(d.get("relay"))] if d.get("relay") else [])
     up = d["uploads"]
     if up:
         rows = [[escape(u["name"]), _size(u["size"])] for u in up["users"]]
@@ -265,7 +260,7 @@ def libraries_page(ctx: Ctx, roots: list, can_browse: bool, can_edit: bool, flas
     for r in roots:
         space = "%s free of %s" % (_size(r["free"]), _size(r["total"])) if r["free"] is not None else ""
         rows.append([escape(r["name"]), "<code>%s</code>" % escape(r["path"]),
-                     _light("ok", "ok") if r["ok"] else _light("bad", "NOT available"), escape(space),
+                     _root_light(r), escape(space),
                      _post("/libraries/remove", {"name": r["name"]}, "Remove",
                            "Remove the library %s? Nothing on disk is touched and reading progress stays on the server, but "
                            "people limited to this library lose access." % r["name"], True)])
