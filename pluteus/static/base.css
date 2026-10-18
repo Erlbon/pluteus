@@ -673,9 +673,14 @@ body.pl-reader-page, .pl-reader-stage { overscroll-behavior: contain; }
   .pl-admin-table td:first-child { order: 0; font-weight: 500; flex: 1 1 auto; }
   .pl-admin-table td:has(form) { order: 1; }                    /* a Remove / Clear button sits on the name's line */
   .pl-admin-table td:has(code) { order: 4; flex: 1 1 100%; }
-  .pl-admin-table td[data-label]:not(:first-child) { flex: 1 1 100%; display: flex; justify-content: space-between; gap: 12px; font-size: 14px; }
+  .pl-admin-table td[data-label]:not(:first-child) { flex: 1 1 100%; display: flex; align-items: center; font-size: 14px; }
+  .pl-admin-table td.pl-rule { border-bottom: 1px solid var(--pl-line); padding-bottom: 6px; margin-bottom: 4px; }
+  .pl-admin-table td.pl-half[data-label]:not(:first-child) { flex: 0 0 calc(50% - 6px); }
+  .pl-admin-table td:has(details) { display: contents; }                   /* a user's Edit: the closed summary sits on the name's line, an open one takes a full row */
+  .pl-admin-table details { order: 1; }
+  .pl-admin-table details[open] { order: 9; flex: 1 1 100%; }
   .pl-admin-table td.pl-split { border-top: 1px solid var(--pl-line); margin-top: 4px; padding-top: 6px; }
-  .pl-admin-table td[data-label]:not(:first-child)::before { content: attr(data-label); color: var(--pl-dim); font-size: 13px; }
+  .pl-admin-table td[data-label]:not(:first-child)::before { content: attr(data-label); color: var(--pl-dim); font-size: 13px; margin-right: auto; padding-right: 12px; }
 }
 .pl-inline { display: inline-block; margin: 0; }
 .pl-ok { color: var(--pl-accent); }

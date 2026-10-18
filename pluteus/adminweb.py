@@ -80,17 +80,17 @@ def page(ctx: Ctx, title: str, active: str, body: str, flash: str = "", error: s
                   scripts=(ctx.urls.static("uploads.js"),) + tuple(scripts))
 
 
-def _table(headers: list, rows: list, empty: str, labels: bool = False, split: int = -1) -> str:
+def _table(headers: list, rows: list, empty: str, labels: bool = False, cls: dict | None = None) -> str:
     """labels=True: each cell also carries its column name, which a phone shows in front of the value (base.css) because the
-    header row is hidden there; leave it off where the values explain themselves (names, paths). split=N: on a phone a rule is drawn
-    above column N, to group the values before it (the dates) apart from the ones after it (the address)."""
+    header row is hidden there; leave it off where the values explain themselves (names, paths). cls maps a column number to CSS classes
+    for its cells, used by the phone layout (base.css): pl-split draws a rule above the cell, pl-rule below it, pl-half makes it half width."""
     if not rows:
         return "<p class='pl-muted'>%s</p>" % escape(empty)
     head = "".join("<th>%s</th>" % escape(h) for h in headers)
 
     def cell(i: int, value) -> str:
         label = " data-label='%s'" % escape(headers[i]) if labels and headers[i] else ""
-        return "<td%s%s>%s</td>" % (label, " class='pl-split'" if i == split else "", value)
+        return "<td%s%s>%s</td>" % (label, " class='%s'" % cls[i] if cls and i in cls else "", value)
     return "<div class='pl-admin-scroll'><table class='pl-admin-table'><thead><tr>%s</tr></thead><tbody>%s</tbody></table></div>" % (
         head, "".join("<tr>%s</tr>" % "".join(cell(i, c) for i, c in enumerate(row)) for row in rows))
 
@@ -332,7 +332,7 @@ def security_page(ctx: Ctx, locks: list, devices: list, sessions: dict, flash: s
                  _post("/security/forget", {"id": d["id"]}, "Forget", "Forget this device? It will be treated like a stranger.")]
                 for d in devices]
     dev_html = _box("Known devices (browsers that have signed in)", _table(
-        ["User", "First seen", "Last seen", "Last address", ""], dev_rows, "No known devices yet.", labels=True, split=3))
+        ["User", "First seen", "Last seen", "Last address", ""], dev_rows, "No known devices yet.", labels=True, cls={3: "pl-split"}))
     names = sorted(set(sessions) | {d["username"] for d in devices})
     out_rows = [[escape(n), str(sessions.get(n, 0)),
                  _post("/security/signout", {"name": n}, "Sign out everywhere", "Sign %s out of every browser and forget their devices?" % n, True)]
@@ -403,7 +403,7 @@ def users_page(ctx: Ctx, users: list, root_names: list, me: str, flash: str = ""
                     "changed here.</p>", flash, error)
     rows = []
     for u in users:
-        rights = [_light("ok", "yes") if getattr(u, attr) else "<span class='pl-muted'>-</span>" for _, attr in RIGHTS]
+        rights = [_light("ok", "yes") if getattr(u, attr) else _light("off", "no") for _, attr in RIGHTS]
         edit = ("<details><summary>Edit</summary>"
                 "<form class='pl-admin-form' method='post' action='/users/password'><input type='hidden' name='name' value='%s'>"
                 "<label class='pl-field'><span>New password (at least 8 characters)</span><input type='password' name='password' "
@@ -418,7 +418,8 @@ def users_page(ctx: Ctx, users: list, root_names: list, me: str, flash: str = ""
                                                   "Remove %s? Their upload folder and reading progress stay on the server." % u.name, True))))
         rows.append([USER_ICON + escape(u.name) + (" <span class='pl-muted'>(you)</span>" if u.name == me else ""),
                      roots_cell(u.roots)] + rights + [edit])
-    table = _table(["User", "Folders"] + [label for label, _ in RIGHTS] + [""], rows, "No users.", labels=True)
+    table = _table(["User", "Folders"] + [label for label, _ in RIGHTS] + [""], rows, "No users.", labels=True,
+                   cls={1: "pl-rule", **{2 + i: "pl-half" for i in range(len(RIGHTS))}})
     add = ("<form class='pl-admin-form' method='post' action='/users/add'>"
            "<label class='pl-field'><span>User name</span><input type='text' name='name' autocapitalize='off' required></label>"
            "<label class='pl-field'><span>Password (at least 8 characters)</span><input type='password' name='password' "
