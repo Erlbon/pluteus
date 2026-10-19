@@ -119,8 +119,19 @@ It works in Docker, on Linux and on Windows alike, with nothing to install on th
 - **Who:** only users with `admin = true` (off for everyone by default; set it with `user add NAME --admin`,
   `user set NAME --admin`, in `config.toml`, or from the desktop app). Signing in is the browser's own login prompt; wrong
   passwords are counted by the same throttle as the main site, and every change needs a same-site request.
-- **Status:** version and uptime, every library (ok or not, free disk), the upload folders and their sizes, where the
-  state lives and its backups, and counts of users, sessions, known devices and locked names.
+- **Status:** version and uptime, the optional services, where the state lives and its backups, and counts of users,
+  sessions, known devices and locked names, with a link to the About page.
+- **Libraries:** every library folder (ok, slow, low on disk or not available, and the free disk) with **Remove**, the
+  **Add a library** form with the folder picker, and the **Uploads** box (the upload folder, its disk space, the per-user limit
+  and what each user has stored).
+- **Debug:** switch request logging on for 15 minutes, read what the site was asked, download the diagnostics for a bug report.
+- **About:** the version and update state, the licence, credits (the radio and TV directories and the bundled libraries, each with
+  its licence file) and the whole changelog, one fold-out per version with the running one open. The changelog ships inside the
+  package (`pluteus/CHANGELOG.md`), so it works offline and in Docker.
+- **On a phone** the admin pages use icons instead of words in the top bar (Status, Libraries, Security, Users, Debug, the link to
+  the other site, contrast, Sign out; the tooltip and the screen-reader label carry the name) and every table becomes a list of
+  small cards. On a wide screen the bar is two rows with labels. The main site's bar follows the same pattern for Settings, Admin and
+  Sign out.
 - **Security:** the accounts with wrong passwords or locks, with **Clear** to lift a lock at once; the **known devices**
   (browsers that have signed in, with first and last seen and the last address) with **Forget**; and **Sign out
   everywhere** for a user (every session and known device, and remembered reader-app logins), for when a password may
@@ -511,6 +522,26 @@ files, with a progress bar), **create folders**, **rename** and **delete** (a fo
 | `POST /files/{mkdir,rename,delete}/uploads/{path}` | new folder (in `path`), rename (`name` field), delete |
 | `POST /share` | the Android share target |
 | `GET /manifest.webmanifest` | web app manifest (adds `share_target` when uploads are on) |
+
+## Radio and IPTV folders
+
+A folder made of station files (`.m3u`, `.pls`, `.url`), or of folders that are (a country folder per country, say), is shown as
+stations, not as files:
+
+- **One flat grid of logo tiles.** Every station below the folder is in the grid, whatever sub-folder it sits in. Radio logos are square,
+  channel logos are 16:9, and a station with no logo gets a radio or TV symbol. The List and Covers switch is not shown there.
+- **Find and filter.** A search box, one chip per country folder, and a **Random** button that opens one of the stations showing.
+  Tapping a tile opens the player.
+- **Other files.** Files in the folder that are not stations are not in the grid; the line under the title says "Show N other files
+  too" and opens the ordinary folder, which is also where you rename or delete files (`?plain=1`).
+- **Only real station folders.** A folder with a few station files among many other files stays an ordinary folder (stations must be
+  at least half of its files).
+- **Live card.** On the home page the saved `Radio` and `IPTV` folders of your upload folder have their own **Live** card, above
+  Browse, with a radio or TV icon and the number of stations or channels.
+- **Set a logo by hand.** In your own upload folder the grid has an **Edit logos** switch. While it is on every tile shows a camera
+  button (and the stations do not play): pick a PNG, JPEG or WebP and it is checked, made no larger than 512 pixels and saved
+  beside the station file as `Name.png` or `Name.jpg`, replacing a picture of another type that was there. A logo can also be put there
+  by hand under the same name, or fetched for the saved stations with the pickers' "Fetch missing logos" in Settings.
 
 ## License
 

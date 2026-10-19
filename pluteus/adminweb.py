@@ -256,6 +256,7 @@ def status_page(ctx: Ctx, d: dict) -> str:
 
 
 # ---- about ------------------------------------------------------------------------------------------------------------------
+REPO_URL = "https://github.com/Erlbon/pluteus"
 VENDORED = (("hls.js (live TV)", "hlsjs"), ("mpegts.js (live TV)", "mpegtsjs"), ("epub.js (the EPUB reader)", "epubjs"),
             ("JSZip (the EPUB reader)", "jszip"))
 
@@ -291,7 +292,8 @@ def about_page(ctx: Ctx, update=None, static=lambda path: "/" + path) -> str:
              "<p>A filesystem-first server for books, comics, music, radio, TV channels and video, with apps (OPDS, Subsonic, WebDAV, KOReader) "
              "and a web reader and player.</p>"
              "<p class='pl-muted'>A <em>pluteus</em> is the sloped reading desk of a medieval library, and the low screen wall between two columns.</p>"
-             "<p>MIT licence. Copyright &copy; 2026 Erlend Bonderud.</p>" % (escape(__version__), _update_cell(update)))
+             "<p>MIT licence. Copyright &copy; 2026 Erlend Bonderud. <a href='%s' target='_blank' rel='noopener'>Source, issues and releases on GitHub</a>.</p>"
+             % (escape(__version__), _update_cell(update), REPO_URL))
     credits = ("<p>Radio and TV channels are found in two public directories, <strong>radio-browser.info</strong> and <strong>iptv-org</strong>, "
                "searched from your own browser; nothing from them is stored except the stations you save.</p>"
                "<p>Included software:</p><ul>%s</ul>"
