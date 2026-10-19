@@ -32,6 +32,9 @@ def test_home_has_a_live_card_for_radio_and_iptv(up):
     _save(me)
     home = me.get("/", headers=HTML).text
     assert "pl-live-box" in home and "pl-i-radio" in home and "Radio" in home
+    assert "3 stations</span>" in home                                                          # the country folders are counted too
+    post(me, {"kind": "tv", "stations": [{"name": "NRK1", "url": "https://example.org/nrk1.m3u8"}]})
+    assert "1 channel</span>" in me.get("/", headers=HTML).text
 
 
 def test_only_folders_made_mostly_of_station_files_count(tmp_path):

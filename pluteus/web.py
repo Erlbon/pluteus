@@ -152,8 +152,10 @@ def roots_page(roots: list, ctx: Ctx, recent: list | None = None, read_next: lis
     if stations:
         live = ("<section class='pl-card pl-home-box pl-live-box' aria-label='Live'><h2>Live</h2><ul class='pl-list pl-roots'>%s</ul></section>"
                 % "".join("<li class='pl-row'><a class='pl-root-link' href='%s'><span class='pl-kind pl-live-kind'>"
-                          "<span class='pl-icon pl-i-%s'></span></span>%s</a></li>"
-                          % (escape(href), "tv" if kind == "video" else "radio", escape(label)) for label, href, kind in stations))
+                          "<span class='pl-icon pl-i-%s'></span></span>%s<span class='pl-muted pl-live-count'>%d %s</span></a></li>"
+                          % (escape(href), "tv" if kind == "video" else "radio", escape(label), number,
+                             ("channel" if kind == "video" else "station") + ("" if number == 1 else "s"))
+                          for label, href, kind, number in stations))
     # Two boxes (cards): "Continue reading" (only when there is something) and "Browse", then the small print below them.
     # (the lists carry .pl-roots / .pl-recent and the boxes .pl-home-box, so a theme can restyle them)
     cont = ""

@@ -90,3 +90,22 @@ def collect(path: str) -> tuple:
                 walk(e.path, rel + (e.name,), depth + 1)
     walk(path, (), 1)
     return found, sorted(countries, key=str.lower), len(found) >= MAX_STATIONS
+
+
+def count(path: str) -> int:
+    """How many station files are in the folder and below it (the home page's "212 stations"); no file is opened."""
+    total = 0
+
+    def walk(folder: str, depth: int) -> None:
+        nonlocal total
+        for e in _scan(folder):
+            if total >= MAX_STATIONS:
+                return
+            if e.name.startswith("."):
+                continue
+            if _is_station(e):
+                total += 1
+            elif e.is_dir(follow_symlinks=False) and depth < MAX_DEPTH:
+                walk(e.path, depth + 1)
+    walk(path, 1)
+    return total

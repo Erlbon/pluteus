@@ -666,15 +666,15 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
         return out[:60]
 
     def station_shortcuts(user) -> list:
-        """[(label, address, kind)] for the Radio and IPTV folders of the user's upload folder, once they exist (the pickers make them)."""
+        """[(label, address, kind, number of stations)] for the Radio and IPTV folders of the user's upload folder, once they exist (the pickers make them)."""
         found = []
         if lib.uploads_enabled(user):
             for folder, kind in (("Radio", "audio"), ("IPTV", "video")):
                 try:
-                    lib.upload_dir(user, (folder,))
+                    here = lib.upload_dir(user, (folder,))
                 except (NotFound, PathError, OSError):
                     continue
-                found.append((folder, urls.browse(UPLOADS_ROOT, (folder,)), kind))
+                found.append((folder, urls.browse(UPLOADS_ROOT, (folder,)), kind, streams.count(here)))
         return found
 
     @guarded("web")

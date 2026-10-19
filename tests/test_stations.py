@@ -106,7 +106,7 @@ def test_the_home_page_shows_radio_and_iptv_once_they_exist(up):
     assert "href='/browse/uploads/Radio'" not in home() and "href='/browse/uploads/IPTV'" not in home()  # nothing saved yet: no empty entries
     post(me, {"kind": "radio", "stations": [{"name": "One", "url": "https://example.org/one"}]})
     page = home()
-    assert "href='/browse/uploads/Radio'" in page and ">Radio</a>" in page and "href='/browse/uploads/IPTV'" not in page
+    assert "href='/browse/uploads/Radio'" in page and "Radio<span class='pl-muted pl-live-count'>1 station</span></a>" in page and "href='/browse/uploads/IPTV'" not in page
     post(me, {"kind": "tv", "stations": [{"name": "Chan", "url": "https://example.org/c.m3u8"}]})
     assert "href='/browse/uploads/IPTV'" in home()
     assert me.get("/browse/uploads/Radio", headers=HTML).status_code == 200                              # and the link opens the folder

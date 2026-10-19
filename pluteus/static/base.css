@@ -741,6 +741,7 @@ html.pl-tv .pl-shell-player .pl-vol-btn { width: 56px; height: 56px; }
 
 /* ---- a folder of station files: one flat grid of logo tiles (streams.js filters it) ---- */
 .pl-live-kind { color: var(--pl-accent); }
+.pl-live-count { margin-left: auto; padding-left: 12px; font-size: 13px; white-space: nowrap; }
 .pl-stream-tools { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0 8px; }
 .pl-stream-tools input[type=search] { flex: 1; min-width: 0; }
 .pl-stream-chips { display: flex; justify-content: flex-start; gap: 6px; overflow-x: auto; padding-bottom: 6px; margin-bottom: 8px; }
