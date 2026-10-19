@@ -3,6 +3,8 @@
 Release notes are taken from the section of the tagged version (`## 0.5.0 ...`).
 
 ## Unreleased
+
+## 0.9.10 - 2026-10-19
 - **The About page links to the GitHub repository** (source, issues, releases). The README now describes the admin pages as they are (Libraries with the Uploads box, Debug, About, the phone layout) and has a section on Radio and IPTV folders.
 - **The Live card shows how many stations and channels each folder holds** ("212 stations", "1,840 channels" style, counting the station files in the folder and the country folders below it).
 - **Set a station's logo from the grid.** In your own Radio/IPTV folder the grid has an **Edit logos** switch: while it is on, every tile shows a camera button; pick a PNG, JPEG or WebP and it is checked, made no larger than 512 pixels and saved beside the station file (a picture of another type that was there is replaced). Stations do not play while the switch is on. The toolbar wraps on a phone so the page no longer grows wider than the screen.
