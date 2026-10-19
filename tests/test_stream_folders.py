@@ -48,3 +48,50 @@ def test_only_folders_made_mostly_of_station_files_count(tmp_path):
     assert not streams.is_stream_folder(str(tmp_path / "missing"))
     stations, countries, cut = streams.collect(str(radio_dir))
     assert [s["name"] for s in stations] == ["NRK"] and countries == ["Norway"] and not cut and stations[0]["kind"] == "radio"
+
+
+# ---- Edit logos: a picture sent for one station file is checked, re-made and saved beside it ----------------------------------------
+def _send(me, path, body, kind="image/png"):
+    from test_uploads import ORIGIN
+    return me.post("/api/station-logo/uploads/" + path, content=body, headers={**ORIGIN, "content-type": kind})
+
+
+def test_the_grid_has_edit_logos_only_in_the_users_own_upload_folder(up):
+    me, app, folder = up
+    _save(me)
+    html = me.get("/browse/uploads/Radio", headers=HTML).text
+    assert "id='stream-edit'" in html and html.count("class='pl-logo-edit'") == 3 and "id='stream-file'" in html
+
+
+def test_a_logo_is_saved_beside_the_station_file_and_replaced_by_the_next(up):
+    from test_logos import png_bytes
+    me, app, folder = up
+    _save(me)
+    mine = folder / "alice" / "Radio" / "Norway"
+    r = _send(me, "Radio/Norway/NRK P1.m3u", png_bytes((64, 64)))
+    assert r.status_code == 200 and "/cover/uploads/Radio/Norway/NRK%20P1.m3u" in r.json()["url"]
+    assert (mine / "NRK P1.png").is_file()
+    from PIL import Image
+    import io
+    jpeg = io.BytesIO()
+    Image.new("RGB", (600, 300), (200, 30, 30)).save(jpeg, "JPEG")
+    assert _send(me, "Radio/Norway/NRK P1.m3u", jpeg.getvalue(), "image/jpeg").status_code == 200
+    assert (mine / "NRK P1.jpg").is_file() and not (mine / "NRK P1.png").exists()               # the old picture is replaced, not kept beside
+    with Image.open(mine / "NRK P1.jpg") as saved:
+        assert max(saved.size) == 512                                                          # made no larger than the limit
+    grid = me.get("/browse/uploads/Radio", headers=HTML).text
+    assert "NRK%20P1.m3u" in grid and "pl-logo-img" in grid
+
+
+def test_a_logo_that_is_not_a_picture_or_not_for_a_station_file_is_refused(up):
+    from test_logos import png_bytes
+    me, app, folder = up
+    _save(me)
+    assert _send(me, "Radio/Norway/NRK P1.m3u", b"<html>not a picture</html>").status_code == 400
+    assert _send(me, "Radio/Norway/Missing.m3u", png_bytes((64, 64))).status_code == 404       # no such station file
+    assert _send(me, "Radio/Norway/NRK P1.png", png_bytes((64, 64))).status_code == 404        # not a station file
+    for sneaky in ("Radio/../../x.m3u", "Radio/%2e%2e/%2e%2e/x.m3u", "Radio/..%2f..%2fx.m3u"):
+        assert _send(me, sneaky, png_bytes((64, 64))).status_code in (307, 400, 404)           # never reaches outside the station folders
+    assert not (folder / "x.png").exists() and not (folder / "alice" / "x.png").exists()
+    assert not list((folder / "alice" / "Radio" / "Norway").glob("*.png"))
+    assert me.post("/api/station-logo/uploads/Radio/Norway/NRK P1.m3u", content=png_bytes((64, 64))).status_code in (403, 400)   # no Origin: refused

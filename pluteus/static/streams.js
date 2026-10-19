@@ -35,4 +35,44 @@
     var link = visible[Math.floor(Math.random() * visible.length)].querySelector("a");
     if (link) location.href = link.href;
   });
+
+  /* ---- Edit logos: while it is on, a tile's camera button picks a picture and sends it to the server, which saves it beside the station file ---- */
+  var edit = document.getElementById("stream-edit"), file = document.getElementById("stream-file"), status = document.getElementById("stream-status");
+  if (!edit || !file) return;
+  var target = null;
+
+  function say(text) { status.textContent = text; status.hidden = !text; }
+  edit.addEventListener("click", function () {
+    var on = edit.getAttribute("aria-pressed") !== "true";
+    edit.setAttribute("aria-pressed", on ? "true" : "false");
+    list.classList.toggle("pl-editing", on);
+    say(on ? "Edit logos is on: tap a camera button to set a logo. Stations do not play until you switch it off." : "");
+  });
+  list.addEventListener("click", function (e) {
+    if (!list.classList.contains("pl-editing")) return;
+    var button = e.target.closest(".pl-logo-edit");
+    if (button) { target = button; file.value = ""; file.click(); }
+    if (e.target.closest("a")) e.preventDefault();                            // no playing while editing
+  });
+  file.addEventListener("change", function () {
+    var picture = file.files && file.files[0], button = target;
+    if (!picture || !button) return;
+    say("Saving the logo…");
+    fetch(button.getAttribute("data-url"), { method: "POST", credentials: "same-origin", body: picture,
+                                              headers: { "Content-Type": picture.type || "application/octet-stream" } })
+      .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, body: d }; }); })
+      .then(function (res) {
+        if (!res.ok) { say(res.body.error || "The logo could not be saved."); return; }
+        var art = button.parentNode.querySelector(".pl-tile-art"), img = art.querySelector("img");
+        if (!img) {
+          img = document.createElement("img");
+          img.className = "pl-tile-img pl-logo-img"; img.alt = "";
+          art.insertBefore(img, art.firstChild);
+        }
+        img.classList.remove("pl-gone");
+        img.src = res.body.url;
+        say("Logo saved.");
+      })
+      .catch(function () { say("The logo could not be saved (no connection)."); });
+  });
 })();

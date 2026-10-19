@@ -741,7 +741,7 @@ html.pl-tv .pl-shell-player .pl-vol-btn { width: 56px; height: 56px; }
 
 /* ---- a folder of station files: one flat grid of logo tiles (streams.js filters it) ---- */
 .pl-live-kind { color: var(--pl-accent); }
-.pl-stream-tools { display: flex; gap: 8px; margin: 10px 0 8px; }
+.pl-stream-tools { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0 8px; }
 .pl-stream-tools input[type=search] { flex: 1; min-width: 0; }
 .pl-stream-chips { display: flex; justify-content: flex-start; gap: 6px; overflow-x: auto; padding-bottom: 6px; margin-bottom: 8px; }
 .pl-stream-chips .pl-chip { flex: none; cursor: pointer; font: inherit; font-size: 13px; padding: 4px 12px; border-radius: 999px;
@@ -754,4 +754,10 @@ html.pl-tv .pl-shell-player .pl-vol-btn { width: 56px; height: 56px; }
 /* a small logo keeps its own size (centred on white) instead of being stretched to the tile and going blurry; a large one still shrinks to fit */
 .pl-tile-img.pl-logo-img { object-fit: scale-down; }
 .pl-stream[hidden] { display: none; }
-@media (max-width: 600px) { .pl-list.pl-streams { grid-template-columns: repeat(3, minmax(0, 1fr)); } .pl-list.pl-streams.pl-streams-tv { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.pl-logo-edit { display: none; position: absolute; top: 6px; right: 6px; z-index: 3; width: 34px; height: 34px; padding: 0; border-radius: 50%;
+  border: 1px solid var(--pl-line); background: var(--pl-card); color: var(--pl-fg); cursor: pointer; align-items: center; justify-content: center; }
+.pl-streams.pl-editing .pl-logo-edit { display: flex; }
+.pl-streams.pl-editing .pl-tile a { cursor: default; }
+#stream-edit[aria-pressed="true"] { background: color-mix(in srgb, var(--pl-accent) 18%, transparent); border-color: var(--pl-accent); color: var(--pl-accent); }
+@media (max-width: 600px) { .pl-stream-tools input[type=search] { flex: 1 1 100%; } .pl-stream-tools .pl-btn { flex: 1 1 0; }
+  .pl-list.pl-streams { grid-template-columns: repeat(3, minmax(0, 1fr)); } .pl-list.pl-streams.pl-streams-tv { grid-template-columns: repeat(2, minmax(0, 1fr)); } }

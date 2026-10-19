@@ -125,8 +125,8 @@ def download(url: str, deadline: float | None = None) -> bytes:
     raise Refused("too many redirects")
 
 
-def small_picture(data: bytes):
-    """(bytes, extension) of a fresh picture made from `data`, at most MAX_SIDE wide or tall; Refused when it is not a picture we take."""
+def small_picture(data: bytes, side: int = MAX_SIDE):
+    """(bytes, extension) of a fresh picture made from `data`, at most `side` wide or tall; Refused when it is not a picture we take."""
     try:
         from PIL import Image
     except ImportError:
@@ -139,7 +139,7 @@ def small_picture(data: bytes):
         image.load()
         if image.width < 8 or image.height < 8:
             raise Refused("too small")
-        image.thumbnail((MAX_SIDE, MAX_SIDE))
+        image.thumbnail((side, side))
         out = io.BytesIO()
         if "A" in image.getbands() or image.mode in ("P", "LA", "PA") or "transparency" in image.info:
             image.convert("RGBA").save(out, "PNG", optimize=True)

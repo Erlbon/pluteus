@@ -37,7 +37,7 @@ from .auth import Authenticator
 from .bodies import read_limited
 from .cbz import CbzError
 from .config import MIME_TYPES, UPLOADS_ROOT, Config
-from .fs import SORTS, Library, NotFound, PathError, clamp_time, sort_entries
+from .fs import SORTS, Library, NotFound, PathError, clamp_time, longpath, sort_entries
 from .meta import MetaCache, MetaService
 from .ratelimit import FailureLimiter
 from .reload import UsersReloader
@@ -48,6 +48,8 @@ from .urls import Urls, with_page
 
 log = logging.getLogger("pluteus")
 STATIC_DIR = Path(__file__).resolve().parent / "static"
+LOGO_UPLOAD_MAX = 1_500_000          # the largest picture accepted for a station logo (bytes)
+LOGO_UPLOAD_SIDE = 512              # it is made no larger than this many pixels wide or tall
 _PROXY_HEADERS = ("x-forwarded-for", "x-forwarded-host", "x-forwarded-proto", "forwarded", "via")
 _PLAIN_HOST = re.compile(r"[A-Za-z0-9.-]+|\[[0-9A-Fa-f:.]+\]")       # a host name or address, nothing that could break out of a link
 current_admin_link: contextvars.ContextVar = contextvars.ContextVar("current_admin_link", default="")   # set per request
@@ -934,7 +936,8 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
             found = await run_in_threadpool(stream_folder)
             if found and found[0]:
                 others = sum(1 for e in entries if not e.is_dir and not radio.is_radio_file(e.name))      # files the grid does not show
-                return HTMLResponse(web.station_folder_page(root, parts, found[0], found[1], found[2], ctx_for(user), others=others))
+                return HTMLResponse(web.station_folder_page(root, parts, found[0], found[1], found[2], ctx_for(user), others=others,
+                                                                   editable=root == UPLOADS_ROOT))
         if sort != "name" or desc:
             entries = sort_entries(entries, sort, desc)
         shown, page, pages = opds.paginate(entries, _page_number(request), cfg.page_size)
@@ -1593,6 +1596,48 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
         return JSONResponse(result)
 
     @guarded("web")
+    async def station_logo(request: Request, user):
+        """Set (or replace) the picture of one station file in the user's own upload folder: the raw picture is the body. It is checked and
+        re-made as a small PNG or JPEG (fetchimage.small_picture), and saved beside the station file, which is where a logo lives."""
+        root = request.path_params["root"]
+        parts = _parts(request.path_params.get("path", ""))
+        if root != UPLOADS_ROOT or not parts or not radio.is_radio_file(parts[-1]) or not lib.uploads_enabled(user):
+            raise NotFound("no such station file")
+        raw = await read_limited(request, LOGO_UPLOAD_MAX)
+        if raw is None:
+            return JSONResponse({"error": "That picture is too large."}, 413)
+
+        def save() -> str:
+            folder = lib.upload_dir(user, parts[:-1])
+            path = os.path.join(folder, parts[-1])
+            if not os.path.isfile(longpath(path)) or os.path.islink(longpath(path)):
+                raise NotFound("no such station file")
+            try:
+                data, ext = fetchimage.small_picture(raw, LOGO_UPLOAD_SIDE)
+            except fetchimage.Refused:
+                raise ValueError("picture")
+            old = radio.find_logo(path)
+            if cfg.upload_quota_mb:
+                freed = os.path.getsize(longpath(old)) if old else 0
+                left = cfg.upload_quota_mb * 1024 * 1024 - uploads.tree_size(lib.upload_base(user)) + freed
+                if len(data) > max(0, left):
+                    raise uploads.UploadError("quota")
+            stem = os.path.splitext(parts[-1])[0]
+            uploads.write_atomic(folder, stem + "." + ext, data)
+            if old and os.path.basename(old) != stem + "." + ext:          # a picture of another type that was there is replaced, not kept beside it
+                try:
+                    os.remove(longpath(old))
+                except OSError:
+                    pass
+            return urls.cover(root, parts) + "?t=%d" % time.time()
+        try:
+            return JSONResponse({"url": await run_in_threadpool(save)})
+        except ValueError:
+            return JSONResponse({"error": "That is not a picture pluteus can use (PNG, JPEG or WebP)."}, 400)
+        except uploads.UploadError as e:
+            return JSONResponse({"error": "Not saved: %s." % web.UPLOAD_MESSAGES.get(e.code, "something went wrong")}, 400)
+
+    @guarded("web")
     async def stations_parse(request: Request, user):
         """The channels of an IPTV playlist (an M3U): pasted or read from a file by the browser ({"text": ...}), or fetched by the server from an
         address ({"url": ...}, only with the relay on, and only from a public address or a host listed in relay_allow). Returns them for the picker
@@ -2114,6 +2159,7 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
         Route("/api/folder-note/{root}/{path:path}", folder_note),
         Route("/api/stations/missing", stations_missing),
         Route("/api/stations/logos", stations_logos, methods=["POST"]),
+        Route("/api/station-logo/{root}/{path:path}", station_logo, methods=["POST"]),
         Route("/api/queue/{root}/{path:path}", queue),
         Route("/api/queue/{root}", queue),
         Route("/zip/{root}/{path:path}", zip_entry),

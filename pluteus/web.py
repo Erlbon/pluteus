@@ -350,7 +350,8 @@ def listing_page(root: str, parts: tuple, entries: list, page: int, pages: int, 
     return layout(title, body, ctx, scripts=scripts)
 
 
-def station_folder_page(root: str, parts: tuple, stations: list, countries: list, cut: bool, ctx: Ctx, shuffle: bool = True, others: int = 0) -> str:
+def station_folder_page(root: str, parts: tuple, stations: list, countries: list, cut: bool, ctx: Ctx, shuffle: bool = True, others: int = 0,
+                        editable: bool = False) -> str:
     """A folder of station files as one flat grid of logo tiles: search box, country chips (the sub-folders), a random pick. streams.js filters
     in the browser, so nothing is fetched while typing. Radio logos are square, channel logos 16:9."""
     urls = ctx.urls
@@ -367,9 +368,11 @@ def station_folder_page(root: str, parts: tuple, stations: list, countries: list
         if radio.find_logo(st["path"]):
             art = ("<img class='pl-tile-img pl-logo-img' src='%s' alt='' loading='lazy'><span class='pl-tile-fallback'>%s</span>"
                    % (escape(urls.cover(root, full)), icon))
+        camera = ("<button type='button' class='pl-logo-edit' data-url='%s' aria-label='Set the logo of %s' title='Set logo'>"
+                  "<span class='pl-icon pl-i-camera'></span></button>" % (escape(urls.api("station-logo", root, full)), escape(st["name"]))) if editable else ""
         tiles.append("<li class='pl-tile pl-stream' data-name='%s' data-country='%s'><a href='%s' title='%s'><span class='pl-tile-art'>%s</span>"
-                     "<span class='pl-tile-name'>%s</span></a></li>"
-                     % (escape(st["name"].lower()), escape(st["country"]), escape(urls.view(root, full)), escape(st["name"]), art, escape(st["name"])))
+                     "<span class='pl-tile-name'>%s</span></a>%s</li>"
+                     % (escape(st["name"].lower()), escape(st["country"]), escape(urls.view(root, full)), escape(st["name"]), art, escape(st["name"]), camera))
     chips = ""
     if countries:
         chips = ("<div class='pl-chips pl-stream-chips' role='group' aria-label='Country'><button type='button' class='pl-chip pl-chip-on' data-country=''>All</button>%s</div>"
@@ -377,13 +380,16 @@ def station_folder_page(root: str, parts: tuple, stations: list, countries: list
     note = "<p class='pl-muted'>Only the first %d are shown.</p>" % len(stations) if cut else ""
     body = ("<main class='pl-main pl-streams-main'><div class='pl-crumbs'>%s</div><h1>%s</h1>"
             "<div class='pl-muted'><span id='stream-count'>%d</span> %s &middot; <a href='%s?plain=1'>%s</a></div>"
-            "<div class='pl-stream-tools'><input type='search' id='stream-search' placeholder='Search %s' aria-label='Search' autocomplete='off'>%s</div>%s%s"
+            "<div class='pl-stream-tools'><input type='search' id='stream-search' placeholder='Search %s' aria-label='Search' autocomplete='off'>%s</div>"
+            "<p class='pl-flash' id='stream-status' role='status' hidden></p>%s%s"
             "<ul class='pl-list pl-grid pl-streams%s' id='streams'>%s</ul>"
-            "<p class='pl-muted' id='stream-none' hidden>Nothing matches.</p></main>"
+            "<p class='pl-muted' id='stream-none' hidden>Nothing matches.</p><input type='file' id='stream-file' accept='image/png,image/jpeg,image/webp' hidden></main>"
             % (" / ".join(crumbs), escape(title), len(stations), "channels" if tv else "stations", escape(urls.browse(root, parts)),
                ("Show %d other file%s too" % (others, "" if others == 1 else "s")) if others else "Show as an ordinary folder",
                "channels" if tv else "stations",
-               "<button type='button' class='pl-btn' id='stream-random'>Random</button>" if shuffle else "", chips, note,
+               ("<button type='button' class='pl-btn' id='stream-random'>Random</button>" if shuffle else "")
+               + ("<button type='button' class='pl-btn' id='stream-edit' aria-pressed='false'><span class='pl-icon pl-i-camera'></span> Edit logos</button>"
+                  if editable else ""), chips, note,
                " pl-streams-tv" if tv else "", "".join(tiles)))
     return layout(title, body, ctx, scripts=(urls.static("grid.js"), urls.static("streams.js")))
 
