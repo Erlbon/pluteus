@@ -116,7 +116,7 @@ class FileInfo:
 @dataclass(frozen=True)
 class Marks:
     """The marker files in one folder. private / hidden are None when the file is absent, else the set of user names
-    (lower-cased) written in it: allowed for .private, still shown in the listing for .hidden."""
+    (lower-cased) written in it: allowed for .private (besides the administrators), still shown in the listing for .hidden."""
     adult: bool = False
     private: frozenset | None = None
     hidden: frozenset | None = None
@@ -189,10 +189,11 @@ class Library:
 
     @staticmethod
     def _closed_to(user: User, marks: Marks) -> bool:
-        """The folder and everything below it is off limits to this user (.adult, .private)."""
+        """The folder and everything below it is off limits to this user (.adult, .private). An empty .private file is enough: the
+        folder is then for administrators only. Names written in it add users to that; administrators always get in."""
         if marks.adult and not user.adult:
             return True
-        return marks.private is not None and user.name.casefold() not in marks.private
+        return marks.private is not None and not user.admin and user.name.casefold() not in marks.private
 
     @classmethod
     def _unlisted_for(cls, user: User, marks: Marks) -> bool:

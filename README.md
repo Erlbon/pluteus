@@ -292,10 +292,11 @@ Measured on 50 real EPUBs over SMB: about 1 s cold, 18 ms warm. Listing order is
 - **Adult folders:** put an empty file named `.adult` (configurable) in any folder; it and everything
   below it is hidden from users without `adult = true`, in feeds, pages and direct URLs (404).
   Works at any depth, so an adult imprint can sit inside a mainstream publisher folder.
-- **Private folders:** put a file named `.private` in a folder and list the user names that may open it, one per
-  line (or comma separated, `#` starts a comment). Everyone else gets a 404 for it and everything below it, in feeds,
-  pages and direct URLs, `adult = true` included. An empty file names nobody, so the folder is closed to everyone.
-  Nested `.private` files must all name the user.
+- **Private folders:** put an empty file named `.private` in a folder: it and everything below it is for users with
+  `admin = true` only. Everyone else gets a 404 for it, in feeds, pages and direct URLs, `adult = true` included. Who is
+  an administrator is set in the admin panel, like `adult`. To let other users in as well, write their names in the file,
+  one per line (or comma separated, `#` starts a comment); administrators never need to be named. Nested `.private`
+  files must all allow the user.
 - **Unlisted folders:** a `.hidden` file leaves the folder out of its parent's listing and the OPDS feeds. Anyone
   with the link can still open it. Names written inside (same format) still see it listed; an empty file names nobody.
 - Marker files are checked once a minute per folder, never indexed. Changes show within about a minute. The file

@@ -65,7 +65,7 @@ class Config:
     extensions: tuple = DEFAULT_EXTENSIONS
     excludes: frozenset = frozenset(DEFAULT_EXCLUDES)
     adult_marker: str = ".adult"
-    private_marker: str = ".private"   # folder (and below) only for the users named inside the file
+    private_marker: str = ".private"   # folder (and below) only for administrators, plus any users named inside the file
     hidden_marker: str = ".hidden"     # folder left out of listings and feeds (a direct link still works)
     realm: str = "pluteus"
     auth_cache_seconds: int = 300

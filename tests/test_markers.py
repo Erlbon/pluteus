@@ -1,4 +1,5 @@
 """The .private and .hidden marker files (next to the older .adult one)."""
+import dataclasses
 import os
 
 import pytest
@@ -35,14 +36,27 @@ def test_private_folder_is_only_for_the_named_users(cfg, library, lib):
             lib.file_info(user, "comics", ("Family", "Photos", "a.cbz"))   # a direct URL answers like a missing folder
 
 
-def test_an_empty_or_unreadable_private_file_names_nobody(cfg, library, lib):
+def test_an_empty_or_unreadable_private_file_is_for_administrators_only(cfg, library, lib):
+    admin = dataclasses.replace(cfg.users["alice"], name="boss", admin=True)
     _write(library / "comics" / "Closed" / ".private", "")
     for user in cfg.users.values():
-        assert "Closed" not in names(lib, user)
+        assert not user.admin and "Closed" not in names(lib, user)         # the file may stay empty: it is enough to close the folder
+    assert "Closed" in names(lib, admin)                                   # an administrator needs no name in it
+    assert lib.list_dir(admin, "comics", ("Closed",)) == []
     (library / "comics" / "Closed" / ".private").unlink()
     (library / "comics" / "Closed" / ".private").mkdir()                   # exists but cannot be read as a file
     lib2 = Library(cfg)
-    assert "Closed" not in names(lib2, cfg.users["alice"])
+    assert "Closed" not in names(lib2, cfg.users["alice"])                 # unreadable: still closed to everybody who is no administrator
+    assert "Closed" in names(lib2, admin)
+
+
+def test_administrators_pass_a_private_file_that_names_other_people(cfg, library, lib):
+    admin = dataclasses.replace(cfg.users["alice"], name="boss", admin=True)
+    _write(library / "comics" / "Shared" / ".private", "bob\n")
+    _write(library / "comics" / "Shared" / "x.cbz", "x")
+    assert "Shared" in names(lib, admin) and "Shared" in names(lib, cfg.users["bob"])
+    assert "Shared" not in names(lib, cfg.users["carol"])
+    assert lib.file_info(admin, "comics", ("Shared", "x.cbz")).size == 1   # the direct URL too
 
 
 def test_names_may_be_comma_separated_and_commented(cfg, library, lib):

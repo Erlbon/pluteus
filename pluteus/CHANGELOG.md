@@ -3,6 +3,7 @@
 Release notes are taken from the section of the tagged version (`## 0.5.0 ...`).
 
 ## Unreleased
+- **An empty `.private` file now means "administrators only".** The file can stay empty: its existence closes the folder (and everything below it) to every user without `admin = true`, who is set in the admin panel like `adult`. Names written inside still add users to the folder, and administrators always get in without being named. **Behaviour change:** before, an empty `.private` closed the folder to everybody (an administrator included) and an administrator who was not named was refused. A `.private` that names users keeps working for them.
 - **A folder's picture shows on its tile, one level up.** In the Covers view a sub-folder whose own folder holds `cover.jpg`, `folder.jpg`, `front.jpg` (and the other names Pluteus already knows) now shows that picture on its tile in the parent's listing, with the folder icon underneath if the picture cannot be loaded. Before, the picture only appeared on the folder's own page. A folder without a picture is unchanged and costs no extra request.
 
 ## 0.9.10 - 2026-10-19
