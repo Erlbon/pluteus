@@ -3,6 +3,7 @@
 Release notes are taken from the section of the tagged version (`## 0.5.0 ...`).
 
 ## Unreleased
+- **A folder's picture shows on its tile, one level up.** In the Covers view a sub-folder whose own folder holds `cover.jpg`, `folder.jpg`, `front.jpg` (and the other names Pluteus already knows) now shows that picture on its tile in the parent's listing, with the folder icon underneath if the picture cannot be loaded. Before, the picture only appeared on the folder's own page. A folder without a picture is unchanged and costs no extra request.
 
 ## 0.9.10 - 2026-10-19
 - **The About page links to the GitHub repository** (source, issues, releases). The README now describes the admin pages as they are (Libraries with the Uploads box, Debug, About, the phone layout) and has a section on Radio and IPTV folders.

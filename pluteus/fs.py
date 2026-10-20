@@ -16,6 +16,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 
+from . import mediainfo
 from .config import MIME_TYPES, UPLOADS_ROOT, Config, Root, User
 
 
@@ -351,6 +352,17 @@ class Library:
             elif filled.get(e.name) is not None:
                 out.append(filled[e.name])
         return out
+
+    def folders_with_cover(self, entries: list) -> frozenset:
+        """The "/"-joined parts of the folder entries that hold a picture of their own (cover.jpg, folder.jpg ...), looked for in
+        parallel when there are many. The cover view shows it on the folder's tile."""
+        dirs = [e for e in entries if e.is_dir and e.src]
+
+        def has_picture(e: Entry) -> bool:
+            return bool(mediainfo.folder_cover(e.src))
+
+        found = [has_picture(e) for e in dirs] if len(dirs) < 8 else list(_PROBES.map(has_picture, dirs))
+        return frozenset("/".join(e.parts) for e, ok in zip(dirs, found) if ok)
 
     def folder_path(self, user: User, root_name: str, parts) -> str:
         """The real location of a folder this user may open (the same checks as a listing), else NotFound."""

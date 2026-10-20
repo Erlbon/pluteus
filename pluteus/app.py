@@ -978,11 +978,12 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
                     state.set_prefs(user.name, prefs)
                 return asked or (folders.get(key, "") if per_folder else "")
             shown_view = await run_in_threadpool(remember_and_find)
+        folder_covers = await run_in_threadpool(lib.folders_with_cover, shown) if cfg.thumbnails else frozenset()
         return HTMLResponse(web.listing_page(
             root, parts, shown, page, pages, len(entries), ctx_for(user, shown_view), metas, progress, sort=sort, desc=desc,
             writable=root == UPLOADS_ROOT, flash=web.flash_text(request.query_params),
             cover_url=urls.cover(root, parts) if (has_cover and parts) else "", view_asked=asked, shelves=flags,
-            note_lazy=note_lazy, note_links=note_links))
+            note_lazy=note_lazy, note_links=note_links, folder_covers=folder_covers))
 
     @guarded("web")
     async def settings(request: Request, user):

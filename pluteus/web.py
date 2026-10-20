@@ -272,7 +272,8 @@ def _sort_bar(here: str, sort: str, desc: bool, view: str = "") -> str:
 def listing_page(root: str, parts: tuple, entries: list, page: int, pages: int, total: int, ctx: Ctx,
                  metas: dict | None = None, progress: dict | None = None,
                  sort: str = "name", desc: bool = False, writable: bool = False, flash: str = "", cover_url: str = "",
-                 view_asked: str = "", shelves: dict | None = None, note_lazy: str = "", note_links: dict | None = None) -> str:
+                 view_asked: str = "", shelves: dict | None = None, note_lazy: str = "", note_links: dict | None = None,
+                 folder_covers: frozenset = frozenset()) -> str:
     metas = metas or {}
     progress = progress or {}
     shelves = shelves or {}
@@ -321,7 +322,7 @@ def listing_page(root: str, parts: tuple, entries: list, page: int, pages: int, 
                        _shelf_buttons(urls, root, e.parts, shelves.get("/".join(e.parts), [])),
                        _row_actions(urls, root, e.parts, e.name) if writable else ""))
     here = urls.browse(root, parts)
-    tiles = _tiles(ctx, root, entries, metas, progress, shelves) if ctx.view == "grid" else []
+    tiles = _tiles(ctx, root, entries, metas, progress, shelves, folder_covers) if ctx.view == "grid" else []
     pager = ""
     if pages > 1:
         prev = ("<a href='%s'>&larr; Previous</a>" % escape(here + _query(sort, desc, page - 1, view_asked))) if page > 1 else ""
@@ -407,14 +408,20 @@ def _note_box(html: str, where: str, edit_url: str = "") -> str:
 COVER_KINDS = ("epub", "comic", "audio", "image")
 
 
-def _tiles(ctx: Ctx, root: str, entries: list, metas: dict, progress: dict, shelves: dict | None = None) -> list:
-    """The cover view: one tile per entry, a picture (a cover when the file has one, else its type icon) over the title."""
+def _tiles(ctx: Ctx, root: str, entries: list, metas: dict, progress: dict, shelves: dict | None = None,
+           folder_covers: frozenset = frozenset()) -> list:
+    """The cover view: one tile per entry, a picture (a cover when the file has one, else its type icon) over the title.
+    A folder tile shows the folder's own picture (cover.jpg, folder.jpg ...) when it has one: folder_covers holds the "/"-joined parts."""
     urls, out = ctx.urls, []
     for e in entries:
         if e.is_dir:
+            art = ROOT_ICON
+            if "/".join(e.parts) in folder_covers:
+                art = ("<img class='pl-tile-img' src='%s' alt='' loading='lazy'><span class='pl-tile-fallback'>%s</span>"
+                       % (escape(urls.cover(root, e.parts)), ROOT_ICON))
             out.append("<li class='pl-tile pl-tile-folder'><a href='%s'><span class='pl-tile-art'>%s</span>"
                        "<span class='pl-tile-name'>%s</span></a>%s</li>"
-                       % (escape(urls.browse(root, e.parts)), ROOT_ICON, escape(e.display),
+                       % (escape(urls.browse(root, e.parts)), art, escape(e.display),
                           _shelf_buttons(urls, root, e.parts, (shelves or {}).get("/".join(e.parts), []))))
             continue
         kind = kinds.kind_of(e.name)
