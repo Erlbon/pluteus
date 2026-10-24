@@ -54,6 +54,15 @@ class User:
 
 
 @dataclass(frozen=True)
+class CastSite:
+    """A place with Chromecasts and one cast agent (castagent.py) that controls them. The agent proves who it is with a token; the
+    config holds only the token's SHA-256 (made by `pluteus cast-token`)."""
+    name: str
+    token_hash: str        # "sha256$<64 hex digits>"
+    users: tuple = ()      # the users who may cast to this site; empty = every signed-in user
+
+
+@dataclass(frozen=True)
 class Config:
     roots: dict
     users: dict
@@ -99,6 +108,8 @@ class Config:
     debug: bool = False            # debug logging ALWAYS on (see debuglog.py); off by default. The admin page can also switch it on for 15 minutes
     relay_allow: tuple = ()        # hosts pluteus may fetch even on a private address or an unusual port, as "host:port" (a media server on the same machine)
     relay_key: str = ""            # the key that encrypts stored logins and headers for protected streams; "" = pluteus makes one in the data folder (relay.key)
+    cast: bool = False             # play files on Chromecasts through cast agents (cast.py, castagent.py); sites are listed in [[cast_sites]]
+    cast_sites: tuple = ()         # the CastSite entries of [[cast_sites]]
     update_check: bool = False     # the admin page asks GitHub once a day for a newer version and security advisories (opt-in)
     update_repo: str = "Erlbon/pluteus"   # owner/name of the repository to ask
     site_port: int = 0             # port of the main site as seen from the LAN when it differs from `port` (Docker: 8100); 0 = port
@@ -111,11 +122,13 @@ class Config:
 # [[roots]] by mistake would silently do nothing. Every table's keys are therefore checked.
 _SERVER_KEYS = {"host", "port", "page_size", "base_path", "realm", "auth_cache_seconds", "anonymous_user",
                 "session_days", "cookie_secure", "trust_proxy", "allowed_hosts", "opds_pse", "show_all_files", "text_view_kb",
-                "admin_port", "admin_host", "site_port", "update_check", "update_repo", "share_target", "join_token", "join_user", "admin_url", "library_bases", "subsonic", "webdav", "kosync", "thumbnails", "relay", "relay_streams_user", "relay_streams_total", "relay_key", "relay_allow", "debug"}
+                "admin_port", "admin_host", "site_port", "update_check", "update_repo", "share_target", "join_token", "join_user", "admin_url", "library_bases", "subsonic", "webdav", "kosync", "thumbnails", "relay", "relay_streams_user", "relay_streams_total", "relay_key", "relay_allow", "cast", "debug"}
 _GLOBAL_KEYS = {"exclude", "extensions", "display_strip", "adult_marker", "private_marker", "hidden_marker", "metadata", "cache_dir",
                 "data_dir", "themes_dir", "theme", "uploads_dir", "upload_max_mb", "upload_quota_mb"}
 _ROOT_KEYS = {"name", "path", "notes"}
 _USER_KEYS = {"name", "password_hash", "roots", "adult", "upload", "admin", "notes"}
+_CAST_SITE_KEYS = {"name", "token_hash", "users"}
+_TOKEN_HASH = re.compile(r"sha256\$[0-9a-f]{64}")
 UPLOADS_ROOT = "uploads"          # the virtual root every user sees for their own upload folder
 _FOLDER_NAME = re.compile(r"^[A-Za-z0-9_-](?:[A-Za-z0-9 _.-]*[A-Za-z0-9_-])?$")
 _DEVICE_NAMES = {"con", "prn", "aux", "nul", *("com%d" % i for i in range(1, 10)), *("lpt%d" % i for i in range(1, 10))}
@@ -191,7 +204,7 @@ def _check_keys(table: dict, allowed: set, where: str) -> None:
 def parse_config(data: dict, check_roots: bool = True) -> Config:
     from .fs import longpath
 
-    _check_keys(data, {"server", "roots", "users"} | _GLOBAL_KEYS, "the top level")
+    _check_keys(data, {"server", "roots", "users", "cast_sites"} | _GLOBAL_KEYS, "the top level")
     server = data.get("server", {})
     _check_keys(server, _SERVER_KEYS | _GLOBAL_KEYS, "[server]")
     # Settings may live in [server] or above the first table header; [server] wins.
@@ -235,6 +248,23 @@ def parse_config(data: dict, check_roots: bool = True) -> Config:
                            bool(u.get("admin", False)), False, bool(u.get("notes", False)))
     if not users:
         raise ConfigError("no [[users]] defined")
+
+    cast_sites = []
+    for s in data.get("cast_sites", []):
+        _check_keys(s, _CAST_SITE_KEYS, "[[cast_sites]] %r" % s.get("name", "?"))
+        site_name = str(s.get("name", ""))
+        if not re.fullmatch(r"[A-Za-z0-9_-]{1,40}", site_name):
+            raise ConfigError("cast site name %r must use only letters, digits, - and _ (at most 40)" % site_name)
+        if any(site_name == c.name for c in cast_sites):
+            raise ConfigError("duplicate cast site %r" % site_name)
+        token_hash = str(s.get("token_hash", ""))
+        if not _TOKEN_HASH.fullmatch(token_hash):
+            raise ConfigError("cast site %r needs a token_hash (run: python -m pluteus cast-token --name %s)" % (site_name, site_name))
+        site_users = tuple(str(n) for n in s.get("users", ()))
+        for n in site_users:
+            if n not in users:
+                raise ConfigError("cast site %r refers to unknown user %r" % (site_name, n))
+        cast_sites.append(CastSite(site_name, token_hash, site_users))
 
     anonymous_user = str(server.get("anonymous_user", ""))
     if anonymous_user and anonymous_user not in users:
@@ -289,6 +319,7 @@ def parse_config(data: dict, check_roots: bool = True) -> Config:
         text_view_kb=max(16, int(server.get("text_view_kb", 1024))),
         admin_port=admin_port, admin_host=str(server.get("admin_host", "127.0.0.1")),
         site_port=_in_range(server, "site_port", 0, 0, 65535),
+        cast=bool(server.get("cast", False)), cast_sites=tuple(cast_sites),
         relay=bool(server.get("relay", False)), debug=bool(server.get("debug", False)), relay_streams_user=_in_range(server, "relay_streams_user", 2, 1, 50),
         relay_streams_total=_in_range(server, "relay_streams_total", 6, 1, 500), relay_key=str(server.get("relay_key", "")), relay_allow=_host_ports(server.get("relay_allow", ())),
         library_bases=tuple(str(b) for b in server.get("library_bases", ())), admin_url=_admin_url(server.get("admin_url", "")), join_token=str(server.get("join_token", "")), join_user=str(server.get("join_user", "")),

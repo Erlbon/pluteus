@@ -52,6 +52,10 @@ class Urls:
         """Station number `index` of a station file, played through the server (the relay)."""
         return "%s?i=%d" % (self._build("relay", root, parts), index)
 
+    def cast_media(self, token: str, name: str) -> str:
+        """A file for a Chromecast: the token (made by cast.sign) says which file and for whom; the name only helps the receiver."""
+        return "%s/cast/%s/%s" % (self.base, token, quote(name, safe=""))
+
     def my_streams(self) -> str:
         return self.base + "/settings/streams"
 

@@ -13,6 +13,7 @@ dependencies = ["starlette>=0.40", "uvicorn>=0.30", "python-multipart>=0.0.13", 
 
 [project.optional-dependencies]
 dev = ["pytest>=8", "httpx>=0.27", "pillow>=10"]     # pillow: tests, and tools/make_icon.py
+cast = ["pychromecast>=14"]     # only for the cast agent (pluteus/castagent.py); the server itself does not need it
 
 [project.scripts]
 pluteus = "pluteus.__main__:main"

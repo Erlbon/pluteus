@@ -111,3 +111,33 @@ around that: the code is in `pluteus/relay.py` and shares its address guard with
   - **Honest limit:** the key has to be readable by the server, so someone who can read both the data folder and the config (or the running process)
     can open the entries. The encryption protects a copy of the database, a backup or a leaked state file, not a compromised server.
 - Traffic through the relay uses the server's upload bandwidth, which is why it is off by default and limited.
+
+## Casting to Chromecasts (`cast = true`, off by default)
+
+Casting adds three kinds of request, all in `pluteus/cast.py` and wired up in `pluteus/app.py`; the agent that carries them out is
+`pluteus/castagent.py`, a separate program on the Chromecasts' own network. Pluteus never connects to a Chromecast itself and never opens a
+connection to an address a client names.
+
+- **The agent's token** (`Authorization: Bearer`): made by `pluteus cast-token --name SITE`, shown once, and kept by the agent in a file. The
+  config holds only its SHA-256 (`token_hash`), so a copy of `config.toml` does not let anyone act as the agent. Every site is compared in
+  constant time, and a wrong token is counted against the caller's address exactly like a wrong app key (the same lock), so guessing is
+  throttled. A token reaches only `/cast-agent/poll` and `/cast-agent/status`; it opens no library file and no page, and a user's login is not
+  an agent token. The agent only connects out to pluteus: nothing has to be opened at the site that has the Chromecasts.
+- **What the agent may report** is cleaned before it is stored: at most 20 devices, ids restricted to letters, digits and `_ . : -`, names and
+  titles stripped of control characters and capped, states limited to four words, numbers range-checked. What it reports is shown to the users
+  who may cast to that site and nothing else.
+- **Media addresses** (`/cast/<token>/<name>`): the token is signed (HMAC-SHA256, key in `cast.key` in the data folder, owner-only permissions
+  where the system supports it, never replaced if it exists but is unusable) and names **one file for one user**, for twelve hours. It is the
+  only credential, because a Chromecast cannot log in, so whoever holds the address can read that one file until it lapses. The file is looked
+  up again at every request with the user's **current** rights (a removed user, a folder closed since, or a deleted file ends it at once). The
+  token is masked in the access and debug logs (`/cast/***/`). A reverse proxy in front of pluteus may still log it. The route answers CORS
+  with `*` because the receiver asks for it; the token, not the origin, is what protects the file. Only music and video types a Chromecast
+  plays are offered.
+- **Who may cast:** every signed-in user, never the shared anonymous user (`anonymous_user`), narrowed per site with `users = [...]` in
+  `[[cast_sites]]`. Starting or controlling playback needs the same login and the same cross-site check as any other write, and an app key
+  (read-only) cannot start anything.
+- **Limits:** at most 50 commands wait for one site, a command nobody collected within a minute is dropped, requests are capped at 16 KB (the
+  agent's status at 64 KB).
+- **The agent's own web server** (the address handed to the Chromecast) answers only clients on a private, loopback or link-local address,
+  only for addresses pluteus named (any other host is refused when it is registered, at most 50 at a time, twelve hours each), and never
+  follows a redirect. The agent never sends its token to anything but the pluteus address it was started with.

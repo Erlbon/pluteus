@@ -228,7 +228,24 @@ music and books layouts (the comics layout is recorded; "780 - Music" suggests D
 
 **Audiences:** notes follow the same folder markers as everything else (a note inside an `.adult` folder is as hidden as the folder).
 
-## 5. Smaller items
+## 5. Casting to Chromecasts
+
+**Owner, 2026-10-24:** wanted, also for a Chromecast at a second site over a tailnet; transcoding is allowed here as an optional ffmpeg feature (this
+is the one exception to "Out of scope on purpose" under item 1: it applies to files a Chromecast cannot play, never to the relay's streams).
+The design and set-up are in `docs/cast.md`; the threat model is in SECURITY.md.
+
+| Step | Contents | Size |
+|---|---|---|
+| C1 (done, unreleased) | `cast` config and `[[cast_sites]]`, the agent (`castagent.py`), `/api/cast`, `/api/cast/play`, `/api/cast/control`, signed media addresses, Services line | large |
+| C2 | "Play on…" in the player bar and folder pages, queue handoff from the resident player, Now Playing in the page | medium |
+| C3 | the agent caches ahead of the playhead, a bitrate cap per site, optional ffmpeg conversion (H.264 and AAC) for files a Chromecast cannot play | large |
+| C4 | admin view of sites and agents, devices found after the agent started, Pi and Tailscale set-up guide | medium |
+| C5 | optional custom receiver (cover art, notes, TV layout) | large |
+
+**Also wanted (owner, 2026-10-24), not started:** an Android / Google TV app for pluteus. A Google TV box could then run the player itself, so
+casting matters mainly for receiver-only devices such as the Chromecast v2.
+
+## 6. Smaller items
 
 Done in 0.9.8: Subsonic recently played (from the saved positions, nothing new is logged) and resume (`savePlayQueue`, `getPlayQueue`); the player bar merged into the pluteus bar on wide screens; a TV mode for the web pages (large buttons, remote arrow keys; Kodi over WebDAV still covers most of it); a way to forget the per-folder List / Covers choices; a manual Docker image workflow (`docker.yml`, publishes only when ticked). The release workflow already smoke tests the packaged exe, and the Linux build, on every tag.
 

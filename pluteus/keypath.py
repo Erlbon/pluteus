@@ -15,6 +15,8 @@ from __future__ import annotations
 import base64
 import re
 
+from . import cast
+
 ALLOWED = ("/opds", "/opds-shelves/", "/dl/", "/thumb/", "/cover/", "/cbz/")
 FEED_TYPES = ("application/atom+xml", "application/opds+json")
 _KEY = re.compile(r"[A-Za-z0-9_-]{8,80}")
@@ -22,8 +24,8 @@ MASK = re.compile(r"/k/[^/?#]+")
 
 
 def masked(path: str) -> str:
-    """The path with a key removed, for logs."""
-    return MASK.sub("/k/***", path, count=1) if "/k/" in path else path
+    """The path with a key removed, for logs (an app key, or the token of a cast media address)."""
+    return cast.masked(MASK.sub("/k/***", path, count=1) if "/k/" in path else path)
 
 
 class KeyPath:
