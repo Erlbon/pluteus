@@ -228,22 +228,22 @@ music and books layouts (the comics layout is recorded; "780 - Music" suggests D
 
 **Audiences:** notes follow the same folder markers as everything else (a note inside an `.adult` folder is as hidden as the folder).
 
-## 5. Casting to Chromecasts
+## 5. Casting to TVs and Chromecasts
 
-**Owner, 2026-10-24:** wanted, also for a Chromecast at a second site over a tailnet; transcoding is allowed here as an optional ffmpeg feature (this
-is the one exception to "Out of scope on purpose" under item 1: it applies to files a Chromecast cannot play, never to the relay's streams).
-The design and set-up are in `docs/cast.md`; the threat model is in SECURITY.md.
+**Owner, 2026-10-24:** wanted, **on the same network only** (remote access and a second site were tried as a design and dropped as a blind path).
+Devices: Google Cast and DLNA/UPnP; not AirPlay, Roku or Miracast (nothing to test them on, and Miracast has never worked for the owner). The first
+device is a TCL P745 (Google TV). Transcoding is allowed here as an optional ffmpeg feature (the one exception to "Out of scope on purpose" under
+item 1: it applies to files a device cannot play, never to the relay's streams). Set-up and design are in `docs/cast.md`, the threat model in SECURITY.md.
 
 | Step | Contents | Size |
 |---|---|---|
-| C1 (done, unreleased) | `cast` config and `[[cast_sites]]`, the agent (`castagent.py`), `/api/cast`, `/api/cast/play`, `/api/cast/control`, signed media addresses, Services line | large |
-| C2 | "Play on…" in the player bar and folder pages, queue handoff from the resident player, Now Playing in the page | medium |
-| C3 | the agent caches ahead of the playhead, a bitrate cap per site, optional ffmpeg conversion (H.264 and AAC) for files a Chromecast cannot play | large |
-| C4 | admin view of sites and agents, devices found after the agent started, Pi and Tailscale set-up guide | medium |
-| C5 | optional custom receiver (cover art, notes, TV layout) | large |
+| 1 (done, unreleased) | `cast` config and `[[cast_devices]]`, the Google Cast backend and the device manager, `/api/cast`, `/api/cast/play`, `/api/cast/control`, signed media addresses, Services line | large |
+| 2 | "Play on…" in the player bar and folder pages, queue handoff from the resident player, Now Playing in the page | medium |
+| 3 | DLNA/UPnP backend (SSDP and SOAP, standard library only); the calls are checked against the specification first | large |
+| 4 | optional ffmpeg conversion for files a device cannot play; finding devices on the network instead of typing addresses | medium |
 
-**Also wanted (owner, 2026-10-24), not started:** an Android / Google TV app for pluteus. A Google TV box could then run the player itself, so
-casting matters mainly for receiver-only devices such as the Chromecast v2.
+**Also wanted (owner, 2026-10-24), not started:** an Android / Google TV app for Pluteus. A Google TV could then run the player itself, so casting
+matters mainly for devices that only receive.
 
 ## 6. Smaller items
 

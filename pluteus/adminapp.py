@@ -197,9 +197,9 @@ def create_admin_app(main_app) -> Starlette:
             {"name": "Stream relay (radio over the server)", "on": cfg.relay, "setting": "relay = true",
              "address": base + "/relay (%d per user, %d in all)" % (cfg.relay_streams_user, cfg.relay_streams_total) if cfg.relay else "",
              "keys": "users with an upload folder"},
-            {"name": "Chromecast casting (cast agents)", "on": cfg.cast, "setting": "cast = true",
-             "address": base + "/cast-agent (%d of %d sites online)" % (sum(1 for s in cfg.cast_sites if st.cast_hub.online(s.name)), len(cfg.cast_sites))
-             if cfg.cast and st.cast_hub else "", "keys": "agent token"},
+            {"name": "Casting (TVs and Chromecasts)", "on": cfg.cast, "setting": "cast = true",
+             "address": "%d of %d devices connected" % (st.cast_manager.online_count(), len(cfg.cast_devices)) if cfg.cast and st.cast_manager else "",
+             "keys": "any signed-in user"},
         ]
         return {
             "relay": relay_status() if cfg.relay else None,

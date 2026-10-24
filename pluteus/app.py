@@ -32,7 +32,7 @@ from starlette.responses import (FileResponse, HTMLResponse, JSONResponse, Plain
                                  RedirectResponse, Response, StreamingResponse)
 from starlette.routing import Route
 
-from . import aboutfiles, cast, cbz, debuglog, fetchimage, keypath, kinds, m3uimport, markdown, mediainfo, notes, opds, opds2, radio, relay, stationsave, streams, subtitles, tabular, thumbs, textview, uploads, vault, web, ziputil
+from . import aboutfiles, cast, castdevices, cbz, debuglog, fetchimage, keypath, kinds, m3uimport, markdown, mediainfo, notes, opds, opds2, radio, relay, stationsave, streams, subtitles, tabular, thumbs, textview, uploads, vault, web, ziputil
 from .auth import Authenticator
 from .bodies import read_limited
 from .cbz import CbzError
@@ -2234,11 +2234,10 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
     if cfg.kosync:
         from .kosync import KoSync
         routes.append(Route("/kosync/{route:path}", KoSync(auth, state, Throttle()).handle, methods=["GET", "PUT", "POST"]))
-    cast_hub = None
+    cast_manager = None
     if cfg.cast:
-        cast_hub = cast.Hub(cfg.cast_sites)
+        cast_manager = castdevices.Manager(cfg.cast_devices, castdevices.backends_for(cfg.cast_devices))
         cast_key = cast.load_key(cfg.data_dir)
-        cast_throttle = Throttle()
 
         async def cast_json(request: Request) -> dict:
             raw = await read_limited(request, 16384)
@@ -2266,38 +2265,57 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
             if cfg.anonymous_user and user.name == cfg.anonymous_user:
                 raise NotFound("casting is not available to this user")
 
+        def cast_origin(request: Request) -> str:
+            """The address a device uses to reach this server: cast_media_base from the config, else the address the user opened the page with
+            (the one that works for them is the likeliest to work for a device on the same network)."""
+            if cfg.cast_media_base:
+                return cfg.cast_media_base
+            scheme, host = request.url.scheme, request.headers.get("host", "")
+            if cfg.trust_proxy:
+                scheme = request.headers.get("x-forwarded-proto", scheme).split(",")[0].strip()
+                host = request.headers.get("x-forwarded-host", host).split(",")[0].strip()
+            if scheme not in ("http", "https") or not re.fullmatch(r"[A-Za-z0-9.\[\]:-]+", host):
+                raise cast.CastError("Could not tell which address a device should use to reach this server: set cast_media_base in the config.", 500)
+            if (urlsplit("//" + host).hostname or "").lower() in ("localhost", "127.0.0.1", "::1"):
+                raise cast.CastError("This page was opened as %s, which a TV cannot reach. Open Pluteus by this computer's network address, "
+                                     "or set cast_media_base in the config." % host, 409)
+            return "%s://%s" % (scheme, host)
+
         @guarded("api")
         async def cast_state(request: Request, user):
-            """The places this user may cast to, their Chromecasts and what each is doing."""
+            """The devices this user may cast to and what each is doing (connecting to them starts in the background at the first request)."""
             cast_user(user)
-            return JSONResponse({"sites": cast_hub.snapshot(user.name)}, headers={"Cache-Control": "no-store"})
+            cast_manager.start()
+            return JSONResponse({"devices": cast_manager.snapshot(user.name)}, headers={"Cache-Control": "no-store"})
 
         @guarded("api")
         async def cast_play(request: Request, user):
-            """Play one music or video file of the library on a Chromecast: the agent is sent a signed address for it."""
+            """Play one music or video file of the library on a device: the device is sent a signed address for it."""
             cast_user(user)
             try:
                 data = await cast_json(request)
-                site, device, root, path = (str(data.get(k, "")) for k in ("site", "device", "root", "path"))
+                device, root, path = (str(data.get(k, "")) for k in ("device", "root", "path"))
                 parts = _parts(path)
                 start = cast_number(data, "start", 0, 10 ** 6, 0)
+                cast_manager.device(device, user.name)
                 info = await run_in_threadpool(lib.file_info, user, root, parts, True)
                 mime = kinds.INLINE_MIME.get(kinds.extension(info.name), "")
                 if kinds.kind_of(info.name) not in ("audio", "video"):
-                    raise cast.CastError("Only music and video files can be played on a Chromecast.", 415)
-                if mime not in cast.NATIVE_TYPES:
-                    raise cast.CastError("A Chromecast cannot play %s files as they are." % kinds.extension(info.name).lstrip("."), 415)
+                    raise cast.CastError("Only music and video files can be played on a device.", 415)
+                if mime not in cast_manager.types_for(device):
+                    raise cast.CastError("%s cannot play %s files as they are." % (device, kinds.extension(info.name).lstrip(".")), 415)
                 tags = await run_in_threadpool(mediainfo.read_info, info.path)
                 title = " – ".join(x for x in (tags.get("artist"), tags.get("title")) if x) or info.name.rsplit(".", 1)[0]
-                token = cast.sign(cast_key, root, parts, user.name)
-                number = cast_hub.enqueue(site, user.name, device, "play", url=urls.cast_media(token, info.name), mime=mime, title=title, start=start)
+                url = cast_origin(request) + urls.cast_media(cast.sign(cast_key, root, parts, user.name), info.name)
+                cast_manager.start()
+                await run_in_threadpool(cast_manager.command, user.name, device, "play", url=url, mime=mime, title=title, start=start)
             except cast.CastError as e:
                 return JSONResponse({"error": e.message}, e.status)
-            return JSONResponse({"ok": True, "command": number, "title": title})
+            return JSONResponse({"ok": True, "title": title})
 
         @guarded("api")
         async def cast_control(request: Request, user):
-            """Pause, resume, stop, seek or change the volume of what a Chromecast is playing."""
+            """Pause, resume, stop, seek or change the volume of what a device is playing."""
             cast_user(user)
             try:
                 data = await cast_json(request)
@@ -2308,14 +2326,14 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
                     fields["value"] = cast_number(data, "value", 0, 10 ** 6)
                 elif op == "volume":
                     fields["value"] = round(cast_number(data, "value", 0, 100))
-                number = cast_hub.enqueue(str(data.get("site", "")), user.name, str(data.get("device", "")), op, **fields)
+                await run_in_threadpool(cast_manager.command, user.name, str(data.get("device", "")), op, **fields)
             except cast.CastError as e:
                 return JSONResponse({"error": e.message}, e.status)
-            return JSONResponse({"ok": True, "command": number})
+            return JSONResponse({"ok": True})
 
         async def cast_media(request: Request):
-            """A file for a Chromecast. The token in the address is the only credential: it names one file for one user, and the file is
-            looked up again with that user's current rights. Answers Range requests (FileResponse) and the CORS the receiver asks for."""
+            """A file for a device. The token in the address is the only credential: it names one file for one user, and the file is looked up
+            again with that user's current rights. Answers Range requests (FileResponse) and the CORS a receiver asks for."""
             if request.method == "OPTIONS":
                 return Response(status_code=204, headers={**cast.CORS, "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS"})
             found = cast.verify(cast_key, request.path_params["token"])
@@ -2329,49 +2347,9 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
             mime = kinds.INLINE_MIME.get(kinds.extension(info.name)) or info.mime
             return FileResponse(info.path, media_type=mime, headers={**cast.CORS, "Cache-Control": "private, no-store"})
 
-        def cast_agent_site(request: Request) -> tuple:
-            """(site name, None) for an agent that sent a good token, or ('', the refusal). Wrong tokens are counted like wrong passwords."""
-            wait = cast_throttle.wait_key(request)
-            if wait:
-                return "", PlainTextResponse("Too many wrong tokens. Try again in %d seconds." % wait, 429, headers={"Retry-After": str(wait)})
-            header = request.headers.get("authorization", "")
-            token = header[7:].strip() if header[:7].lower() == "bearer " else ""
-            name = cast_hub.site_for_token(token) if token else ""
-            if not name:
-                cast_throttle.fail_key(request)
-                return "", PlainTextResponse("Authentication required", 401)
-            return name, None
-
-        async def cast_agent_poll(request: Request):
-            """The agent's long poll: answers with the commands waiting for its site (a few seconds at most when ?wait=N is given)."""
-            name, refused = cast_agent_site(request)
-            if refused:
-                return refused
-            try:
-                wait = min(cast.POLL_SECONDS, max(0.0, float(request.query_params.get("wait", cast.POLL_SECONDS))))
-            except ValueError:
-                wait = cast.POLL_SECONDS
-            return JSONResponse({"commands": await cast_hub.wait_commands(name, wait), "protocol": 1}, headers={"Cache-Control": "no-store"})
-
-        async def cast_agent_status(request: Request):
-            """The agent says which Chromecasts it sees and what each is doing."""
-            name, refused = cast_agent_site(request)
-            if refused:
-                return refused
-            raw = await read_limited(request, 65536)
-            try:
-                data = json.loads(raw.decode("utf-8")) if raw is not None else None
-            except (ValueError, UnicodeDecodeError):
-                data = None
-            if not isinstance(data, dict):
-                return JSONResponse({"error": "The request was not understood."}, 400)
-            cast_hub.report(name, data.get("devices"))
-            return JSONResponse({"ok": True})
-
         routes += [Route("/api/cast", cast_state), Route("/api/cast/play", cast_play, methods=["POST"]),
                    Route("/api/cast/control", cast_control, methods=["POST"]),
-                   Route("/cast/{token}/{name:path}", cast_media, methods=["GET", "HEAD", "OPTIONS"]),
-                   Route("/cast-agent/poll", cast_agent_poll), Route("/cast-agent/status", cast_agent_status, methods=["POST"])]
+                   Route("/cast/{token}/{name:path}", cast_media, methods=["GET", "HEAD", "OPTIONS"])]
     fetchimage.set_allowed(cfg.relay_allow)                     # the hosts the owner trusts on a private address (relay_allow)
     debug = debuglog.DebugLog(always=cfg.debug)
     if cfg.debug:
@@ -2390,7 +2368,7 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
     app.state.cfg = cfg
     app.state.debuglog = debug
     app.state.relay_limits = relay_limits
-    app.state.cast_hub = cast_hub
+    app.state.cast_manager = cast_manager
     app.state.relay_vault = vault_state
     app.state.config_path = config_path
     app.state.started = time.time()

@@ -105,8 +105,6 @@ def main(argv=None) -> int:
     check = sub.add_parser("check-config", help="validate a config file and exit")
     check.add_argument("--config", required=True)
     sub.add_parser("hash-password", help="print a password hash (for editing config.toml by hand)")
-    cast_token = sub.add_parser("cast-token", help="make a token for a cast agent and the [[cast_sites]] entry for config.toml")
-    cast_token.add_argument("--name", required=True, help="the name of the site the agent serves (letters, digits, - and _)")
     sup = sub.add_parser("supervise", help="run the server and start it again whenever it exits (for a scheduled task)")
     sup.add_argument("--config", required=True)
     sup.add_argument("--log", required=True, help="file the server's output is appended to")
@@ -159,22 +157,6 @@ def main(argv=None) -> int:
         except useredit.EditError as e:
             print("Error:", e, file=sys.stderr)
             return 1
-        return 0
-    if a.cmd == "cast-token":
-        import re
-        from . import cast
-        if not re.fullmatch(r"[A-Za-z0-9_-]{1,40}", a.name):
-            print("Error: the name must use only letters, digits, - and _ (at most 40)", file=sys.stderr)
-            return 1
-        token, token_hash = cast.new_agent_token()
-        print("Token for the agent (shown only now; give it to the agent, never put it in config.toml):")
-        print("  " + token)
-        print()
-        print("Add this to config.toml, set cast = true under [server], and restart:")
-        print()
-        print("[[cast_sites]]")
-        print('name = "%s"' % a.name)
-        print('token_hash = "%s"' % token_hash)
         return 0
     if a.cmd in (None, "start"):
         from .firstrun import start as start_default

@@ -1,109 +1,85 @@
-# Casting to Chromecasts
+# Casting to TVs and Chromecasts
 
-Pluteus can play music and video from the library on a Chromecast (the first and second generation, the round one, and newer). Status:
-**step C1 of the plan**: the server side, the agent and the web API are in; there is no button in the web pages yet (that is C2), so for now
-you start playback with the API (examples below). Off by default.
+Pluteus can play music and video from the library on a TV or Chromecast on your own network. Off by default. Status: **the server side and the
+web API are in; there is no button in the web pages yet** (that is the next step), so for now you start playback with the API (examples below).
 
-## How it fits together
+Supported: **Google Cast** (Chromecast, Google TV and Android TV devices with Chromecast built in). DLNA/UPnP is planned next. Not planned: AirPlay,
+Roku, Miracast.
 
-A Chromecast cannot log in, cannot join a tailnet, and fetches its media itself, so pluteus does not talk to it. A small separate program, the
-**cast agent**, runs on the same network as the Chromecasts and only ever connects *out* to pluteus:
+## How it works
+
+Pluteus does not send the device the file. It sends the device the *address* of a signed link, and the device fetches the file from Pluteus itself:
 
 ```
-browser / app ──► pluteus server ◄── long poll (outbound only) ── cast agent ──► Chromecast
-                      │                                              ▲  │
-                      └── signed media address ── fetched by ────────┘  └── plays the agent's own address
+browser / app ──► Pluteus ──(play this address)──► TV
+                     ▲                              │
+                     └──── the TV fetches the file ──┘   /cast/<token>/<name>   (signed, one file, one user, 12 hours)
 ```
 
-- The agent reports which Chromecasts it sees and what each is doing (`POST /cast-agent/status`).
-- It asks for commands with a long poll (`GET /cast-agent/poll`): play, pause, resume, stop, seek, volume.
-- For "play" pluteus sends a **signed address** that names one file for one user (twelve hours). The agent fetches the file from pluteus and
-  serves it to the Chromecast from its own small web server, so the Chromecast never has to reach pluteus. That is what makes a site over a
-  tailnet, or behind someone else's router, work: only the agent needs a route to pluteus.
-- The same agent works at home. Run it on the Docker host or a Pi, not inside the container: Chromecast discovery (mDNS) does not pass through
-  Docker Desktop on Windows, which is also why you can give the Chromecasts' addresses with `--host`.
+So two things must be true: Pluteus can reach the TV, and the TV can reach Pluteus.
 
 ## Set it up
 
-**1. On the pluteus server**: make a token for the site and add the site to `config.toml`.
+**1. Find the TV's address.** On the TV (Settings, Network) or in your router's device list. Give it a fixed address in the router (a DHCP
+reservation) so it does not change. TVs with Chromecast built in, such as Google TV models, listen on port 8009; nothing to switch on.
 
-```powershell
-python -m pluteus cast-token --name Cabin
+**2. Install the one library the Google Cast support needs**, where Pluteus runs. In Docker, add it to the image (the `Dockerfile` line
+`RUN pip install --no-cache-dir .` becomes `RUN pip install --no-cache-dir ".[cast]"`) and rebuild; natively, `pip install pychromecast`.
+
+**3. Add the TV to `config.toml`** and switch casting on:
+
+```toml
+[server]
+cast = true
+cast_media_base = "http://192.168.1.10:8100"    # how the TV reaches Pluteus: this computer's network address and the published port
+
+[[cast_devices]]
+name = "Living room"
+address = "192.168.1.50"
+# users = ["alice"]      # who may cast here; leave out for every signed-in user
 ```
 
-It prints the token (shown only once) and the two lines to put in the config. Set `cast = true` under `[server]`, add the lines as a
-`[[cast_sites]]` entry (see `config.example.toml`), restart. The admin page, Status, Services, shows how many sites are online.
+- **`cast_media_base`** matters most with Docker Desktop on Windows. Without it Pluteus uses the address the page was opened with, which is
+  useless to a TV when you opened it as `localhost` (Pluteus then refuses with a message saying so). Use this computer's address on the network
+  and the port Docker publishes (`8100` in the example compose file). Not your public hostname: from inside your own network it often does not
+  resolve, or does not loop back.
+- **Windows Firewall** may block the TV from reaching that port. If a play command is accepted but nothing happens, check that first.
+- Devices are listed by address on purpose: automatic discovery (mDNS, SSDP) does not pass through Docker Desktop on Windows.
 
-**2. On a machine at the site** (a Raspberry Pi 4 or any small always-on computer with Python 3.11 or newer):
+**4. Restart Pluteus.** The admin page, Status, Services, shows "Casting" and how many devices are connected. Pluteus connects to each device
+in the background and keeps trying every 30 seconds, so a TV that is off when Pluteus starts is picked up when it is switched on.
+
+**5. Try it.** As a signed-in user (the examples use Basic login; a browser session works the same way, with the site's own `Origin` on writes):
 
 ```bash
-pip install pychromecast
-# copy pluteus/castagent.py here (it is one file, nothing else of pluteus is needed)
-echo 'the-token-from-step-1' > agent.token
-chmod 600 agent.token
-python3 castagent.py --server https://pluteus.example.org --token-file agent.token --host 192.168.1.50
+curl -u alice:PASSWORD http://192.168.1.10:8100/api/cast
+curl -u alice:PASSWORD -H "Origin: http://192.168.1.10:8100" -H "Content-Type: application/json" \
+     -d '{"device":"Living room","root":"music","path":"Artist/Album/01 Song.mp3"}' http://192.168.1.10:8100/api/cast/play
+curl -u alice:PASSWORD -H "Origin: http://192.168.1.10:8100" -H "Content-Type: application/json" \
+     -d '{"device":"Living room","op":"pause"}' http://192.168.1.10:8100/api/cast/control
 ```
 
-- `--server` is any address the agent can reach pluteus at: the public address, or a tailnet address (`http://pluteus-server:8080`). A base path
-  is fine (`https://example.org/pluteus`).
-- `--host` is a Chromecast's address; repeat it for more. Without `--host` the agent searches the network (mDNS), which needs the Chromecasts
-  on the same network segment.
-- `--advertise-host` is this machine's address as the Chromecasts see it (found automatically; set it when the machine has several).
-- `--listen-port` is the port of the agent's web server (default 8765); the Chromecasts must be able to reach it.
-- The agent looks for Chromecasts once, at start. Restart it after adding one.
-
-To keep it running on a Pi, a systemd unit (`/etc/systemd/system/castagent.service`):
-
-```ini
-[Unit]
-Description=pluteus cast agent
-After=network-online.target
-Wants=network-online.target
-
-[Service]
-User=pi
-WorkingDirectory=/home/pi/castagent
-ExecStart=/usr/bin/python3 castagent.py --server https://pluteus.example.org --token-file agent.token --host 192.168.1.50
-Restart=always
-RestartSec=10
-
-[Install]
-WantedBy=multi-user.target
-```
-
-**3. Try it.** With the agent running, as a signed-in user (the examples use Basic login; a browser session works the same way, with the
-site's own `Origin` on the writes):
-
-```bash
-curl -u alice:PASSWORD https://pluteus.example.org/api/cast
-curl -u alice:PASSWORD -H "Origin: https://pluteus.example.org" -H "Content-Type: application/json" \
-     -d '{"site":"Cabin","device":"<id from the list>","root":"music","path":"Artist/Album/01 Song.mp3"}' \
-     https://pluteus.example.org/api/cast/play
-curl -u alice:PASSWORD -H "Origin: https://pluteus.example.org" -H "Content-Type: application/json" \
-     -d '{"site":"Cabin","device":"<id>","op":"pause"}' https://pluteus.example.org/api/cast/control
-```
-
-`op` is `pause`, `resume`, `stop`, `seek` (with `value` in seconds) or `volume` (with `value` 0 to 100).
+`op` is `pause`, `resume`, `stop`, `seek` (with `value` in seconds) or `volume` (with `value` 0 to 100). `/api/cast` lists the devices with what each is
+doing (`state`, `position`, `duration`, `volume`, `title`) and, for one that does not answer, `error` says why.
 
 ## What plays
 
-A Chromecast plays these as they are: MP3, AAC and M4A, FLAC, Ogg and Opus, WAV; MP4 (H.264) and WebM video. Other types (MKV, MOV, HEVC
-video) are refused with a sentence saying so. **Converting them with ffmpeg, as an optional feature, is step C3.**
+A Chromecast plays these as they are: MP3, AAC and M4A, FLAC, Ogg and Opus, WAV; MP4 (H.264) and WebM video. Other types (MKV, MOV, HEVC video) are
+refused with a sentence saying so. Converting them with ffmpeg, as an optional feature, is a later step.
 
 ## Access
 
-- Any signed-in user may cast; `users = [...]` in a `[[cast_sites]]` entry narrows a site to some of them. The shared anonymous user cannot.
-- The agent's token opens only the two agent addresses. A media address opens one file, for one user, for twelve hours, and is checked again
-  with that user's current rights every time. See SECURITY.md, "Casting to Chromecasts".
+- Any signed-in user may cast; `users = [...]` on a device narrows it. The shared anonymous user cannot.
+- A media address opens one file, for one user, for twelve hours, and is checked again with that user's current rights every time. See SECURITY.md,
+  "Casting".
 
-## What is not there yet
+## Not there yet
 
 | Step | What |
 |---|---|
-| C2 | "Play on…" in the player bar and on folder pages, the queue, Now Playing in the page |
-| C3 | the agent caches ahead of the playhead; a bitrate cap per site; ffmpeg conversion of files a Chromecast cannot play |
-| C4 | an admin view of sites and agents; discovering Chromecasts that appear after the agent started; a Pi setup guide with Tailscale |
-| C5 | optional custom receiver with cover art and notes |
+| next | "Play on…" in the player bar and on folder pages, the queue, Now Playing in the page |
+| then | DLNA/UPnP devices (many TVs, receivers and speakers) |
+| later | optional ffmpeg conversion for files a device cannot play; a way to find devices on the network instead of typing addresses |
 
-Not tried: the agent against a real Chromecast. The pychromecast calls were checked against the library's own signatures (version 14) and the
-rest of the chain against a stand-in, over real HTTP.
+Not tried: against a real Chromecast or TV. The pychromecast calls were checked against the library's own signatures (version 14); everything else runs
+against a stand-in for the library, and the media address was fetched, Range requests included, over real HTTP.

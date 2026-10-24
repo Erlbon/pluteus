@@ -18,9 +18,10 @@ page_size = 50              # entries per OPDS / web page
 # relay = false      # OFF by default. true: a radio station a browser cannot play directly (plain http on an https site, or a server that refuses the browser)
 #                    # goes through this server instead. Only for users with an upload folder; at most relay_streams_user streams per user and
 #                    # relay_streams_total in all are open at once (defaults 2 and 6). Uses the server's upload bandwidth.
-# cast = false       # OFF by default. true: play music and video on Chromecasts, through cast agents (pluteus/castagent.py) running next to them.
-#                    # Each place with Chromecasts is a [[cast_sites]] entry (see the end of this file); make its token with
-#                    # python -m pluteus cast-token --name SITE. See docs/cast.md.
+# cast = false       # OFF by default. true: play music and video on TVs and Chromecasts on your network. List them in [[cast_devices]] (end of this file).
+#                    # Needs the pychromecast library (pip install pychromecast). See docs/cast.md.
+# cast_media_base = "http://192.168.1.10:8100"   # how a device reaches this server: the computer's address on your network and the port. Without it the
+#                    # address the page was opened with is used, which a TV cannot reach when you opened it as localhost.
 # debug = false      # OFF by default. true: debug logging is on ALL the time (every request gets a line in the log: what was asked, who asked, why a login was
 #                    refused; never passwords, keys or cookie values). For a short look, use the admin page, Debug, instead: it switches itself off after 15 minutes.
 # relay_allow = ["192.168.1.99:9191"]   # hosts pluteus may fetch from even on your own network (a media server such as Dispatcharr on the same
@@ -160,9 +161,8 @@ roots = ["books"]           # only these roots; ["*"] = every root; no list = no
 # notes = true              # may write shared notes into libraries that have notes = "edit"
 # admin = true              # may sign in to the admin page (needs admin_port). Off by default.
 
-# A place with Chromecasts, served by one cast agent (docs/cast.md). Make the token with:  python -m pluteus cast-token --name Cabin
-# It prints the token (give it to the agent) and these two lines (the config keeps only the token's hash). Needs cast = true above.
-# [[cast_sites]]
-# name = "Cabin"
-# token_hash = "sha256$replace-with-the-output-of-cast-token"
+# A TV or Chromecast on your network (docs/cast.md). Needs cast = true above. Listed by address: discovery does not pass through Docker Desktop on Windows.
+# [[cast_devices]]
+# name = "Living room"
+# address = "192.168.1.50"   # give the TV a fixed address in your router
 # users = ["alice"]          # who may cast here; leave out for every signed-in user
