@@ -22,6 +22,9 @@ from .dbutil import open_database
 
 log = logging.getLogger("pluteus.meta")
 _SCHEMA = "CREATE TABLE IF NOT EXISTS meta (path TEXT PRIMARY KEY, size INTEGER, mtime REAL, data TEXT);"
+# Raised whenever parse_opf() reads a book differently, so rows parsed by an older
+# version are misses and get read again (2: EPUB 3 creator roles from refining metas).
+PARSE_VERSION = 2
 
 NS = {"c": "urn:oasis:names:tc:opendocument:xmlns:container",
       "opf": "http://www.idpf.org/2007/opf",
@@ -59,11 +62,19 @@ def parse_opf(opf: ET.Element) -> dict:
     title = next((t for t in (_text(e) for e in md.findall("dc:title", NS)) if t), "")
     if title:
         out["title"] = title
+    metas = md.findall("opf:meta", NS)
+    # EPUB 3 refining metas, {id: {property: text}}: series position, creator roles.
+    refines: dict = {}
+    for e in metas:
+        ref = (e.get("refines") or "").lstrip("#")
+        if ref and e.get("property"):
+            refines.setdefault(ref, {})[e.get("property")] = _text(e)
     authors = []
     for e in md.findall("dc:creator", NS):
-        role = e.get(OPF_ROLE)
+        # EPUB 2 keeps the role in opf:role, EPUB 3 in <meta refines="#id" property="role">.
+        role = (e.get(OPF_ROLE) or refines.get(e.get("id") or "", {}).get("role") or "").strip().lower()
         name = _text(e)
-        if name and role in (None, "", "aut") and name not in authors:
+        if name and role in ("", "aut") and name not in authors:
             authors.append(name)
     if authors:
         out["authors"] = authors
@@ -75,18 +86,12 @@ def parse_opf(opf: ET.Element) -> dict:
     if m:
         out["year"] = m.group(0)
     # Series: Calibre's meta tags first, then EPUB 3 collections.
-    metas = md.findall("opf:meta", NS)
     by_name = {e.get("name"): e.get("content") for e in metas if e.get("name")}
     if by_name.get("calibre:series"):
         out["series"] = by_name["calibre:series"].strip()
         if by_name.get("calibre:series_index"):
             out["series_index"] = _number(by_name["calibre:series_index"])
     else:
-        refines: dict = {}
-        for e in metas:
-            ref = (e.get("refines") or "").lstrip("#")
-            if ref and e.get("property"):
-                refines.setdefault(ref, {})[e.get("property")] = _text(e)
         for e in metas:
             if e.get("property") == "belongs-to-collection" and _text(e):
                 info = refines.get(e.get("id") or "", {})
@@ -129,16 +134,20 @@ class MetaCache:
             return None
         if row and row[0] == size and row[1] == mtime:
             try:
-                return json.loads(row[2])
+                stored = json.loads(row[2])
             except ValueError:                      # a corrupt row is just a cache miss
                 return None
+            # Rows from before PARSE_VERSION are a bare dict: a miss, like an older version.
+            if isinstance(stored, dict) and stored.get("v") == PARSE_VERSION and isinstance(stored.get("data"), dict):
+                return stored["data"]
         return None
 
     def put(self, path: str, size: int, mtime: float, data: dict) -> None:
         try:
             with self._lock, self._db:
                 self._db.execute("INSERT OR REPLACE INTO meta VALUES (?,?,?,?)",
-                                 (path, size, mtime, json.dumps(data, ensure_ascii=False)))
+                                 (path, size, mtime,
+                                  json.dumps({"v": PARSE_VERSION, "data": data}, ensure_ascii=False)))
         except sqlite3.Error:
             pass
 

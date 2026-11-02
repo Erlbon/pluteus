@@ -2,9 +2,10 @@
 import dataclasses
 import os
 import xml.etree.ElementTree as ET
+import zipfile
 
 import pytest
-from epub_factory import make_epub
+from epub_factory import CONTAINER, make_epub
 from starlette.testclient import TestClient
 
 import pluteus.meta as meta
@@ -34,6 +35,25 @@ def test_reads_epub3_collection_series(tmp_path):
 def test_illustrators_are_not_authors(tmp_path):
     p = make_epub(tmp_path / "a.epub", authors=("Some Illustrator",), creator_role="ill")
     assert "authors" not in meta.read_epub_metadata(p)
+
+
+def test_epub3_roles_in_refining_metas(tmp_path):
+    # pandoc's and epubredactor's EPUB 3 form: the role is a meta, not opf:role.
+    opf = """<package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="id">
+<metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
+<dc:identifier id="id">urn:uuid:1</dc:identifier><dc:title>Saw Hammer</dc:title>
+<dc:creator id="creator-1">Allan Lawson</dc:creator>
+<meta refines="#creator-1" property="role" scheme="marc:relators">aut</meta>
+<dc:creator id="creator-2">Tom Tolk</dc:creator>
+<meta refines="#creator-2" property="role" scheme="marc:relators">trl</meta>
+<dc:creator>No Role</dc:creator>
+</metadata><manifest/><spine/></package>"""
+    p = str(tmp_path / "a.epub")
+    with zipfile.ZipFile(p, "w") as z:
+        z.writestr("mimetype", "application/epub+zip")
+        z.writestr("META-INF/container.xml", CONTAINER % "content.opf")
+        z.writestr("content.opf", opf)
+    assert meta.read_epub_metadata(p)["authors"] == ["Allan Lawson", "No Role"]
 
 
 def test_container_may_point_to_a_root_level_opf(tmp_path):
@@ -116,6 +136,20 @@ def test_cache_survives_restart_and_recovers_from_damage(tmp_path):
     assert c3.get("q", 1, 1.0) == {"title": "Fresh"}
     assert any(n.startswith("metadata.sqlite3.corrupt-") for n in os.listdir(cache_dir))
     c3.close()
+
+
+def test_rows_from_an_older_parser_are_misses(tmp_path):
+    cache_dir = str(tmp_path / "cache")
+    c = meta.MetaCache(cache_dir)
+    with c._db:  # a row as written before PARSE_VERSION: the bare dict
+        c._db.execute("INSERT INTO meta VALUES (?,?,?,?)", ("p", 5, 1.0, '{"title": "Old", "authors": ["Tom Tolk"]}'))
+        c._db.execute("INSERT INTO meta VALUES (?,?,?,?)",
+                      ("q", 5, 1.0, '{"v": %d, "data": {"title": "Older"}}' % (meta.PARSE_VERSION - 1)))
+    assert c.get("p", 5, 1.0) is None
+    assert c.get("q", 5, 1.0) is None
+    c.put("p", 5, 1.0, {"title": "New"})
+    assert c.get("p", 5, 1.0) == {"title": "New"}
+    c.close()
 
 
 def test_disabled_service_reads_nothing(tmp_path):
