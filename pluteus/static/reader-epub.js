@@ -75,6 +75,13 @@
     // dark scheme hurts. So the essentials are also set inline, at once; the stylesheet adds the rest.
     var body = contents.document.body;
     style.setProperty("background-color", vars["--pl-book-bg"], "important");
+    // On a touch screen a tap on a word turns the page; if the text were selectable, the phone's browser would also pick the word and
+    // open its "explain this word" panel (Chrome's Touch to Search). With a mouse the text stays selectable, for copying a line.
+    if (window.matchMedia && matchMedia("(pointer: coarse)").matches) {
+      style.setProperty("-webkit-user-select", "none", "important");
+      style.setProperty("user-select", "none", "important");
+      style.setProperty("-webkit-touch-callout", "none", "important");
+    }
     if (body) {
       body.style.setProperty("background-color", vars["--pl-book-bg"], "important");
       body.style.setProperty("color", vars["--pl-book-fg"], "important");
