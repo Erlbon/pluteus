@@ -33,7 +33,6 @@
     stage.classList.toggle("pl-fit-width", fit === "width");
     stage.classList.toggle("pl-fit-zoom", zoomed);
     if (zoomed) stage.style.setProperty("--pl-zoom", fit); else stage.style.removeProperty("--pl-zoom");
-    $("tap-prev").style.pointerEvents = $("tap-next").style.pointerEvents = zoomed ? "none" : "";   // the edges must not steal a drag
     stage.scrollTop = 0;
     centre();
   }
@@ -91,8 +90,8 @@
   function prev() { if (current > 0) show(current - 1); }
   $("next").addEventListener("click", next);
   $("prev").addEventListener("click", prev);
-  $("tap-next").addEventListener("click", next);
-  $("tap-prev").addEventListener("click", prev);
+  // a tap on the page (tapzones.js): upper part back, lower part forward; zoomed, a tap does not turn (the finger pans)
+  window.plTapZones({ stage: stage, back: prev, forward: next, enabled: function () { return !stage.classList.contains("pl-fit-zoom"); } });
 
   var landBottom = false, lastWheel = 0, wheelAt = 0;
   function scrollable() { return stage.scrollHeight > stage.clientHeight + 1; }

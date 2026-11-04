@@ -20,7 +20,6 @@
 
   var order = ["page", "width", "orig"];
   document.getElementById("fit-btn").addEventListener("click", function () { setFit(order[(order.indexOf(fit) + 1) % order.length]); });
-  img.addEventListener("click", function () { setFit(fit === "orig" ? "page" : "orig"); });   // click: zoom to actual size and back
   document.getElementById("fs-btn").addEventListener("click", function () {
     if (document.fullscreenElement) document.exitFullscreen(); else if (root.requestFullscreen) root.requestFullscreen();
   });
@@ -33,9 +32,10 @@
     var link = document.getElementById(id);
     if (link && link.tagName === "A") link.addEventListener("click", function (e) { e.preventDefault(); go(link.href); });
   });
-  var tapPrev = document.getElementById("tap-prev"), tapNext = document.getElementById("tap-next");
-  if (tapPrev) tapPrev.addEventListener("click", function () { go(cfg.prev); });
-  if (tapNext) tapNext.addEventListener("click", function () { go(cfg.next); });
+  // a tap on the picture (tapzones.js): upper part back, lower part forward, as in the readers (zoom is the button in the bar);
+  // at actual size a tap does not turn, the finger moves the picture
+  window.plTapZones({ stage: stage, back: function () { go(cfg.prev); }, forward: function () { go(cfg.next); },
+                      enabled: function () { return fit !== "orig"; } });
   document.addEventListener("keydown", function (e) {
     if (e.key === "ArrowRight" || e.key === "PageDown") { e.preventDefault(); go(cfg.next); }
     else if (e.key === "ArrowLeft" || e.key === "PageUp") { e.preventDefault(); go(cfg.prev); }

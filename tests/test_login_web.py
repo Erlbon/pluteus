@@ -444,3 +444,18 @@ def test_the_scheme_choice_is_kept_in_a_cookie_so_the_site_and_the_admin_page_sh
     assert "document.cookie" in js and "max-age=31536000" in js and "SameSite=Lax" in js      # cookies are shared between ports of one address
     assert "function remember(value)" in js and js.count("remember(") >= 3                     # used on load (carry over) and on every toggle
     assert 'location.protocol === "https:"' in js                                               # Secure only where https is in use
+
+
+def test_the_bar_buttons_sit_together_on_the_right_with_one_size_and_frame(web):
+    """Settings, dark/light, Admin and Sign out: one group after the spacer, all framed buttons of at least 40 px (a thumb on a phone)."""
+    client, _ = web
+    login(client)
+    home = client.get("/", headers=dict(HTML, **{"sec-fetch-dest": "iframe"})).text
+    bar = home[home.index("<header class='pl-bar'>"):home.index("</header>")]
+    spacer = bar.index("pl-spacer")
+    settings = bar.index("title='Settings'")
+    assert spacer < settings < bar.index("pl-scheme") < bar.index("title='Sign out")
+    tag = bar[bar.rindex("<a ", 0, settings):settings]
+    assert "pl-btn" in tag and "pl-bar-link" in tag
+    css = client.get("/static/base.css").text
+    assert ".pl-bar .pl-btn, .pl-bar a.pl-bar-link { min-width: 40px; min-height: 40px;" in css

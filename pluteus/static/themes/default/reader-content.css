@@ -3,7 +3,9 @@
    the variables below are set by the reader from the theme's --pl-book-* values and the reader's settings,
    and are re-set when the dark/light scheme changes.
 
-   !important is used because books ship their own colours and fonts, and a dark scheme must stay readable. */
+   !important is used because books ship their own colours and fonts, and a dark scheme must stay readable.
+   Colours are always the reader's (a dark scheme). Font and line spacing are the book's own unless the reader picks one in
+   Reading settings: then the reader sets pl-set-font / pl-set-line on <html>. */
 
 html {
   background: var(--pl-book-bg) !important;
@@ -12,11 +14,11 @@ html {
 body {
   background: var(--pl-book-bg) !important;
   color: var(--pl-book-fg) !important;
-  font-family: var(--pl-book-font) !important;
-  line-height: var(--pl-book-line) !important;
   -webkit-text-size-adjust: 100%;
   overflow-wrap: break-word;
 }
+html.pl-set-font body { font-family: var(--pl-book-font) !important; }
+html.pl-set-line body { line-height: var(--pl-book-line) !important; }
 
 /* book styles often hard-code text colours; follow the reader's instead */
 body p, body div, body span, body li, body td, body th, body blockquote, body em, body strong, body i, body b,

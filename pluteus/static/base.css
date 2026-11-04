@@ -120,6 +120,9 @@ a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible
 .pl-spacer { flex: 1; }
 .pl-bar form { margin: 0; }
 .pl-bar .pl-btn, .pl-bar a { white-space: nowrap; }
+/* the bar's buttons (Settings, contrast, Admin / Pluteus, Sign out): one framed size, at least 40 px for a thumb */
+.pl-bar .pl-btn, .pl-bar a.pl-bar-link { min-width: 40px; min-height: 40px; box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center; }
+.pl-bar .pl-bar-icon { padding: 6px 8px; }                       /* an icon with no words (Settings): as wide as the contrast button */
 @media (max-width: 520px) {            /* a phone: keep the bar on one line */
   .pl-bar .pl-who, .pl-bar .pl-ver { display: none; }
   .pl-bar .pl-admin-nav { margin-left: 6px; }
@@ -218,8 +221,8 @@ a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible
 .pl-menu li a { display: block; padding: 6px 4px; border-radius: 6px; color: inherit; overflow-wrap: anywhere; }
 .pl-menu li a:hover { background: var(--pl-card); text-decoration: none; }
 .pl-menu .pl-sub { padding-left: 14px; }
-.pl-tap { position: absolute; top: 0; bottom: 0; width: 18%; z-index: 3; cursor: pointer; }
-.pl-tap-left { left: 0; } .pl-tap-right { right: 0; }
+/* tapzones.js: a tap in the upper part of the page goes back, a band below it shows or hides the bars, the rest goes forward */
+.pl-reader.pl-bare .pl-reader-bar, .pl-reader.pl-bare .pl-reader-foot { display: none; }
 .pl-page { user-select: none; -webkit-user-drag: none; }
 /* comic reader: one page; "fit to page" shows it whole, "fit to width" fills the width and scrolls down */
 .pl-comic-stage { display: flex; justify-content: center; overflow: auto; }
@@ -231,13 +234,11 @@ a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible
 .pl-fit-zoom .pl-page { display: block; margin: 0 auto; width: calc(var(--pl-zoom, 2) * 100%); max-width: none; height: auto; }
 .pl-progress[title] { cursor: pointer; }
 .pl-fit-orig .pl-page { max-width: none; max-height: none; margin: 0; }          /* image viewer: actual size */
-.pl-image .pl-page { cursor: zoom-in; } .pl-image.pl-actual .pl-page { cursor: zoom-out; }
 
 /* PDF viewer: one canvas; pages are white, so "Invert" offers a dark reading mode */
 .pl-pdf-stage { display: flex; flex-direction: column; overflow: auto; background: var(--pl-reader-stage-bg); }
 .pl-pdf-canvas { display: block; margin: 12px auto; flex: none; background: #fff; box-shadow: 0 2px 14px rgba(0, 0, 0, .35); }
 .pl-pdf.pl-inverted .pl-pdf-canvas { filter: invert(1) hue-rotate(180deg); }
-.pl-pdf-stage .pl-tap { width: 12%; }
 
 /* file viewers: text, audio/video, and the page for files with no viewer */
 .pl-text {
@@ -500,8 +501,10 @@ body.pl-shell-page { display: flex; flex-direction: column; height: 100vh; heigh
 .pl-shell-player.pl-merged { flex: 1 1 0; min-width: 0; margin: 0 10px; padding: 0 6px; background: none; border: 0; }
 .pl-shell-player.pl-merged:not([hidden]) ~ .pl-spacer { flex: 0 0 0; }
 .pl-shell-player .pl-icon { color: var(--pl-accent); width: 22px; height: 22px; }
+/* the strip's buttons: 40 px, like the bar's, big enough for a thumb */
+.pl-shell-player .pl-vol-btn { width: 40px; height: 40px; flex: none; box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center; }
 /* the close button is a text x, not an icon: line-height 0 (.pl-vol-btn) made it 8 px tall, so it gets the size of its icon neighbours */
-#sp-close { display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box; width: 30px; height: 30px; font-size: 22px; line-height: 1; }
+#sp-close { display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box; width: 40px; height: 40px; font-size: 24px; line-height: 1; }
 html.pl-tv #sp-close { width: 56px; height: 56px; }
 .pl-shell-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
 .pl-now-playing { margin-top: 8px; font-size: 16px; font-weight: 600; color: var(--pl-accent); text-align: center; overflow-wrap: anywhere; }
@@ -660,9 +663,11 @@ body.pl-reader-page, .pl-reader-stage { overscroll-behavior: contain; }
   .pl-admin-bar { flex-wrap: nowrap; }
   .pl-admin-bar .pl-admin-nav { order: 0; flex: 1 1 auto; margin: 0 4px; gap: 0; justify-content: center; }
   .pl-admin-bar .pl-spacer { display: none; }
-  .pl-admin-tab { min-width: 0; padding: 6px; flex-direction: row; }
+  .pl-admin-tab { min-width: 0; padding: 6px 4px; flex-direction: row; }   /* five tabs and three 40 px buttons must fit 375 px */
   .pl-admin-tab .pl-icon { font-size: 18px; }
   .pl-bar .pl-btn.pl-bar-link, .pl-bar .pl-scheme, .pl-bar a.pl-bar-link { padding: 6px; }
+  .pl-bar:not(.pl-admin-bar) { gap: 6px; }                       /* the site bar has room: its four buttons do not touch */
+  .pl-shell-player:not(.pl-merged) { gap: 4px; padding: 2px 10px; }  /* 40 px buttons: keep the strip low and the title wide */
   .pl-bar .pl-brand { margin-right: 2px; }
 }
 .pl-admin { max-width: 980px; }

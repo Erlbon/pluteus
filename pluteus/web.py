@@ -40,21 +40,21 @@ def layout(title: str, body: str, ctx: Ctx, *, head: str = "", scripts: tuple = 
     if bar:
         who = nav = ""
         if ctx.user:
-            # Laid out like the admin page's bar: brand, version and the page links on the left; contrast button, the link
-            # to the admin page (an administrator on the local network only) and Sign out on the right.
-            nav = "<nav class='pl-admin-nav'><a class='pl-admin-tab pl-reader-btn' href='%s'%s title='Settings' aria-label='Settings'><span class='pl-icon pl-i-prefs'></span></a></nav>" % (escape(u.settings()), into_frame)
+            # Brand and version on the left; on the right one group of framed buttons of the same size: Settings, contrast, the link
+            # to the admin page (an administrator on the local network only) and Sign out (on a TV the remote steps through them in a row).
+            nav = "<a class='pl-btn pl-bar-link pl-bar-icon' href='%s'%s title='Settings' aria-label='Settings'><span class='pl-icon pl-i-prefs'></span></a>" % (escape(u.settings()), into_frame)
             # a new tab: the admin page is another site (its own port), so opening it here would stop a playing song
             # hidden until adminlink.js has found the admin page reachable from this browser: from the public address it is not,
             # and a link that opens an empty page looks silly
-            admin = ("<a class='pl-bar-link' href='%s' target='_blank' rel='noopener' hidden data-admin title='Admin' aria-label='Admin'>"
+            admin = ("<a class='pl-btn pl-bar-link' href='%s' target='_blank' rel='noopener' hidden data-admin title='Admin' aria-label='Admin'>"
                      "<span class='pl-icon pl-i-admin'></span><span class='pl-lbl'>Admin</span></a>" % escape(ctx.admin_link)) if ctx.admin_link else ""
             if admin:
                 scripts = scripts + (u.static("adminlink.js"),)
             who = (admin + "<form method='post' action='%s'><button class='pl-btn pl-bar-link' type='submit' title='Sign out (%s)' aria-label='Sign out (%s)'>"
                    "<span class='pl-icon pl-i-logout'></span><span class='pl-lbl'>Sign out<span class='pl-who'> (%s)</span></span></button></form>"
                    % (escape(u.logout()), escape(ctx.user), escape(ctx.user), escape(ctx.user)))
-        chrome = ("<header class='pl-bar'><a class='pl-brand' href='%s'%s>Pluteus</a> <span class='pl-muted pl-ver'>%s</span>%s"
-                  "<span class='pl-spacer'></span>%s%s</header>"
+        chrome = ("<header class='pl-bar'><a class='pl-brand' href='%s'%s>Pluteus</a> <span class='pl-muted pl-ver'>%s</span>"
+                  "<span class='pl-spacer'></span>%s%s%s</header>"
                   % (escape(u.home()), into_frame, escape(__version__), nav, scheme_button(), who))
     js = "".join("<script src='%s' defer></script>" % escape(s) for s in scripts)
     js += "".join("<script type='module' src='%s'></script>" % escape(s) for s in module_scripts)
@@ -483,14 +483,15 @@ def epub_reader_page(ctx: Ctx, title: str, subtitle: str, *, book_url: str, prog
         "<header class='pl-reader-bar'>"
         "%s%s<div class='pl-reader-title' title='%s'>%s</div>%s%s%s</header>"
         "<div class='pl-reader-stage'><div id='viewer' style='position:absolute;inset:0'></div>"
-        "<div class='pl-tap pl-tap-left' id='tap-prev'></div><div class='pl-tap pl-tap-right' id='tap-next'></div>"
         "<nav class='pl-menu' id='toc' hidden aria-label='Contents'><h2>Contents</h2><ul id='toc-list'></ul></nav>"
         "<aside class='pl-menu pl-menu-right' id='settings' hidden aria-label='Reading settings'>"
         "<h2>Text size</h2><div><button class='pl-btn' id='size-down' type='button'>A&minus;</button> "
         "<span id='size-value'>100%%</span> <button class='pl-btn' id='size-up' type='button'>A+</button></div>"
-        "<label class='pl-field'><span>Font</span><select id='font'><option value='theme'>Theme default</option>"
+        "<label class='pl-field'><span>Font</span><select id='font'><option value='book'>The book's own</option>"
+        "<option value='theme'>Theme default</option>"
         "<option value='serif'>Serif</option><option value='sans'>Sans-serif</option></select></label>"
-        "<label class='pl-field'><span>Line spacing</span><select id='line'><option value='1.3'>Tight</option>"
+        "<label class='pl-field'><span>Line spacing</span><select id='line'><option value='book'>The book's own</option>"
+        "<option value='1.3'>Tight</option>"
         "<option value='1.55'>Normal</option><option value='1.8'>Loose</option></select></label>"
         "<label class='pl-field'><span>Layout</span><select id='flow'><option value='paginated'>Pages</option>"
         "<option value='scrolled-doc'>Scrolling</option></select></label>"
@@ -508,8 +509,8 @@ def epub_reader_page(ctx: Ctx, title: str, subtitle: str, *, book_url: str, prog
            _icon_button("fs-btn", "fullscreen", "Full screen"),
            _icon_button("prev", "prev", "Previous page"), _icon_button("next", "next", "Next page")))
     return layout(title, body, ctx, bar=False, body_class="pl-reader-page",
-                  scripts=(u.static("vendor/jszip.min.js"), u.static("vendor/epub.min.js"), u.static("reader-epub.js"),
-                           u.static("menus-back.js")))
+                  scripts=(u.static("vendor/jszip.min.js"), u.static("vendor/epub.min.js"), u.static("tapzones.js"),
+                           u.static("reader-epub.js"), u.static("menus-back.js")))
 
 
 def comic_reader_page(ctx: Ctx, title: str, *, pages_url: str, count: int, progress_url: str, back_url: str,
@@ -523,7 +524,6 @@ def comic_reader_page(ctx: Ctx, title: str, *, pages_url: str, count: int, progr
         "%s<div class='pl-reader-title' title='%s'>%s</div>%s%s%s</header>"
         "<div class='pl-reader-stage pl-comic-stage pl-fit-page' id='stage'>"
         "<img class='pl-page' id='page' alt='' draggable='false'>"
-        "<div class='pl-tap pl-tap-left' id='tap-prev'></div><div class='pl-tap pl-tap-right' id='tap-next'></div>"
         "<div class='pl-toast' id='status'>Loading&hellip;</div></div>"
         "<footer class='pl-reader-foot'>%s<div class='pl-progress' id='seek' title='Jump to a page'><i id='bar'></i></div>"
         "<span id='pct'>&ndash;</span>%s</footer></div>"
@@ -534,7 +534,7 @@ def comic_reader_page(ctx: Ctx, title: str, *, pages_url: str, count: int, progr
            _icon_button("fs-btn", "fullscreen", "Full screen"),
            _icon_button("prev", "prev", "Previous page"), _icon_button("next", "next", "Next page")))
     return layout(title, body, ctx, bar=False, body_class="pl-reader-page",
-                  scripts=(ctx.urls.static("reader-comic.js"),))
+                  scripts=(ctx.urls.static("tapzones.js"), ctx.urls.static("reader-comic.js")))
 
 
 def _reader_scheme() -> str:
@@ -571,8 +571,6 @@ def image_viewer_page(ctx: Ctx, title: str, *, raw_url: str, download_url: str, 
                       next_raw, position: int, total: int) -> str:
     data = (("prev", prev_url or ""), ("next", next_url or ""), ("next-raw", next_raw or ""))
     stage = ("<img class='pl-page' id='page' src='%s' alt='%s'>" % (escape(raw_url), escape(title)) +
-             ("<div class='pl-tap pl-tap-left' id='tap-prev'></div>" if prev_url else "") +
-             ("<div class='pl-tap pl-tap-right' id='tap-next'></div>" if next_url else "") +
              "<div class='pl-toast' id='status' hidden></div>")
     foot = ("%s<span class='pl-progress-spacer' style='flex:1'></span><span id='pct'>%d / %d</span>%s"
             % (_nav_link("prev", "prev", "Previous image", prev_url), position, total,
@@ -580,7 +578,7 @@ def image_viewer_page(ctx: Ctx, title: str, *, raw_url: str, download_url: str, 
     tools = _download_link(download_url) + _reader_scheme() + _icon_button("fit-btn", "fit", "Fit to window / actual size") + \
         _icon_button("fs-btn", "fullscreen", "Full screen")
     return _viewer(ctx, title, back_url, tools=tools, stage=stage, foot=foot, classes="pl-image",
-                   stage_class="pl-comic-stage pl-fit-page", data=data, scripts=(ctx.urls.static("viewer-image.js"),))
+                   stage_class="pl-comic-stage pl-fit-page", data=data, scripts=(ctx.urls.static("tapzones.js"), ctx.urls.static("viewer-image.js")))
 
 
 def text_viewer_page(ctx: Ctx, title: str, *, text: str, encoding: str, size: int, shown: int, truncated: bool,
@@ -738,7 +736,6 @@ def media_viewer_page(ctx: Ctx, title: str, *, kind: str, raw_url: str, mime: st
 def pdf_viewer_page(ctx: Ctx, title: str, *, raw_url: str, download_url: str, back_url: str, progress_url: str) -> str:
     """The PDF viewer shell; viewer-pdf.mjs renders pages with pdf.js (vendored), one page at a time."""
     stage = ("<canvas id='canvas' class='pl-pdf-canvas'></canvas>"
-             "<div class='pl-tap pl-tap-left' id='tap-prev'></div><div class='pl-tap pl-tap-right' id='tap-next'></div>"
              "<div class='pl-toast' id='status'>Loading&hellip;</div>")
     foot = ("%s<div class='pl-progress' id='seek' title='Jump to a page'><i id='bar'></i></div><span id='pct'>&ndash;</span>%s"
             % (_icon_button("prev", "prev", "Previous page"), _icon_button("next", "next", "Next page")))
@@ -749,7 +746,7 @@ def pdf_viewer_page(ctx: Ctx, title: str, *, raw_url: str, download_url: str, ba
              "aria-label='Invert colours'>Invert</button>" + _icon_button("fs-btn", "fullscreen", "Full screen"))
     return _viewer(ctx, title, back_url, tools=tools, stage=stage, foot=foot, classes="pl-pdf",
                    stage_class="pl-pdf-stage", data=(("src", raw_url), ("progress", progress_url), ("download", download_url)),
-                   module_scripts=(ctx.urls.static("viewer-pdf.mjs"),))
+                   scripts=(ctx.urls.static("tapzones.js"),), module_scripts=(ctx.urls.static("viewer-pdf.mjs"),))
 
 
 def shell_page(ctx: Ctx, start_url: str) -> str:

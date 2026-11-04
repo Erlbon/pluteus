@@ -56,7 +56,7 @@ def _header(active: str) -> str:
     site = current_site_link.get()
     # The right-hand side is laid out like the main site's bar: the link to the other site ("Admin" there, "Pluteus" here),
     # contrast button, then Sign out.
-    other = ("<a class='pl-bar-link' href='%s' title='Pluteus' aria-label='Pluteus'><span class='pl-icon pl-i-external'></span>"
+    other = ("<a class='pl-btn pl-bar-link' href='%s' title='Pluteus' aria-label='Pluteus'><span class='pl-icon pl-i-external'></span>"
              "<span class='pl-lbl'>Pluteus</span></a>" % escape(site)) if site else ""
     return ("<header class='pl-bar pl-admin-bar'><span class='pl-brand'>Pluteus<span class='pl-lbl'> Admin</span></span> <span class='pl-muted pl-ver'>%s</span>"
             "<nav class='pl-admin-nav'>%s</nav><span class='pl-spacer'></span>%s%s"

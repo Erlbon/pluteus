@@ -169,10 +169,11 @@ def test_the_back_arrow_steps_back_in_history_when_the_file_came_from_the_folder
     assert web.count("id='back'") == 1 and web.count("_back_link(back_url)") == 3            # one copy of the arrow, used by the EPUB, comic and file viewers
 
 
-def test_the_strip_close_button_is_as_large_as_its_neighbours():
+def test_the_strip_buttons_are_40_px_and_the_close_button_matches():
     # the x is text, and .pl-vol-btn has line-height 0 (made for icons): the button came out 18 x 8 px, too small for a finger
     from pathlib import Path
     css = (Path(__file__).parent.parent / "pluteus" / "static" / "base.css").read_text(encoding="utf-8")
     start = css.index("#sp-close {")
     rule = css[start:css.index("}", start)]
-    assert "line-height: 1" in rule and "width: 30px" in rule and "height: 30px" in rule
+    assert "line-height: 1" in rule and "width: 40px" in rule and "height: 40px" in rule
+    assert ".pl-shell-player .pl-vol-btn { width: 40px; height: 40px;" in css          # the strip's buttons: 40 px, big enough for a thumb

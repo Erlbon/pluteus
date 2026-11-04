@@ -92,8 +92,8 @@ const next = () => { if (current < count - 1) show(current + 1); else say("That 
 const prev = () => { if (current > 0) show(current - 1); };
 $("next").addEventListener("click", next);
 $("prev").addEventListener("click", prev);
-$("tap-next").addEventListener("click", next);
-$("tap-prev").addEventListener("click", prev);
+// a tap on the page (tapzones.js): upper part back, lower part forward; zoomed in, a tap does not turn (as a swipe does not)
+window.plTapZones({ stage, back: prev, forward: next, enabled: () => zoom <= 1 });
 
 document.addEventListener("keydown", (e) => {
   const k = e.key;

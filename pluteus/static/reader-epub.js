@@ -25,10 +25,21 @@
   var SETTINGS_KEY = "pluteus-reader";
   // spread: "single" = one centered page (the default; pleasant to read and right for books with long tables of contents),
   //         "double" = two pages side by side on a wide screen.
-  var settings = { size: 100, font: "theme", line: "1.55", flow: "paginated", spread: "single" };
-  try { Object.assign(settings, JSON.parse(localStorage.getItem(SETTINGS_KEY) || "{}")); } catch (e) { /* defaults */ }
-  if (settings.spread !== "double") settings.spread = "single";
+  // font and line "book": the book's own (its embedded fonts and spacing); anything else is the reader's choice and replaces them.
+  // v: 2 since the book's own became the default. Earlier readers saved their defaults (font "theme", line "1.55") with every
+  // change of any setting, so those two values in a v1 record are moved to the book's own once; a later choice is kept.
+  var settings = { size: 100, font: "book", line: "book", flow: "paginated", spread: "single", v: 2 };
+  var saved = null;
+  try { saved = JSON.parse(localStorage.getItem(SETTINGS_KEY) || "null"); } catch (e) { /* defaults */ }
+  if (saved && typeof saved === "object") Object.assign(settings, saved);
   function saveSettings() { try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch (e) { /* ignore */ } }
+  if (saved && !saved.v) {
+    if (settings.font === "theme") settings.font = "book";
+    if (settings.line === "1.55") settings.line = "book";
+    settings.v = 2;
+    saveSettings();
+  }
+  if (settings.spread !== "double") settings.spread = "single";
 
   var SPREAD_MIN_WIDTH = 900;
   function spreadMode() { return settings.spread === "double" ? "auto" : "none"; }
@@ -55,8 +66,11 @@
       "--pl-book-font": FONTS[settings.font] || cssVar("--pl-font-reading"),
       "--pl-book-line": settings.line
     };
-    var style = contents.document.documentElement.style;
+    var ownFont = settings.font === "book", ownLine = settings.line === "book";
+    var html = contents.document.documentElement, style = html.style;
     Object.keys(vars).forEach(function (k) { style.setProperty(k, vars[k]); });
+    html.classList.toggle("pl-set-font", !ownFont);                    // reader-content.css replaces the book's font / spacing only then
+    html.classList.toggle("pl-set-line", !ownLine);
     // The theme's reader-content.css can arrive late (the page is busy counting pages), and a white flash in a
     // dark scheme hurts. So the essentials are also set inline, at once; the stylesheet adds the rest.
     var body = contents.document.body;
@@ -64,8 +78,8 @@
     if (body) {
       body.style.setProperty("background-color", vars["--pl-book-bg"], "important");
       body.style.setProperty("color", vars["--pl-book-fg"], "important");
-      body.style.setProperty("font-family", vars["--pl-book-font"], "important");
-      body.style.setProperty("line-height", vars["--pl-book-line"], "important");
+      if (ownFont) body.style.removeProperty("font-family"); else body.style.setProperty("font-family", vars["--pl-book-font"], "important");
+      if (ownLine) body.style.removeProperty("line-height"); else body.style.setProperty("line-height", vars["--pl-book-line"], "important");
     }
   }
   function reapplyAll() {
@@ -147,8 +161,20 @@
   function prev() { closeMenus(); return rtl ? rendition.next() : rendition.prev(); }
   $("next").addEventListener("click", next);
   $("prev").addEventListener("click", prev);
-  $("tap-next").addEventListener("click", next);
-  $("tap-prev").addEventListener("click", prev);
+  // a tap on the page (tapzones.js): upper part back, lower part forward. The book's text is a frame of its own, so its taps are passed on
+  // here (a link in the book still works: tapzones.js leaves taps on links alone). In the scrolling layout a tap turns nothing.
+  var taps = window.plTapZones({
+    stage: document.querySelector(".pl-reader-stage"), back: prev, forward: next,
+    enabled: function () { return settings.flow === "paginated"; },
+    menuOpen: function () { return !$("toc").hidden || !$("settings").hidden; }, closeMenus: closeMenus,
+    barsChanged: function () { try { rendition.resize(); } catch (e) { /* not laid out yet */ } }
+  });
+  rendition.hooks.content.register(function (contents) { taps.watch(contents.document); });
+  rendition.on("click", function (e) {
+    var frame = e.view && e.view.frameElement;
+    if (!frame || e.defaultPrevented || e.button) return;
+    taps.tap(frame.getBoundingClientRect().top + e.clientY, e.target);
+  });
 
   function onKey(e) {
     if (e.target && /^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName)) return;

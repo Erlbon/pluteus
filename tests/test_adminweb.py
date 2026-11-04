@@ -517,3 +517,11 @@ def test_about_page_shows_version_credits_and_the_shipped_changelog(admin):
     assert "<script" not in html.split("<h2>Changelog</h2>")[1]                               # raw HTML in the file is never run
     assert "href='/about'" in client.get("/", headers=BOSS).text                              # reachable from the Status page
     assert client.get("/about", follow_redirects=False).status_code in (303, 401, 403)        # like every admin page: not without a login
+
+
+def test_the_admin_bar_fits_a_phone_with_40_px_buttons():
+    # five tabs and three 40 px buttons (Pluteus, contrast, Sign out): with 6 px around each tab the bar ran 7 px past a 375 px screen
+    from pathlib import Path
+    css = (Path(__file__).parent.parent / "pluteus" / "static" / "base.css").read_text(encoding="utf-8")
+    phone = css[css.index("@media (max-width: 600px) {           /* a phone: one row of icons */"):]
+    assert ".pl-admin-tab { min-width: 0; padding: 6px 4px;" in phone[:phone.index("\n}")]
