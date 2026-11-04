@@ -249,6 +249,7 @@ comic page streaming. With `thumbnails = true` books carry **cover thumbnails** 
 | **Tempo** (Subsonic, Android phone, 2026-10-13) | Browses and plays; seeking and next track work. |
 | **Ultrasonic through Android Auto** (Subsonic, 2026-10-17) | Starts and plays in the car. Two bugs found there were fixed the same day: the artist list showed folders without music, and the cover stayed on the first song. |
 | **Kodi on Google TV over WebDAV** (confirmed 2026-11-04) | Works as a WebDAV source. |
+| **TV Bro browser on Android TV** (TCL Google TV, 2026-11-04) | Signs in and lists the libraries and folders. |
 | KOReader, other OPDS apps, iOS apps; WebDAV in Explorer, Finder or Android file managers; other Subsonic apps | Not tried yet. |
 
 Apps that drop URL credentials and have no login fields can use `anonymous_user` (LAN only, restricted user).
@@ -374,10 +375,10 @@ Nothing is indexed, so a folder costs the same however big the library is.
 
 ## Not yet (planned)
 
-1. More real devices before 1.0. Tried so far: PocketBook over OPDS, Tempo, Ultrasonic through Android Auto, and Kodi over WebDAV (see
+1. More real devices before 1.0. Tried so far: PocketBook over OPDS, Tempo, Ultrasonic through Android Auto, Kodi over WebDAV, and the web pages in TV Bro on Android TV (see
    "Apps tried on real devices"). Not tried yet, so tested against their specifications and with test clients only: WebDAV in Explorer /
    Finder / Android file managers, PocketBook covers, KOReader progress sync, OPDS 2.0 and its page streaming, an iOS app, casting to a
-   real Chromecast, audiobooks on a phone, and TV mode on a real TV browser.
+   real Chromecast, audiobooks on a phone, and TV mode (`?tv=1`, remote-control keys) on a real TV.
 2. "Share to pluteus": on one real phone (Chrome 154, Android 16, a dynamic-DNS address behind Caddy with a valid certificate) Chrome refused to
    install the app ("This app cannot be installed"), even for a bare-bones manifest, while other sites installed fine. Cause unknown, so the
    Share-menu entry is unproven. A home-screen shortcut and uploads from the page itself work.
