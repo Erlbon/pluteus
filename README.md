@@ -249,7 +249,7 @@ comic page streaming. With `thumbnails = true` books carry **cover thumbnails** 
 | **Tempo** (Subsonic, Android phone, 2026-10-13) | Browses and plays; seeking and next track work. |
 | **Ultrasonic through Android Auto** (Subsonic, 2026-10-17) | Starts and plays in the car. Two bugs found there were fixed the same day: the artist list showed folders without music, and the cover stayed on the first song. |
 | **Kodi on Google TV over WebDAV** (confirmed 2026-11-04) | Works as a WebDAV source. |
-| **TV Bro browser on Android TV** (TCL Google TV, 2026-11-04) | Signs in and lists the libraries and folders. |
+| **TV Bro browser on Android TV** (TCL Google TV, 2026-11-04) | Signs in, lists the libraries and folders, and plays an MP4 video. |
 | KOReader, other OPDS apps, iOS apps; WebDAV in Explorer, Finder or Android file managers; other Subsonic apps | Not tried yet. |
 
 Apps that drop URL credentials and have no login fields can use `anonymous_user` (LAN only, restricted user).
