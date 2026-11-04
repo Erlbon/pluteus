@@ -488,7 +488,9 @@ def test_a_movie_without_a_poster_offers_a_transparent_one_for_a_webview_and_has
     page = client.get("/view/music/Album/clip.mp4", headers={**auth, **HTML}).text
     assert " poster=" not in page and "data-blank-poster='%s'" % web.BLANK_POSTER in page and "pl-video-fill" not in page
     js = open(os.path.join(HERE, "..", "pluteus", "static", "viewer-media.js"), encoding="utf-8").read()
-    assert "media.dataset.blankPoster && /; wv\\)/.test(navigator.userAgent)) media.poster = media.dataset.blankPoster" in js
+    assert "var webView = /; wv\\)/.test(navigator.userAgent);" in js
+    assert "media.dataset.blankPoster && webView) media.poster = media.dataset.blankPoster" in js
+    assert '(webView ? theirMedia.getAttribute("data-blank-poster") : "")' in js          # also for the next file played in the same page
 
 
 def test_the_blank_poster_is_one_transparent_pixel_the_page_policy_allows():

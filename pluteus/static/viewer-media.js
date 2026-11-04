@@ -75,7 +75,8 @@
 
   /* a movie without a picture: Android's WebView (TV Bro on a TV) draws a grey placeholder where other browsers show the first
      frame, so only there it gets the server's transparent poster */
-  if (media.dataset.blankPoster && /; wv\)/.test(navigator.userAgent)) media.poster = media.dataset.blankPoster;
+  var webView = /; wv\)/.test(navigator.userAgent);
+  if (media.dataset.blankPoster && webView) media.poster = media.dataset.blankPoster;
 
   /* a movie's poster: the dimmed copy fills the bars beside it until the film plays or is moved to a point (then the frame shows) */
   var fill = document.querySelector(".pl-video-fill");
@@ -329,25 +330,73 @@
 
   /* ---- moving between files REPLACES the history entry, so Back goes to the folder, not through every file played ---- */
   function withAutoplay(url) { return url + (url.indexOf("?") < 0 ? "?" : "&") + "autoplay=1"; }
-  ["prev", "next"].forEach(function (id) {                           // the footer arrows
-    var link = document.getElementById(id);
-    if (link && link.tagName === "A") link.addEventListener("click", function (e) { e.preventDefault(); location.replace(link.href); });
-  });
+  function bindFoot() {
+    ["prev", "next"].forEach(function (id) {                         // the footer arrows
+      var link = document.getElementById(id);
+      if (link && link.tagName === "A") link.addEventListener("click", function (e) { e.preventDefault(); location.replace(link.href); });
+    });
+  }
+  bindFoot();
+
+  /* A movie goes on to the next file IN THIS PAGE: the same <video> is given the next file. A browser that wants a press before a video
+     may play (Android's WebView: TV Bro on a TV) asks for it once per video element, so a new page for every file meant a press for every
+     file. The next file's page is fetched and its parts that differ are put in place; anything this cannot carry over (a song, lyrics,
+     chapters, subtitles on one file and not the other) opens the next page as before. */
+  var swapCount = 0;
+  function sameParts(doc) {
+    return ["cc", "lyrics", "chapters", "bookmarks"].every(function (id) { return !document.getElementById(id) === !doc.getElementById(id); });
+  }
+  function replaceAll(doc, selector) {
+    var mine = document.querySelector(selector), theirs = doc.querySelector(selector);
+    if (mine && theirs) mine.parentNode.replaceChild(document.importNode(theirs, true), mine);
+  }
+  function swapTo(url) {
+    var mine = ++swapCount;
+    fetch(url, { credentials: "same-origin" }).then(function (r) { if (!r.ok) throw new Error("status " + r.status); return r.text(); }).then(function (html) {
+      if (mine !== swapCount) return;                                 // pressed again meanwhile: the newer one wins
+      var doc = new DOMParser().parseFromString(html, "text/html");
+      var theirRoot = doc.getElementById("reader"), theirMedia = doc.getElementById("media");
+      if (!theirRoot || !theirMedia || theirRoot.dataset.kind !== "video" || !sameParts(doc)) throw new Error("not a page this can take over");
+      clearInterval(timer);
+      Array.prototype.forEach.call(theirRoot.attributes, function (a) { if (a.name.indexOf("data-") === 0) root.setAttribute(a.name, a.value); });
+      progressUrl = data.progress; prevUrl = data.prev || ""; nextUrl = data.next || ""; bookmarkUrl = data.bookmarks || "";
+      lastSent = -1;
+      autoplay = true;
+      replaceAll(doc, ".pl-track");
+      replaceAll(doc, ".pl-reader-title");
+      replaceAll(doc, ".pl-reader-foot");
+      bindFoot();
+      if (songNext) songNext.disabled = !nextUrl;
+      var fillNow = document.querySelector(".pl-video-fill");
+      if (fillNow) { if (fillNow.parentNode) fillNow.parentNode.classList.remove("pl-has-fill"); fillNow.parentNode.removeChild(fillNow); }
+      Array.prototype.forEach.call(media.querySelectorAll("track"), function (t) { media.removeChild(t); });
+      var poster = theirMedia.getAttribute("poster") || (webView ? theirMedia.getAttribute("data-blank-poster") : "");
+      if (poster) media.setAttribute("poster", poster); else media.removeAttribute("poster");
+      media.src = theirMedia.getAttribute("src");
+      Array.prototype.forEach.call(theirMedia.querySelectorAll("track"), function (t) { media.appendChild(document.importNode(t, true)); });
+      document.title = doc.title;
+      try { history.replaceState(null, "", url); } catch (e) { /* ignore */ }
+      setMetadata();
+      var started = media.play();
+      if (started && started.catch) started.catch(function () { say("Tap play to continue", 6000); });
+    }).catch(function () { if (mine === swapCount) location.replace(withAutoplay(url)); });
+  }
+  function go(url) { if (data.kind === "video" && window.DOMParser && window.fetch) swapTo(url); else location.replace(withAutoplay(url)); }
 
   /* the song buttons in the transport row: previous restarts a song that has played for a few seconds, else goes to the one before */
   var songPrev = document.getElementById("prev-song"), songNext = document.getElementById("next-song");
   if (songPrev) songPrev.addEventListener("click", function () {
     if ((media.currentTime || 0) > 4 || !prevUrl) { try { media.currentTime = 0; } catch (e) { /* not seekable yet */ } return; }
-    location.replace(withAutoplay(prevUrl));
+    go(prevUrl);
   });
-  if (songNext) songNext.addEventListener("click", function () { if (nextUrl) location.replace(withAutoplay(nextUrl)); });
+  if (songNext) songNext.addEventListener("click", function () { if (nextUrl) go(nextUrl); });
 
   /* ---- the end of a file: play the next one, unless the sleep timer says stop ---- */
   media.addEventListener("ended", function () {
     clearInterval(timer);
     send(true, true);
     if (STEPS[step] === -1) { step = 0; sleepLabel(); say("Sleep timer: stopped at the end of the file", 4000); return; }
-    if (nextUrl) location.replace(withAutoplay(nextUrl));
+    if (nextUrl) go(nextUrl);
   });
   if (autoplay) {
     var started = media.play();
@@ -355,22 +404,27 @@
   }
 
   /* ---- lock screen and notification controls ---- */
-  if ("mediaSession" in navigator && window.MediaMetadata) {
-    var session = navigator.mediaSession;
-    var handle = function (action, fn) { try { session.setActionHandler(action, fn); } catch (e) { /* not supported here */ } };
+  function setMetadata() {
+    if (!("mediaSession" in navigator) || !window.MediaMetadata) return;
     try {
-      session.metadata = new MediaMetadata({
+      navigator.mediaSession.metadata = new MediaMetadata({
         title: data.title || document.title, album: data.album || "", artist: data.artist || "",
         artwork: data.artwork ? [{ src: data.artwork, sizes: "512x512" }] : []
       });
     } catch (e) { /* ignore */ }
+  }
+  if ("mediaSession" in navigator && window.MediaMetadata) {
+    var session = navigator.mediaSession;
+    var handle = function (action, fn) { try { session.setActionHandler(action, fn); } catch (e) { /* not supported here */ } };
+    setMetadata();
     handle("play", function () { media.play(); });
     handle("pause", function () { media.pause(); });
     handle("seekbackward", function (d) { jump(-((d && d.seekOffset) || SKIP)); });
     handle("seekforward", function (d) { jump((d && d.seekOffset) || SKIP); });
     handle("seekto", function (d) { if (d && typeof d.seekTime === "number") media.currentTime = d.seekTime; });
-    if (prevUrl) handle("previoustrack", function () { location.replace(withAutoplay(prevUrl)); });
-    if (nextUrl) handle("nexttrack", function () { location.replace(withAutoplay(nextUrl)); });
+    // a movie may go on to a file with or without neighbours in this page (above), so the handlers look at the current ones
+    if (prevUrl || data.kind === "video") handle("previoustrack", function () { if (prevUrl) go(prevUrl); });
+    if (nextUrl || data.kind === "video") handle("nexttrack", function () { if (nextUrl) go(nextUrl); });
     var lastPosition = 0;
     media.addEventListener("timeupdate", function () {
       var now = Date.now();
