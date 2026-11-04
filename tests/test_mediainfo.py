@@ -426,3 +426,135 @@ def test_a_movie_page_has_both_a_maximize_and_a_full_screen_button_like_a_channe
     assert "id='mx'" not in client.get("/view/music/Album/spark.mp3", headers={**auth, **HTML}).text         # a song has no picture to enlarge
     css = client.get("/static/base.css").text
     assert ".pl-videobox.pl-full:not(.pl-iptv)" in css
+
+
+# ---- Matroska (.mkv): tinytag has no reader for it, so mediainfo has its own -------------------------------------------------
+FFMPEG = shutil.which("ffmpeg")
+needs_ffmpeg = pytest.mark.skipif(FFMPEG is None, reason="ffmpeg is not installed")
+
+
+def _ffmpeg_mkv(folder, cover=JPEG):
+    """A 2-second tagged MKV with a cover.jpg attachment, the way videoredactor tags a film (ffmpeg puts the title in the
+    Segment Info, the rest in global Tags)."""
+    import subprocess
+    (folder / "poster.jpg").write_bytes(cover)
+    out = folder / "film.mkv"
+    subprocess.run([FFMPEG, "-v", "error", "-y", "-f", "lavfi", "-i", "sine=d=2", "-t", "2", "-c:a", "pcm_s16le",
+                    "-metadata", "title=Ørnen Flyr", "-metadata", "DATE_RELEASED=1999-05-02", "-metadata", "GENRE=Drama",
+                    "-metadata", "COMMENT=Seen twice", "-metadata", "TMDB_ID=1234",
+                    "-attach", str(folder / "poster.jpg"), "-metadata:s:t", "mimetype=image/jpeg",
+                    "-metadata:s:t", "filename=cover.jpg", str(out)], check=True)
+    (folder / "poster.jpg").unlink()
+    return out
+
+
+@needs_ffmpeg
+def test_an_mkv_gives_its_tags_duration_and_embedded_cover(tmp_path):
+    film = _ffmpeg_mkv(tmp_path)
+    info = mediainfo.read_info(str(film), with_cover=True)
+    assert (info["title"], info["year"], info["genre"], info["comment"], info["format"]) == (
+        "Ørnen Flyr", "1999", "Drama", "Seen twice", "MKV")
+    assert 1.9 < info["duration"] < 2.2 and info["has_cover"] is True
+    assert mediainfo.read_cover(str(film)) == (JPEG, "image/jpeg")          # the attachment, not a folder picture (there is none)
+
+
+@needs_ffmpeg
+def test_the_player_page_of_an_mkv_shows_its_title_and_cover(music):
+    _ffmpeg_mkv(music / "Album")
+    client, auth = make_client(music)
+    page = client.get("/view/music/Album/film.mkv", headers={**auth, **HTML}).text
+    assert "<title>Album (1999) – Ørnen Flyr</title>" in page and "<span class='pl-chip'>Drama</span>" in page
+    assert "data-artwork='/cover/music/Album/film.mkv'" in page            # the lock screen and the media keys show the poster
+    r = client.get("/cover/music/Album/film.mkv", headers=auth)
+    assert r.status_code == 200 and r.content == JPEG
+
+
+def _el(ident: int, payload: bytes) -> bytes:
+    """One EBML element with an eight-byte size, so offsets can be worked out before the payload is known."""
+    return ident.to_bytes((ident.bit_length() + 7) // 8, "big") + b"\x01" + len(payload).to_bytes(7, "big") + payload
+
+
+def _uint(ident, n):
+    return _el(ident, n.to_bytes(8, "big"))
+
+
+def _str(ident, s):
+    return _el(ident, s.encode("utf-8"))
+
+
+def _simple(name, value):
+    return _el(0x67C8, _str(0x45A3, name) + _str(0x4487, value))
+
+
+def _seekhead(entries):
+    return _el(0x114D9B74, b"".join(_el(0x4DBB, _el(0x53AB, ident.to_bytes(4, "big")) + _uint(0x53AC, pos))
+                                    for ident, pos in entries))
+
+
+def _mkvpropedit_layout(path, cover=JPEG, cluster_bytes=3_000_000):
+    """The layout mkvpropedit leaves behind: the first SeekHead points at Info and at a second SeekHead at the very end,
+    and that one points at the Tags and Attachments that were written after the clusters. A track tag must not win."""
+    import struct
+    info = _el(0x1549A966, _uint(0x2AD7B1, 1_000_000) + _el(0x4489, struct.pack(">d", 5400_500.0)) + _str(0x7BA9, "Muxing title"))
+    cluster = _el(0x1F43B675, b"\x00" * cluster_bytes)
+    track_tag = _el(0x7373, _el(0x63C0, _uint(0x68CA, 50) + _uint(0x63C5, 1)) + _simple("TITLE", "A track, not the film"))
+    film_tag = _el(0x7373, _el(0x63C0, _uint(0x68CA, 50)) + _simple("TITLE", "Kon-Tiki") + _simple("DATE_RELEASED", "2012-08-24")
+                   + _simple("GENRE", "Adventure") + _simple("DESCRIPTION", "Rafting\x07 across the Pacific") + _simple("TMDB_ID", "70981"))
+    tags = _el(0x1254C367, track_tag + film_tag)
+    font = _el(0x61A7, _str(0x466E, "font.ttf") + _str(0x4660, "font/ttf") + _el(0x465C, b"F" * 5000))
+    poster = _el(0x61A7, _str(0x466E, "Cover.JPG") + _str(0x4660, "image/jpeg") + _el(0x465C, cover))
+    attachments = _el(0x1941A469, font + poster)
+    first_len = len(_seekhead([(0x1549A966, 0), (0x114D9B74, 0)]))
+    at_info = first_len
+    at_tags = at_info + len(info) + len(cluster)
+    at_attachments = at_tags + len(tags)
+    at_second = at_attachments + len(attachments)
+    body = (_seekhead([(0x1549A966, at_info), (0x114D9B74, at_second)]) + info + cluster + tags + attachments
+            + _seekhead([(0x1254C367, at_tags), (0x1941A469, at_attachments)]))
+    header = _el(0x1A45DFA3, _str(0x4282, "matroska"))
+    path.write_bytes(header + _el(0x18538067, body))
+    return path
+
+
+def test_an_mkv_edited_by_mkvpropedit_is_read_through_its_seek_index(tmp_path, monkeypatch):
+    film = _mkvpropedit_layout(tmp_path / "kon-tiki.mkv")
+    read = []
+    real_open = open
+
+    class Counting:
+        def __init__(self, f):
+            self.f = f
+
+        def __getattr__(self, name):
+            return getattr(self.f, name)
+
+        def read(self, n=-1):
+            data = self.f.read(n)
+            read.append(len(data))
+            return data
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            self.f.close()
+
+    monkeypatch.setattr("builtins.open", lambda p, *a, **k: Counting(real_open(p, *a, **k)) if str(p).endswith(".mkv") else real_open(p, *a, **k))
+    info = mediainfo.read_info(str(film), with_cover=True)
+    assert (info["title"], info["year"], info["genre"], info["comment"]) == ("Kon-Tiki", "2012", "Adventure", "Rafting across the Pacific")
+    assert info["duration"] == 5400.5 and info["has_cover"] is True
+    assert sum(read) < 64 * 1024                         # the clusters (3 MB here, gigabytes in a film) are never read
+    assert mediainfo.read_cover(str(film)) == (JPEG, "image/jpeg")
+
+
+def test_a_damaged_or_cut_off_mkv_never_raises(tmp_path):
+    film = _mkvpropedit_layout(tmp_path / "whole.mkv", cluster_bytes=100)
+    data = film.read_bytes()
+    for i, cut in enumerate((5, 40, 90, 200, len(data) - 30)):
+        part = tmp_path / ("cut%d.mkv" % i)
+        part.write_bytes(data[:cut])
+        assert isinstance(mediainfo.read_info(str(part), with_cover=True), dict)
+        assert mediainfo.read_cover(str(part)) is None
+    junk = tmp_path / "junk.mkv"
+    junk.write_bytes(b"\x1a\x45\xdf\xa3" + b"\xff" * 300)
+    assert mediainfo.read_info(str(junk)).get("title", "") == "" and mediainfo.read_cover(str(junk)) is None

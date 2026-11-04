@@ -1,7 +1,7 @@
 """Tags, cover art and lyrics of audio and video files, read when a file is opened or listed.
 
 `tinytag` (MIT, pure Python) reads only the start of the file (the tag block and the stream header), so this is cheap even over a
-network share. Everything that comes out of a file is untrusted text: it is cleaned and capped here and escaped wherever it is shown;
+network share. tinytag cannot read Matroska, so .mkv / .mka / .webm have their own small reader here (read_matroska). Everything that comes out of a file is untrusted text: it is cleaned and capped here and escaped wherever it is shown;
 a cover is accepted only if its first bytes really are a JPEG, PNG, WebP or GIF (never an SVG), whatever the file claims.
 Without tinytag installed every function returns "nothing found" and the player simply shows the file name.
 """
@@ -48,6 +48,8 @@ def _tinytag():
 def read_info(path: str, with_cover: bool = False) -> dict:
     """The tags of one file as a plain dict (empty values left out of the interesting keys); {} when nothing can be read.
     with_cover also looks for an embedded picture (it has to read the picture, so the listing leaves it out)."""
+    if os.path.splitext(path)[1].lower() in MATROSKA_EXT:
+        return _matroska_info(path, with_cover)
     TinyTag = _tinytag()
     if TinyTag is None:
         return {}
@@ -163,7 +165,11 @@ def read_folder_cover(directory: str):
 def read_cover(path: str):
     """(bytes, mime) of the picture embedded in the file, else of the folder's cover.jpg and the like, else None."""
     TinyTag = _tinytag()
-    if TinyTag is not None:
+    if os.path.splitext(path)[1].lower() in MATROSKA_EXT:
+        data = read_matroska(path, cover=True).get("cover") or b""
+        if data and sniff_image(data):
+            return data, sniff_image(data)
+    elif TinyTag is not None:
         try:
             image = TinyTag.get(path, tags=True, duration=False, image=True).images.any
             data = image.data if image else b""
@@ -172,6 +178,218 @@ def read_cover(path: str):
         except Exception:                               # noqa: BLE001
             pass
     return read_folder_cover(os.path.dirname(path))
+
+
+# ---- Matroska (.mkv / .mka / .webm): tinytag has no reader for it ---------------------------------------------------------------
+# Only the small elements are read: Segment Info (duration, title), Tags and the Attachments' names. They are found through the
+# SeekHead index at the front of the file, which also leads to the second SeekHead that mkvpropedit writes at the very end when it
+# moves edited Tags and Attachments behind the clusters. So a film over a network share costs a dozen small reads, never the
+# clusters. A file without any SeekHead is walked element by element (headers only), up to a limit.
+MATROSKA_EXT = {".mkv", ".mka", ".mk3d", ".webm"}
+MKV_COVER_NAME = re.compile(r"^cover\.(jpe?g|png|webp)$", re.IGNORECASE)        # the names videoredactor, Jellyfin and Kodi use
+_EBML, _SEGMENT, _SEEKHEAD, _SEEK, _SEEK_ID, _SEEK_POS = 0x1A45DFA3, 0x18538067, 0x114D9B74, 0x4DBB, 0x53AB, 0x53AC
+_INFO, _SCALE, _DURATION, _TITLE, _CLUSTER = 0x1549A966, 0x2AD7B1, 0x4489, 0x7BA9, 0x1F43B675
+_TAGS, _TAG, _TARGETS, _TARGET_TYPE, _SIMPLE, _TAG_NAME, _TAG_STRING = 0x1254C367, 0x7373, 0x63C0, 0x68CA, 0x67C8, 0x45A3, 0x4487
+_TARGET_UIDS = {0x63C5, 0x63C9, 0x63C4, 0x63C6}                 # a tag aimed at a track, edition, chapter or attachment
+_ATTACHMENTS, _ATTACHED, _FILE_NAME, _FILE_DATA = 0x1941A469, 0x61A7, 0x466E, 0x465C
+_MAX_INFO, _MAX_TAGS, _MAX_WALK = 64 * 1024, 4 * 1024 * 1024, 5000
+
+
+def _ebml_head(buf: bytes, pos: int):
+    """(id, size, header length) of the element starting at buf[pos]; size None means "unknown" (runs to the parent's end).
+    Raises IndexError or ValueError on bytes that are not an element header."""
+    first = buf[pos]
+    n = 9 - first.bit_length()
+    if first == 0 or n > 4:
+        raise ValueError("not an element id")
+    ident = int.from_bytes(buf[pos:pos + n], "big")
+    lead = buf[pos + n]
+    m = 9 - lead.bit_length()
+    if lead == 0:
+        raise ValueError("bad size")
+    raw = buf[pos + n:pos + n + m]
+    if len(raw) < m:
+        raise IndexError("cut off")
+    size = int.from_bytes(raw, "big") & ((1 << (7 * m)) - 1)
+    return ident, (None if size == (1 << (7 * m)) - 1 else size), n + m
+
+
+def _ebml_children(buf: bytes, start: int, end: int):
+    """(id, start of the content, end) of each element in buf[start:end]."""
+    pos = start
+    while pos < end:
+        ident, size, head = _ebml_head(buf, pos)
+        stop = end if size is None else min(pos + head + size, end)
+        yield ident, pos + head, stop
+        pos = stop
+
+
+def _file_element(f, pos: int, end: int):
+    """(id, start of the content, end) of the element at pos in the open file, reading only its header; None past the end."""
+    if pos >= end:
+        return None
+    f.seek(pos)
+    ident, size, head = _ebml_head(f.read(min(12, end - pos)), 0)
+    return ident, pos + head, end if size is None else min(pos + head + size, end)
+
+
+def _ebml_text(data: bytes, limit: int = 2000) -> str:
+    return data.decode("utf-8", "replace").replace("\x00", "")[:limit]
+
+
+def _matroska_tags(buf: bytes) -> dict:
+    """{NAME: value} of the tags aimed at the whole file; the most specific level first (an episode's title before its show's)."""
+    found = []
+    for ident, s, e in _ebml_children(buf, 0, len(buf)):
+        if ident != _TAG:
+            continue
+        level, aimed, pairs = 50, False, []
+        for kind, s2, e2 in _ebml_children(buf, s, e):
+            if kind == _TARGETS:
+                for k3, s3, e3 in _ebml_children(buf, s2, e2):
+                    if k3 == _TARGET_TYPE:
+                        level = int.from_bytes(buf[s3:e3], "big")
+                    elif k3 in _TARGET_UIDS and int.from_bytes(buf[s3:e3], "big"):
+                        aimed = True
+            elif kind == _SIMPLE:
+                name = value = None
+                for k3, s3, e3 in _ebml_children(buf, s2, e2):
+                    if k3 == _TAG_NAME:
+                        name = _ebml_text(buf[s3:e3], 100).upper()
+                    elif k3 == _TAG_STRING:
+                        value = _ebml_text(buf[s3:e3])
+                if name and value:
+                    pairs.append((name, value))
+        if not aimed:
+            found.append((level, pairs))
+    tags: dict = {}
+    for _, pairs in sorted(found, key=lambda item: item[0]):
+        for name, value in pairs:
+            tags.setdefault(name, value)
+    return tags
+
+
+def read_matroska(path: str, cover: bool = False) -> dict:
+    """{'tags': {NAME: value}, 'title': ..., 'duration': seconds, 'has_cover': bool, 'cover': bytes} from a Matroska file, as far
+    as it can be read; {} when it is not one. cover=True also reads the cover attachment's bytes. Never raises."""
+    out: dict = {}
+    try:
+        with open(path, "rb") as f:
+            end = os.fstat(f.fileno()).st_size
+            head = _file_element(f, 0, end)
+            if not head or head[0] != _EBML:
+                return {}
+            seg = _file_element(f, head[2], end)
+            if not seg or seg[0] != _SEGMENT:
+                return {}
+            base, seg_end = seg[1], seg[2]
+            places: dict = {}                                           # id -> (start of the content, end)
+            seekheads, seen = [], set()
+            pos, walked, indexed = base, 0, False
+            while walked < _MAX_WALK:                                   # the elements before the first cluster, or all of them without an index
+                el = _file_element(f, pos, seg_end)
+                if not el or (el[0] == _CLUSTER and indexed):
+                    break
+                if el[0] == _SEEKHEAD:
+                    seekheads.append(el)
+                    indexed = True
+                elif el[0] in (_INFO, _TAGS, _ATTACHMENTS):
+                    places.setdefault(el[0], el[1:])
+                pos, walked = el[2], walked + 1
+            while seekheads and len(seen) < 8:
+                ident, s, e = seekheads.pop(0)
+                if s in seen:
+                    continue
+                seen.add(s)
+                f.seek(s)
+                buf = f.read(min(e - s, _MAX_INFO))
+                for kind, s2, e2 in _ebml_children(buf, 0, len(buf)):
+                    if kind != _SEEK:
+                        continue
+                    target = where = None
+                    for k3, s3, e3 in _ebml_children(buf, s2, e2):
+                        if k3 == _SEEK_ID:
+                            target = int.from_bytes(buf[s3:e3], "big")
+                        elif k3 == _SEEK_POS:
+                            where = base + int.from_bytes(buf[s3:e3], "big")
+                    if target not in (_INFO, _TAGS, _ATTACHMENTS, _SEEKHEAD) or where is None or target in places:
+                        continue
+                    try:
+                        el = _file_element(f, where, seg_end)
+                    except (IndexError, ValueError):
+                        continue
+                    if el and el[0] == target:
+                        if target == _SEEKHEAD:
+                            seekheads.append(el)
+                        else:
+                            places[target] = el[1:]
+            if _INFO in places:
+                s, e = places[_INFO]
+                f.seek(s)
+                buf = f.read(min(e - s, _MAX_INFO))
+                scale, length = 1_000_000, None
+                for kind, s2, e2 in _ebml_children(buf, 0, len(buf)):
+                    if kind == _SCALE:
+                        scale = int.from_bytes(buf[s2:e2], "big") or scale
+                    elif kind == _DURATION and e2 - s2 in (4, 8):
+                        length = struct.unpack(">f" if e2 - s2 == 4 else ">d", buf[s2:e2])[0]
+                    elif kind == _TITLE:
+                        out["title"] = _ebml_text(buf[s2:e2])
+                if length and length > 0:
+                    out["duration"] = round(length * scale / 1e9, 3)
+            if _TAGS in places:
+                s, e = places[_TAGS]
+                f.seek(s)
+                out["tags"] = _matroska_tags(f.read(min(e - s, _MAX_TAGS)))
+            if _ATTACHMENTS in places:
+                s, e = places[_ATTACHMENTS]
+                best = None
+                for _ in range(200):                                    # each attachment: its name and where its data is
+                    el = _file_element(f, s, e)
+                    if not el:
+                        break
+                    if el[0] == _ATTACHED:
+                        name, data_at, pos = "", None, el[1]
+                        while (child := _file_element(f, pos, el[2])) is not None:
+                            if child[0] == _FILE_NAME:
+                                f.seek(child[1])
+                                name = _ebml_text(f.read(min(child[2] - child[1], 300)))
+                            elif child[0] == _FILE_DATA:
+                                data_at = child[1:]
+                            pos = child[2]
+                        if data_at and MKV_COVER_NAME.match(name) and 0 < data_at[1] - data_at[0] <= MAX_COVER:
+                            if best is None or name == "cover.jpg":
+                                best = data_at
+                    s = el[2]
+                if best:
+                    out["has_cover"] = True
+                    if cover:
+                        f.seek(best[0])
+                        out["cover"] = f.read(best[1] - best[0])
+    except (OSError, IndexError, ValueError, struct.error):
+        pass                                                            # what was read before the damage is still good
+    return out
+
+
+def _matroska_info(path: str, with_cover: bool) -> dict:
+    """read_info for a Matroska file: the same keys as for any other file."""
+    found = read_matroska(path)
+    if not found:
+        return {}
+    tags = found.get("tags", {})
+    year = re.search(r"\d{4}", _text(tags.get("DATE_RELEASED") or tags.get("DATE") or tags.get("DATE_RECORDED") or tags.get("YEAR"), 40))
+    info = {
+        "title": _text(tags.get("TITLE") or found.get("title")), "artist": _text(tags.get("ARTIST")), "albumartist": "",
+        "album": "", "year": year.group(0) if year else "", "genre": _text(tags.get("GENRE"), 80),
+        "composer": _text(tags.get("COMPOSER"), 120), "comment": _text(tags.get("COMMENT") or tags.get("DESCRIPTION"), 400),
+        "track": None, "track_total": None, "disc": None, "duration": found.get("duration"),
+        "bitrate": None, "samplerate": None, "channels": None,
+        "lyrics": _CONTROL.sub("", tags.get("LYRICS", "")).strip()[:MAX_LYRICS],
+        "format": os.path.splitext(path)[1][1:].upper(),
+    }
+    if with_cover:
+        info["has_cover"] = bool(found.get("has_cover"))
+    return info
 
 
 _STAMP = re.compile(r"\[(\d{1,3}):(\d{2})(?:[.:](\d{1,3}))?\]")
