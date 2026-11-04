@@ -337,6 +337,10 @@ def listing_page(root: str, parts: tuple, entries: list, page: int, pages: int, 
             % ("" if grid else " class='pl-sort-on'", escape(here + _query(sort, desc, 1, "list")),
                " class='pl-sort-on'" if grid else "", escape(here + _query(sort, desc, 1, "grid")))) if (total > 1 and ctx.thumbs) else ""
     note = "<p class='pl-flash' role='status'>%s</p>" % escape(flash) if flash else ""
+    if not parts and not total:
+        # in Docker a drive that was not there when the container started is mounted as an empty folder: say so, a bare "0 items" hides it
+        note += ("<p class='pl-flash' role='status'>This library is empty. If it should not be, its drive may not be reachable by the "
+                 "server; an administrator can check the Libraries page of the admin site.</p>")
     forms = _upload_forms(urls, root, parts) if writable else ""
     links = note_links or {}
     picture = ("<img class='pl-folder-cover' src='%s' alt='Cover of this folder' loading='lazy'>" % escape(cover_url)

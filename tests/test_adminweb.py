@@ -140,8 +140,16 @@ def test_status_shows_libraries_uploads_and_state(admin, tmp_path):
     assert "<h2>Libraries</h2>" not in html and "<h2>Uploads</h2>" not in html                 # the folders have their own page
     assert "do not route or forward" in html                                                  # the standing warning
     libs = client.get("/libraries", headers=BOSS).text
-    assert "books" in libs and "comics" in libs and "NOT available" not in libs and "pl-dot-ok'></span>ok" in libs
+    assert "books" in libs and "comics" in libs and "NOT available" not in libs
+    # an empty library folder is yellow: in Docker a drive that was not there when the container started is mounted as an empty folder
+    green = libs.count("pl-dot-ok'></span>ok")                                       # the Uploads box is green too
+    assert libs.count("pl-dot-warn'></span>empty") == 2
+    (tmp_path / "books" / "a.epub").write_bytes(b"x")
+    (tmp_path / "comics" / "b.cbz").write_bytes(b"x")
+    libs = client.get("/libraries", headers=BOSS).text
+    assert libs.count("pl-dot-ok'></span>ok") == green + 2 and "pl-dot-warn'></span>empty" not in libs
     assert "<h2>Uploads</h2>" in libs and "alice" in libs and ("2.9 KB" in libs or "3000 B" in libs)
+    (tmp_path / "comics" / "b.cbz").unlink()
     (tmp_path / "comics").rmdir()
     assert "NOT available" in client.get("/libraries", headers=BOSS).text
 
@@ -308,6 +316,8 @@ def test_library_lights_are_green_yellow_or_red():
     assert "pl-dot-warn" in _root_light(dict(good, seconds=5.0)) and "slow" in _root_light(dict(good, seconds=5.0))
     assert "pl-dot-warn" in _root_light(dict(good, free=20)) and "low disk" in _root_light(dict(good, free=20))
     assert "pl-dot-bad" in _root_light(dict(good, ok=False))
+    assert "pl-dot-warn" in _root_light(dict(good, empty=True)) and "drive not mounted?" in _root_light(dict(good, empty=True))
+    assert "pl-dot-bad" in _root_light(dict(good, ok=False, empty=True))                   # missing outranks empty
     assert "pl-dot-ok" in _root_light({"ok": True, "free": None, "total": None})      # unknown disk size is not a warning
 
 

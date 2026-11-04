@@ -373,3 +373,21 @@ def test_every_listing_starts_with_an_up_row_with_the_big_button(cfg, tmp_path, 
     assert "Up: File Library" in top and "href='/'" in top[top.index("pl-up"):][:300]                   # a root goes to the home page
     one = client.get("/browse/comics/Plain", headers=HTML).text
     assert "Up: comics" in one
+
+
+def test_an_empty_library_says_its_drive_may_be_missing(cfg, tmp_path, library):
+    """In Docker a drive that was not there when the container started is mounted as an empty folder: the library's page says so
+    instead of a bare "0 items". An empty sub-folder is just empty."""
+    import dataclasses
+    from test_login_web import login
+    (library / "video" / "Empty").mkdir(parents=True)
+    roots = dict(cfg.roots)
+    roots["video"] = dataclasses.replace(roots["comics"], name="video", path=str(library / "video" / "Empty"))
+    client, _ = make(dataclasses.replace(cfg, roots=roots), tmp_path)
+    login(client)
+    top = client.get("/browse/video", headers=HTML).text
+    assert "0 items" in top and "drive may not be reachable" in top
+    for view in ("list", "grid"):                                                  # the Covers view says it too
+        assert "drive may not be reachable" in client.get("/browse/video?view=" + view, headers=HTML).text
+    assert "drive may not be reachable" not in client.get("/browse/comics", headers=HTML).text
+    assert "drive may not be reachable" not in client.get("/browse/comics/3.9%20-%20Marvel%20Early%20(1980-1981)/Early", headers=HTML).text

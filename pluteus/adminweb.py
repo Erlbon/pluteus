@@ -137,6 +137,9 @@ def _disk_level(free, total):
 def _root_light(r: dict) -> str:
     if not r["ok"]:
         return _light("bad", "NOT available")
+    if r.get("empty"):
+        # in Docker a drive that was not there when the container started is mounted as an empty folder, and that reads fine
+        return _light("warn", "empty: drive not mounted?")
     if r.get("seconds", 0) > SLOW_SECONDS:
         return _light("warn", "slow (%.1f s)" % r["seconds"])
     low = _disk_level(r["free"], r["total"])

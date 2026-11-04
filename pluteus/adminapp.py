@@ -152,13 +152,14 @@ def create_admin_app(main_app) -> Starlette:
             free, total = disk(r.path)
             began = time.monotonic()
             ok = os.path.isdir(longpath(r.path))
+            empty = False
             if ok:
                 try:
                     with os.scandir(longpath(r.path)) as it:
-                        next(it, None)
+                        empty = next(it, None) is None
                 except OSError:
                     ok = False
-            roots.append({"name": r.name, "path": r.path, "ok": ok, "free": free, "total": total,
+            roots.append({"name": r.name, "path": r.path, "ok": ok, "empty": empty, "free": free, "total": total,
                           "seconds": time.monotonic() - began})
         return roots
 
