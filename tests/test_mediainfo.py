@@ -469,6 +469,31 @@ def test_the_player_page_of_an_mkv_shows_its_title_and_cover(music):
     assert r.status_code == 200 and r.content == JPEG
 
 
+@needs_ffmpeg
+def test_a_movie_with_a_poster_shows_it_until_play_with_a_dimmed_copy_in_the_bars(music):
+    _ffmpeg_mkv(music / "Album")
+    client, auth = make_client(music)
+    page = client.get("/view/music/Album/film.mkv", headers={**auth, **HTML}).text
+    assert "poster='/cover/music/Album/film.mkv'" in page                    # A: the browser's own poster, also without the script
+    assert "<img class='pl-video-fill' src='/cover/music/Album/film.mkv' alt='' hidden>" in page      # B: the script shows it
+    css = client.get("/static/base.css").text
+    assert ".pl-video-fill {" in css and ".pl-videowrap.pl-has-fill video { background: transparent;" in css
+
+
+def test_a_movie_without_a_poster_has_no_poster_and_no_fill(music):
+    (music / "Album" / "clip.mp4").write_bytes(b"\x00\x00\x00\x18ftypmp42" + b"\x00" * 64)
+    client, auth = make_client(music)
+    page = client.get("/view/music/Album/clip.mp4", headers={**auth, **HTML}).text
+    assert "poster=" not in page and "pl-video-fill" not in page
+
+
+def test_the_script_shows_the_poster_fill_and_drops_it_at_play_or_seek():
+    js = open(os.path.join(HERE, "..", "pluteus", "static", "viewer-media.js"), encoding="utf-8").read()
+    start = js.index("pl-video-fill")
+    part = js[start:start + 700]
+    assert "pl-has-fill" in part and '"play"' in part and '"seeking"' in part
+
+
 def _el(ident: int, payload: bytes) -> bytes:
     """One EBML element with an eight-byte size, so offsets can be worked out before the payload is known."""
     return ident.to_bytes((ident.bit_length() + 7) // 8, "big") + b"\x01" + len(payload).to_bytes(7, "big") + payload

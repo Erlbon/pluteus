@@ -461,6 +461,11 @@ html[data-icons="aurora"] .pl-ico-upload  { color: light-dark(#1f7ae0, #7cc8ff);
 /* a movie: the picture above the same controls as the music player; the whole player goes full screen, controls included */
 .pl-videowrap { width: 100%; display: flex; justify-content: center; }
 .pl-videobox video { width: 100%; max-height: 62vh; border-radius: 12px; background: #000; display: block; cursor: pointer; }
+/* before play, a dimmed and blurred copy of the poster fills the bars beside it (shown by the script, gone at play or a seek) */
+.pl-videowrap.pl-has-fill { position: relative; border-radius: 12px; overflow: hidden; background: #000; }
+.pl-video-fill { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; filter: blur(28px) brightness(.45) saturate(1.2);
+  transform: scale(1.35); pointer-events: none; }
+.pl-videowrap.pl-has-fill video { background: transparent; position: relative; }
 /* on a movie the position bar, volume and full screen run the full width of the picture */
 .pl-videobox .pl-scrub { width: 100%; }
 .pl-videobox:fullscreen { width: 100vw; max-width: none; height: 100vh; padding: 12px 16px; justify-content: center; background: var(--pl-bg); box-sizing: border-box; }

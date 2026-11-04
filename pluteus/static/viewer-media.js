@@ -73,6 +73,19 @@
     });
   }
 
+  /* a movie's poster: the dimmed copy fills the bars beside it until the film plays or is moved to a point (then the frame shows) */
+  var fill = document.querySelector(".pl-video-fill");
+  if (fill && fill.parentNode) {
+    var fillBox = fill.parentNode;
+    var dropFill = function () { fill.hidden = true; fillBox.classList.remove("pl-has-fill"); };
+    if (media.paused && !media.currentTime) {
+      fill.hidden = false;
+      fillBox.classList.add("pl-has-fill");
+      media.addEventListener("play", dropFill, { once: true });
+      media.addEventListener("seeking", dropFill, { once: true });
+    }
+  }
+
   /* a queue playing in the shell gives way when this page's own player starts */
   media.addEventListener("play", function () { try { if (window.parent !== window && window.parent.plShell) window.parent.plShell.pause(); } catch (e) { /* ignore */ } });
   media.addEventListener("play", function () { clearInterval(timer); timer = setInterval(function () { send(false); }, 5000); });

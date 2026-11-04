@@ -693,10 +693,13 @@ def media_viewer_page(ctx: Ctx, title: str, *, kind: str, raw_url: str, mime: st
     transport_row = ("<div class='pl-transport'>%s%s<span class='pl-play-wrap'>%s%s</span>%s%s</div>"
                      % (song_prev, skip_back, button("play", "Play", "play", extra="pl-play"), speed_val, skip_fwd, song_next))
     if kind == "video":
-        stage = ("<div class='pl-media-box pl-player pl-videobox'>%s<div class='pl-videowrap'><video id='media' controls preload='metadata' playsinline src='%s'>%s"
+        # the poster until play: the browser's own (also without the script), and a dimmed copy that the script shows in the bars
+        poster = " poster='%s'" % escape(cover_url) if cover_url else ""
+        fill = "<img class='pl-video-fill' src='%s' alt='' hidden>" % escape(cover_url) if cover_url else ""
+        stage = ("<div class='pl-media-box pl-player pl-videobox'>%s<div class='pl-videowrap'>%s<video id='media' controls preload='metadata' playsinline%s src='%s'>%s"
                  "<p>Your browser cannot play this file; <a href='%s'>download it</a>.</p></video></div>%s%s<div class='pl-tools'>%s</div>%s"
                  "<div class='pl-toast' id='status' hidden></div></div>"
-                 % (info, escape(raw_url), tracks, escape(download_url), scrub_row, transport_row, words_button + sleep, lyrics))
+                 % (info, fill, poster, escape(raw_url), tracks, escape(download_url), scrub_row, transport_row, words_button + sleep, lyrics))
     else:
         picture = ("<img class='pl-cover-img' src='%s' alt='Cover'>" % escape(cover_url) if cover_url
                    else "<div class='pl-cover-blank'>%s</div>" % ico("audio"))
