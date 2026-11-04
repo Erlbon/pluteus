@@ -5,7 +5,7 @@ OPDS app, download files, with per-user logins. Python, no Java, low memory, no 
 Built as a light replacement for Ubooquity, for people who keep their library as plain folders on disk
 (tested on about 10 TB of books and comics).
 
-**Status: 0.9.10, feature complete, in daily use, being tested on real devices before 1.0.** What comes after 1.0 (the random mix, then playlists) is in [docs/ROADMAP.md](docs/ROADMAP.md). Named after the *pluteus*, the sloping shelf or bookcase of a
+**Status: 0.9.12, feature complete, in daily use, being tested on real devices before 1.0.** What comes after 1.0 (the random mix, then playlists) is in [docs/ROADMAP.md](docs/ROADMAP.md). Named after the *pluteus*, the sloping shelf or bookcase of a
 medieval library. Pronounced "PLOO-tee-us".
 
 ## What you get
@@ -240,12 +240,16 @@ comic page streaming. With `thumbnails = true` books carry **cover thumbnails** 
 | `/api/shelf/...`, `/api/bookmarks/...`, `/api/progress/...` | per-user JSON for the pages |
 | `/healthz` | unauthenticated, for Docker health checks |
 
-## Reader apps (tested)
+## Apps tried on real devices
 
 | App | Result |
 |---|---|
 | **PocketBook Reader, Android** (2026-10-08/10) | Browses nested folder feeds, downloads EPUBs, logs in. **Login must be entered in the app's own username/password fields.** Credentials embedded in the URL (`http://user:pw@host/opds`) are NOT sent by the app, so the server answers 401. Anonymous access (`anonymous_user`) also worked. CBZ and title/author display not yet checked. |
-| KOReader, other Android/iOS apps | Not tested yet. |
+| **PocketBook Reader, Android, over HTTPS from outside** (2026-10-15) | The app sent no login at all to the public address. The app key in the address (`<site>/k/<app key>/opds`) works. |
+| **Tempo** (Subsonic, Android phone, 2026-10-13) | Browses and plays; seeking and next track work. |
+| **Ultrasonic through Android Auto** (Subsonic, 2026-10-17) | Starts and plays in the car. Two bugs found there were fixed the same day: the artist list showed folders without music, and the cover stayed on the first song. |
+| **Kodi on Google TV over WebDAV** (confirmed 2026-11-04) | Works as a WebDAV source. |
+| KOReader, other OPDS apps, iOS apps; WebDAV in Explorer, Finder or Android file managers; other Subsonic apps | Not tried yet. |
 
 Apps that drop URL credentials and have no login fields can use `anonymous_user` (LAN only, restricted user).
 
@@ -370,9 +374,10 @@ Nothing is indexed, so a folder costs the same however big the library is.
 
 ## Not yet (planned)
 
-1. A compatibility pass on real devices before 1.0: Subsonic apps and Android Auto, WebDAV in Explorer / Finder / Android, PocketBook
-   covers, KOReader progress sync, OPDS 2.0 page streaming, an iOS app. Until then these are tested against their specifications and with
-   test clients only; PocketBook's OPDS login is the only one tried on a real device.
+1. More real devices before 1.0. Tried so far: PocketBook over OPDS, Tempo, Ultrasonic through Android Auto, and Kodi over WebDAV (see
+   "Apps tried on real devices"). Not tried yet, so tested against their specifications and with test clients only: WebDAV in Explorer /
+   Finder / Android file managers, PocketBook covers, KOReader progress sync, OPDS 2.0 and its page streaming, an iOS app, casting to a
+   real Chromecast, audiobooks on a phone, and TV mode on a real TV browser.
 2. "Share to pluteus": on one real phone (Chrome 154, Android 16, a dynamic-DNS address behind Caddy with a valid certificate) Chrome refused to
    install the app ("This app cannot be installed"), even for a bare-bones manifest, while other sites installed fine. Cause unknown, so the
    Share-menu entry is unproven. A home-screen shortcut and uploads from the page itself work.
