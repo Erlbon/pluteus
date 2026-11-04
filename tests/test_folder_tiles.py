@@ -113,3 +113,18 @@ def test_the_picture_of_a_marked_folder_is_not_served_to_the_wrong_person(tmp_pa
     assert c.get("/cover/lib/Parent/Secret", headers=BOB).status_code == 404
     assert c.get("/cover/lib/Parent/Adult", headers=BOB).status_code == 404
     assert c.get("/cover/lib/Parent/Open", headers=BOB).status_code == 200
+
+
+def _css_rule(css: str, selector: str) -> str:
+    start = css.index(selector + " {")
+    return css[start:css.index("}", start)]
+
+
+def test_the_star_and_plus_sit_above_the_cover_picture():
+    # the picture has z-index 1; without a higher one the star and + were drawn under it, so a tap on the star opened the book
+    from pathlib import Path
+    import re
+    css = (Path(__file__).parent.parent / "pluteus" / "static" / "base.css").read_text(encoding="utf-8")
+    picture = int(re.search(r"z-index:\s*(\d+)", _css_rule(css, ".pl-tile-img")).group(1))
+    shelf = re.search(r"z-index:\s*(\d+)", _css_rule(css, ".pl-tile .pl-shelf"))
+    assert shelf and int(shelf.group(1)) > picture

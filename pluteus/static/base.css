@@ -291,7 +291,7 @@ a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible
 .pl-next-btn::before { content: "+"; font-size: 1.2em; font-weight: 700; }
 .pl-next-btn[aria-pressed="true"]::before { content: "\2713"; color: var(--pl-accent); }
 .pl-tile { position: relative; }
-.pl-tile .pl-shelf { position: absolute; top: 4px; right: 4px; margin: 0; flex-direction: column;
+.pl-tile .pl-shelf { position: absolute; z-index: 2; top: 4px; right: 4px; margin: 0; flex-direction: column;   /* above the cover picture (z-index 1) */
   background: color-mix(in srgb, var(--pl-bg) 75%, transparent); border-radius: 10px; opacity: 0; transition: opacity .15s; }
 .pl-tile:hover .pl-shelf, .pl-tile:focus-within .pl-shelf, .pl-tile .pl-shelf:has([aria-pressed="true"]) { opacity: 1; }
 @media (hover: none) { .pl-tile .pl-shelf { opacity: 1; } }
@@ -500,6 +500,9 @@ body.pl-shell-page { display: flex; flex-direction: column; height: 100vh; heigh
 .pl-shell-player.pl-merged { flex: 1 1 0; min-width: 0; margin: 0 10px; padding: 0 6px; background: none; border: 0; }
 .pl-shell-player.pl-merged:not([hidden]) ~ .pl-spacer { flex: 0 0 0; }
 .pl-shell-player .pl-icon { color: var(--pl-accent); width: 22px; height: 22px; }
+/* the close button is a text x, not an icon: line-height 0 (.pl-vol-btn) made it 8 px tall, so it gets the size of its icon neighbours */
+#sp-close { display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box; width: 30px; height: 30px; font-size: 22px; line-height: 1; }
+html.pl-tv #sp-close { width: 56px; height: 56px; }
 .pl-shell-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
 .pl-now-playing { margin-top: 8px; font-size: 16px; font-weight: 600; color: var(--pl-accent); text-align: center; overflow-wrap: anywhere; }
 .pl-now-playing[hidden] { display: none; }
