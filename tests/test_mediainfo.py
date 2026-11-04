@@ -7,7 +7,7 @@ import pytest
 from starlette.testclient import TestClient
 
 from conftest import basic
-from pluteus import mediainfo
+from pluteus import app as app_module, mediainfo, web
 from pluteus.app import create_app
 from pluteus.auth import hash_password
 from pluteus.config import parse_config
@@ -480,11 +480,23 @@ def test_a_movie_with_a_poster_shows_it_until_play_with_a_dimmed_copy_in_the_bar
     assert ".pl-video-fill {" in css and ".pl-videowrap.pl-has-fill video { background: transparent;" in css
 
 
-def test_a_movie_without_a_poster_has_no_poster_and_no_fill(music):
+def test_a_movie_without_a_poster_offers_a_transparent_one_for_a_webview_and_has_no_fill(music):
+    # without any poster Android's WebView (TV Bro on a TV) draws its own grey placeholder until play; other browsers show
+    # the first frame, which a poster would hide, so the page only offers it and the script sets it in a WebView
     (music / "Album" / "clip.mp4").write_bytes(b"\x00\x00\x00\x18ftypmp42" + b"\x00" * 64)
     client, auth = make_client(music)
     page = client.get("/view/music/Album/clip.mp4", headers={**auth, **HTML}).text
-    assert "poster=" not in page and "pl-video-fill" not in page
+    assert " poster=" not in page and "data-blank-poster='%s'" % web.BLANK_POSTER in page and "pl-video-fill" not in page
+    js = open(os.path.join(HERE, "..", "pluteus", "static", "viewer-media.js"), encoding="utf-8").read()
+    assert "media.dataset.blankPoster && /; wv\\)/.test(navigator.userAgent)) media.poster = media.dataset.blankPoster" in js
+
+
+def test_the_blank_poster_is_one_transparent_pixel_the_page_policy_allows():
+    import base64, io
+    from PIL import Image
+    assert web.BLANK_POSTER.startswith("data:image/gif;base64,") and "img-src 'self' data:" in app_module.CSP
+    img = Image.open(io.BytesIO(base64.b64decode(web.BLANK_POSTER.split(",", 1)[1])))
+    assert img.size == (1, 1) and img.convert("RGBA").getpixel((0, 0))[3] == 0
 
 
 def test_the_script_shows_the_poster_fill_and_drops_it_at_play_or_seek():

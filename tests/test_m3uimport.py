@@ -108,3 +108,5 @@ def test_the_tv_picker_has_the_single_channel_form_and_the_import(up):
     assert "id='oneAdd'" in page.replace('"', "'") and "id='m3uFile'" in page.replace('"', "'")
     js = me.get("/static/pickers/tv-picker.js").text
     assert "oneAdd" in js and "unshift" in js
+    from pluteus import web
+    assert "poster=\"%s\"" % web.BLANK_POSTER in page        # the preview, too, has no grey WebView placeholder

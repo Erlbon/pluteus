@@ -111,6 +111,9 @@ KIND_ICON_NAMES = {"epub": "epub", "comic": "comic", "pdf": "pdf", "image": "ima
 ROOT_ICON, UPLOADS_ICON = ico("folder"), ico("upload")
 ICON_STYLES = (("gold", "Gold outlines"), ("aurora", "Outlines, a colour for each type"), ("color", "Colour tiles"))
 RECENT_TITLE = "Pick up where you left off"       # books, comics, PDFs, audiobooks and videos all appear in this box
+# the poster of a video with no picture of its own: one transparent pixel, so Android's WebView (TV Bro on a TV) does not draw
+# its grey placeholder until play; the CSP's img-src allows data:
+BLANK_POSTER = "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7"
 
 
 def kind_icon(kind: str) -> str:
@@ -698,7 +701,8 @@ def media_viewer_page(ctx: Ctx, title: str, *, kind: str, raw_url: str, mime: st
                      % (song_prev, skip_back, button("play", "Play", "play", extra="pl-play"), speed_val, skip_fwd, song_next))
     if kind == "video":
         # the poster until play: the browser's own (also without the script), and a dimmed copy that the script shows in the bars
-        poster = " poster='%s'" % escape(cover_url) if cover_url else ""
+        # without a picture other browsers show the first frame, so the blank poster is only set by the script in a WebView
+        poster = " poster='%s'" % escape(cover_url) if cover_url else " data-blank-poster='%s'" % BLANK_POSTER
         fill = "<img class='pl-video-fill' src='%s' alt='' hidden>" % escape(cover_url) if cover_url else ""
         stage = ("<div class='pl-media-box pl-player pl-videobox'>%s<div class='pl-videowrap'>%s<video id='media' controls preload='metadata' playsinline%s src='%s'>%s"
                  "<p>Your browser cannot play this file; <a href='%s'>download it</a>.</p></video></div>%s%s<div class='pl-tools'>%s</div>%s"
@@ -790,14 +794,14 @@ def iptv_page(ctx: Ctx, title: str, *, stations: list, download_url: str, text_u
                  "<span class='pl-icon pl-i-play'></span></button></span></div>")
     logo = "<img class='pl-tv-logo' src='%s' alt=''>" % escape(logo_url) if logo_url else ""
     stage = ("<div class='pl-media-box pl-player pl-videobox pl-iptv'><div class='pl-track pl-tv-head'>%s<h1 class='pl-track-title' id='now'>%s</h1></div>"
-             "<div class='pl-videowrap'><video id='tv' controls playsinline data-url='%s' data-page='%s' data-logo='%s' data-relay='%s' data-always='%s' data-mpegts='%s'%s></video><div class='pl-toast' id='status' hidden></div></div>%s%s%s"
+             "<div class='pl-videowrap'><video id='tv' controls playsinline poster='%s' data-url='%s' data-page='%s' data-logo='%s' data-relay='%s' data-always='%s' data-mpegts='%s'%s></video><div class='pl-toast' id='status' hidden></div></div>%s%s%s"
              "<div class='pl-bufferbar' id='bufferbar' role='group' aria-label='Buffer' hidden>"
              "<span class='pl-seg'><button type='button' data-sec='0' title='Smallest delay: closest to live, but every hiccup shows'>Live</button>"
              "<button type='button' data-sec='8' title='Buffered: about 8 seconds behind live, rides out short stalls'>Buffered</button>"
              "<button type='button' data-sec='20' title='Extra buffered: about 20 seconds behind live, for a poor connection'>Extra buffered</button></span></div>"
              "<p class='pl-tvinfo-bar'><button type='button' class='pl-btn pl-btn-small' id='info' aria-expanded='false' hidden>Stream info</button></p>"
              "<pre class='pl-tvinfo pl-muted' id='tvinfo' hidden></pre></div>"
-             % (logo, escape(heading), escape(first_url), escape(page_url), escape(logo_url), escape(relays[0] if relays else ""), "1" if (always and always[0]) else "0",
+             % (logo, escape(heading), BLANK_POSTER, escape(first_url), escape(page_url), escape(logo_url), escape(relays[0] if relays else ""), "1" if (always and always[0]) else "0",
                 escape(ctx.urls.static("vendor/mpegts.min.js")), " data-keep-sound='1'" if ctx.tv_sound else "", live_row, transport, listing))
     tools = _download_link(download_url) + _reader_scheme()
     foot = "<a href='%s'>Show as text</a>" % escape(text_url)

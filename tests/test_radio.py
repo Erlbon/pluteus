@@ -3,7 +3,7 @@ import pytest
 from starlette.testclient import TestClient
 
 from conftest import basic
-from pluteus import radio
+from pluteus import radio, web
 from pluteus.app import create_app
 from pluteus.auth import hash_password
 from pluteus.config import parse_config
@@ -61,6 +61,7 @@ def test_a_channel_file_opens_the_video_page_with_its_own_policy(client):
     (c.folder / "Channel.m3u").write_text(TV, encoding="utf-8")
     r = c.get("/view/radio/Channel.m3u", headers={**auth, **HTML})
     assert "<video id='tv'" in r.text and "vendor/hls.min.js" in r.text and "iptv.js" in r.text and "id='radio'" not in r.text
+    assert "poster='%s'" % web.BLANK_POSTER in r.text           # no grey WebView placeholder before the channel starts
     csp = r.headers["content-security-policy"]
     assert "connect-src 'self' http: https:" in csp and "media-src 'self' blob: http: https:" in csp
     assert "connect-src 'self';" in c.get("/view/radio/Local.m3u", headers={**auth, **HTML}).headers["content-security-policy"]

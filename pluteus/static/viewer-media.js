@@ -73,6 +73,10 @@
     });
   }
 
+  /* a movie without a picture: Android's WebView (TV Bro on a TV) draws a grey placeholder where other browsers show the first
+     frame, so only there it gets the server's transparent poster */
+  if (media.dataset.blankPoster && /; wv\)/.test(navigator.userAgent)) media.poster = media.dataset.blankPoster;
+
   /* a movie's poster: the dimmed copy fills the bars beside it until the film plays or is moved to a point (then the frame shows) */
   var fill = document.querySelector(".pl-video-fill");
   if (fill && fill.parentNode) {
