@@ -52,6 +52,20 @@ def test_login_page_and_security_headers(web):
     assert client.get("/healthz").headers["x-frame-options"] == "SAMEORIGIN"       # on every response
 
 
+def test_the_site_settings_and_the_reading_settings_have_different_icons(web):
+    """The bar's Settings (a hex nut) must not look like the ebook reader's Reading settings (sliders): they open different things."""
+    client, _ = web
+    login(client)
+    home = client.get("/", headers=dict(HTML, **{"sec-fetch-dest": "iframe"})).text
+    bar = home[home.index("title='Settings'"):][:200]
+    assert "pl-i-prefs" in bar and "pl-i-settings" not in bar
+    reader = client.get("/read/books/Good%20Author/Real%20Book.epub", headers=HTML).text
+    assert "pl-i-settings" in reader[reader.index("Reading settings") - 300:][:400]
+    css = client.get("/theme/default/theme.css").text
+    assert ".pl-i-prefs" in css and "icons/prefs.svg" in css
+    assert client.get("/theme/_/icons/prefs.svg").status_code == 200
+
+
 def test_static_and_theme_assets_are_public_uncached_and_safe(web):
     client, _ = web
     css = client.get("/static/base.css")

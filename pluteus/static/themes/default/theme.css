@@ -15,6 +15,7 @@
 .pl-i-menu       { -webkit-mask-image: url(../_/icons/menu.svg);       mask-image: url(../_/icons/menu.svg); }
 .pl-i-back       { -webkit-mask-image: url(../_/icons/back.svg);       mask-image: url(../_/icons/back.svg); }
 .pl-i-settings   { -webkit-mask-image: url(../_/icons/settings.svg);   mask-image: url(../_/icons/settings.svg); }
+.pl-i-prefs      { -webkit-mask-image: url(../_/icons/prefs.svg);      mask-image: url(../_/icons/prefs.svg); }
 .pl-i-fullscreen { -webkit-mask-image: url(../_/icons/fullscreen.svg); mask-image: url(../_/icons/fullscreen.svg); }
 .pl-i-plus       { -webkit-mask-image: url(../_/icons/plus.svg);       mask-image: url(../_/icons/plus.svg); }
 .pl-i-minus      { -webkit-mask-image: url(../_/icons/minus.svg);      mask-image: url(../_/icons/minus.svg); }
