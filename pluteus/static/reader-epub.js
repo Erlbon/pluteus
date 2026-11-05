@@ -173,8 +173,7 @@
   var taps = window.plTapZones({
     stage: document.querySelector(".pl-reader-stage"), back: prev, forward: next,
     enabled: function () { return settings.flow === "paginated"; },
-    menuOpen: function () { return !$("toc").hidden || !$("settings").hidden; }, closeMenus: closeMenus,
-    barsChanged: function () { try { rendition.resize(); } catch (e) { /* not laid out yet */ } }
+    menuOpen: function () { return !$("toc").hidden || !$("settings").hidden; }, closeMenus: closeMenus
   });
   rendition.hooks.content.register(function (contents) { taps.watch(contents.document); });
   rendition.on("click", function (e) {

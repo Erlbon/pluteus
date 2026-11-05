@@ -1,6 +1,6 @@
 """Turning pages by tapping, in a real browser, the same in the EPUB, comic, PDF and picture readers: the page is split top to bottom so
-either thumb reaches forward (a left hand could not reach the old right-hand edge). Upper part: back a page. A band below it: show or hide
-the reader's bottom bar (the top bar, with the back arrow, always stays). The rest: forward. The first 24 px under the bar do nothing (a tap that misses a bar button turns no page).
+either thumb reaches forward (a left hand could not reach the old right-hand edge). Upper part: back a page. The rest: forward. The bars
+always stay. The first 24 px under the bar do nothing (a tap that misses a bar button turns no page).
 Needs Playwright and Google Chrome; skipped where one is missing."""
 import io
 import socket
@@ -106,15 +106,14 @@ def bars_shown(page):
     return page.locator(".pl-reader-bar").is_visible() and page.locator(".pl-reader-foot").is_visible()
 
 
-def check_bars_and_quiet_strip(page, where):
+def check_bars_and_quiet_strip(page, where, same_page=True):
     before = where()
     tap(page, below_bar=10)                                                # just under the bar: a near miss of a bar button
     assert where() == before and bars_shown(page)
-    tap(page, 0.36)                                                        # the band: the bottom bar goes away for more page ...
-    assert not page.locator(".pl-reader-foot").is_visible() and where() == before
-    assert page.locator("#back").is_visible()                              # the top bar, with the way back to the folder, stays
-    tap(page, 0.36)                                                        # ... and come back
-    assert bars_shown(page) and where() == before
+    tap(page, 0.36)                                                        # just below the upper part: forward ...
+    assert where() != before
+    if same_page:                                                          # ... and the bars stay (the picture viewer opens a new page)
+        assert bars_shown(page)
 
 
 def test_the_comic_reader(page):
@@ -154,7 +153,7 @@ def test_the_picture_viewer(page):
     tap(page, 0.15)
     page.wait_for_url(lambda url: "pics/1.png" in unquote(url))
     picture("2.png")
-    check_bars_and_quiet_strip(page, lambda: page.url)
+    check_bars_and_quiet_strip(page, lambda: page.url, same_page=False)
 
 
 EPUB_AT = "() => document.querySelector('.epub-container').scrollLeft"
