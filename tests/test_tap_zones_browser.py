@@ -1,6 +1,6 @@
 """Turning pages by tapping, in a real browser, the same in the EPUB, comic, PDF and picture readers: the page is split top to bottom so
 either thumb reaches forward (a left hand could not reach the old right-hand edge). Upper part: back a page. A band below it: show or hide
-the reader's bars. The rest: forward. The first 24 px under the bar do nothing (a tap that misses a bar button turns no page).
+the reader's bottom bar (the top bar, with the back arrow, always stays). The rest: forward. The first 24 px under the bar do nothing (a tap that misses a bar button turns no page).
 Needs Playwright and Google Chrome; skipped where one is missing."""
 import io
 import socket
@@ -110,8 +110,9 @@ def check_bars_and_quiet_strip(page, where):
     before = where()
     tap(page, below_bar=10)                                                # just under the bar: a near miss of a bar button
     assert where() == before and bars_shown(page)
-    tap(page, 0.36)                                                        # the band: the bars go away for more page ...
-    assert not bars_shown(page) and where() == before
+    tap(page, 0.36)                                                        # the band: the bottom bar goes away for more page ...
+    assert not page.locator(".pl-reader-foot").is_visible() and where() == before
+    assert page.locator("#back").is_visible()                              # the top bar, with the way back to the folder, stays
     tap(page, 0.36)                                                        # ... and come back
     assert bars_shown(page) and where() == before
 

@@ -103,6 +103,9 @@ body {
   background: var(--pl-page-bg);
   background-attachment: fixed;
   color: var(--pl-fg);
+  /* viewport-fit=cover (web.layout): Chrome on Android 15 draws the page under the system's button bar, and the reader's bottom bar and
+     last line were hidden there. The page now keeps clear of whatever the system covers; 0 on a screen with no such bar, and in a frame. */
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
 }
 a { color: var(--pl-accent); text-decoration: none; }
 a:hover { text-decoration: underline; }
@@ -189,7 +192,8 @@ a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible
 }
 
 /* ---- reader chrome (EPUB and comic readers share it) ---- */
-.pl-reader { display: flex; flex-direction: column; height: 100vh; height: 100dvh; background: var(--pl-reader-stage-bg); }
+.pl-reader { display: flex; flex-direction: column; height: 100vh;
+  height: calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom)); background: var(--pl-reader-stage-bg); }
 .pl-reader-bar {
   display: flex; align-items: center; gap: 6px; padding: 6px 10px; z-index: 5;
   background: var(--pl-reader-bar-bg); color: var(--pl-reader-bar-fg); border-bottom: 1px solid var(--pl-line);
@@ -221,8 +225,9 @@ a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible
 .pl-menu li a { display: block; padding: 6px 4px; border-radius: 6px; color: inherit; overflow-wrap: anywhere; }
 .pl-menu li a:hover { background: var(--pl-card); text-decoration: none; }
 .pl-menu .pl-sub { padding-left: 14px; }
-/* tapzones.js: a tap in the upper part of the page goes back, a band below it shows or hides the bars, the rest goes forward */
-.pl-reader.pl-bare .pl-reader-bar, .pl-reader.pl-bare .pl-reader-foot { display: none; }
+/* tapzones.js: a tap in the upper part of the page goes back, a band below it shows or hides the bottom bar, the rest goes forward.
+   The top bar is never hidden: it holds the way back to the folder. */
+.pl-reader.pl-bare .pl-reader-foot { display: none; }
 .pl-page { user-select: none; -webkit-user-drag: none; }
 /* comic reader: one page; "fit to page" shows it whole, "fit to width" fills the width and scrolls down */
 .pl-comic-stage { display: flex; justify-content: center; overflow: auto; }
@@ -490,6 +495,9 @@ html[data-icons="aurora"] .pl-ico-upload  { color: light-dark(#1f7ae0, #7cc8ff);
 .pl-fs-btn { margin-left: 4px; }
 /* the shell: the pluteus bar, a slim player strip, and the whole site in a frame; a page in the frame has no bar of its own */
 .pl-framed .pl-bar { display: none; }
+/* Chrome hands the system's insets to a frame as well: the shell page keeps clear of them, so a page in its frame must not do it again */
+html.pl-framed body { padding: 0; }
+.pl-framed .pl-reader { height: 100vh; height: 100dvh; }
 /* a reader's own dark/light button: the shell's bar above it has the same one (the two schemes are kept in step) */
 .pl-framed .pl-reader-bar .pl-scheme { display: none; }
 body.pl-shell-page { display: flex; flex-direction: column; height: 100vh; height: 100dvh; margin: 0; overflow: hidden; }

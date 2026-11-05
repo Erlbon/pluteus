@@ -1,6 +1,7 @@
 /* pluteus readers (EPUB, comic, PDF, pictures): what a tap on the page does. The page is split from top to bottom, so either thumb
-   reaches forward (a left hand could not reach the old right-hand edge): the upper part goes back a page, a band below it shows or hides
-   the reader's bars (more room for the page), and the rest, where a thumb rests, goes forward. The first 24 px under the bar do nothing,
+   reaches forward (a left hand could not reach the old right-hand edge): the upper part goes back a page, a band below it
+   shows or hides the bottom bar (more room for the page), and the rest, where a thumb rests, goes forward. The top bar always stays: it
+   holds the way back to the folder, and a tap that hid it left a phone with no way out but the Pluteus logo. The first 24 px under the bar do nothing,
    so a tap that misses a bar button by a little turns no page. A tap while a menu is open only closes the menu; a tap on a link, a
    button or a field, a tap that ends a drag, and a tap that clears a text selection do nothing here. Swipes and keys stay with each reader. */
 (function () {
@@ -8,7 +9,7 @@
   var QUIET = 24, BACK = 0.30, BARS = 0.42;
 
   /* opts: stage (the page area), back(), forward(), and optionally enabled() (false: taps do nothing, say while zoomed), menuOpen() and
-     closeMenus(), barsChanged() (after the bars were shown or hidden: the page area changed size). Returns { tap(clientY, target), watch(doc) }:
+     closeMenus(), barsChanged() (after the bottom bar was shown or hidden: the page area changed size). Returns { tap(clientY, target), watch(doc) }:
      a reader whose page is a frame of its own (the EPUB reader) passes on the taps made in there, with clientY in this window. */
   window.plTapZones = function (opts) {
     var root = document.getElementById("reader"), hadSelection = false;

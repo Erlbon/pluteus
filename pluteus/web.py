@@ -62,7 +62,7 @@ def layout(title: str, body: str, ctx: Ctx, *, head: str = "", scripts: tuple = 
     # data-shell: a signed-in page opened on its own moves into the shell (scheme.js), where the player outlives page changes
     to_shell = " data-shell='%s'" % escape(u.shell()) if (shell and ctx.user) else ""
     return ("<!doctype html><html lang='en' data-icons='%s'%s><head><meta charset='utf-8'>"
-            "<meta name='viewport' content='width=device-width, initial-scale=1'>"
+            "<meta name='viewport' content='width=device-width, initial-scale=1, viewport-fit=cover'>"
             "<title>%s</title>%s%s<script src='%s'></script>%s%s</head>"
             "<body class='%s'>%s%s%s</body></html>"
             % (escape(ctx.icons), to_shell, escape(title), icon_links(u), "".join(css), escape(u.static("scheme.js")), head, js,
