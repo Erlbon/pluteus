@@ -20,12 +20,11 @@ body {
 html.pl-set-font body { font-family: var(--pl-book-font) !important; }
 html.pl-set-line body { line-height: var(--pl-book-line) !important; }
 
-/* book styles often hard-code text colours; follow the reader's instead */
-body p, body div, body span, body li, body td, body th, body blockquote, body em, body strong, body i, body b,
-body h1, body h2, body h3, body h4, body h5, body h6 {
-  color: inherit !important;
-}
-body p, body div, body span, body section, body blockquote { background-color: transparent !important; }
+/* book styles often hard-code text colours and backgrounds; follow the reader's instead. Every element, not a list of them: a stat box
+   drawn as a table with light cells kept its light background under the reader's light text in the dark scheme (0.9.23). Pictures keep
+   theirs (a line drawing on a transparent picture needs its white). */
+body * { color: inherit !important; }
+body *:not(img):not(svg):not(video):not(canvas) { background-color: transparent !important; }
 
 a, a * { color: var(--pl-book-link) !important; }
 
