@@ -39,10 +39,10 @@ def reader_frame(page):
     return [f for f in page.frames if "/read/" in f.url][0]
 
 
-def assert_foot_just_above_the_button_bar(foot):
+def assert_foot_just_above_the_button_bar(foot, zoom=1.0):
     bottom = foot["y"] + foot["height"]
     assert bottom <= PHONE["height"] - BUTTON_BAR + 0.5                     # not under the button bar ...
-    assert bottom >= PHONE["height"] - BUTTON_BAR - 0.5                     # ... and not lifted twice (shell and frame)
+    assert bottom >= PHONE["height"] - BUTTON_BAR * zoom - 0.5              # ... and not lifted twice (shell and frame); zoom scales the inset
 
 
 def test_the_reader_in_the_shell_keeps_its_bottom_bar_above_the_button_bar(phone):
@@ -51,6 +51,26 @@ def test_the_reader_in_the_shell_keeps_its_bottom_bar_above_the_button_bar(phone
     assert_foot_just_above_the_button_bar(frame.locator(".pl-reader-foot").bounding_box())
     stage = frame.locator(".pl-reader-stage").bounding_box()
     assert stage["y"] + stage["height"] <= PHONE["height"] - BUTTON_BAR     # the page's last line is not under it either
+
+
+ZOOM = "() => { document.documentElement.style.zoom = '1.1'; }"                  # Chrome's page zoom (Accessibility) at 110%
+
+
+@pytest.mark.parametrize("shell", [True, False])
+def test_with_page_zoom_the_bottom_bar_stays_on_the_screen(phone, shell):
+    """The reader was given the screen's height (100dvh), which page zoom makes 10% taller than the screen: the bottom bar went below
+    its edge. It is now pinned to the screen's edges."""
+    if shell:
+        phone.goto(phone.site + "/shell?go=/read/lib/Long.epub")
+        frame = reader_frame(phone)
+        phone.evaluate(ZOOM)
+    else:
+        phone.goto(phone.site + "/read/lib/Long.epub?noshell=1")
+        phone.wait_for_selector("#viewer iframe")
+        frame = phone.main_frame
+    frame.evaluate(ZOOM)
+    phone.wait_for_timeout(500)
+    assert_foot_just_above_the_button_bar(frame.locator(".pl-reader-foot").bounding_box(), zoom=1.1)
 
 
 def test_the_reader_on_its_own_keeps_its_bottom_bar_above_the_button_bar(phone):
