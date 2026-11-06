@@ -165,7 +165,8 @@ def _security_alert(u) -> str:
     out = ""
     for adv in (u or {}).get("advisories", []):
         link = adv.get("url", "")
-        details = " <a href='%s'>Details</a>" % escape(link) if link.startswith("https://github.com/") else ""
+        details = (" <a href='%s' target='_blank' rel='noopener'>Details</a>" % escape(link)
+                   if link.startswith("https://github.com/") else "")
         fixed = " Fixed in %s." % escape(adv["fixed"]) if adv.get("fixed") else ""
         out += ("<p class='pl-error' role='alert'><strong>Security issue in this version:</strong> %s (%s%s).%s%s</p>"
                 % (escape(adv.get("summary") or "see the advisory"), escape(adv.get("id", "")),
@@ -297,7 +298,9 @@ def about_page(ctx: Ctx, update=None, static=lambda path: "/" + path) -> str:
              "<p class='pl-muted'>A <em>pluteus</em> is the sloped reading desk of a medieval library, and the low screen wall between two columns.</p>"
              "<p>MIT licence. Copyright &copy; 2026 Erlend Bonderud. <a href='%s' target='_blank' rel='noopener'>Source, issues and releases on GitHub</a>.</p>"
              % (escape(__version__), _update_cell(update), REPO_URL))
-    credits = ("<p>Radio and TV channels are found in two public directories, <strong>radio-browser.info</strong> and <strong>iptv-org</strong>, "
+    credits = ("<p>Radio and TV channels are found in two public directories, "
+               "<a href='https://www.radio-browser.info/' target='_blank' rel='noopener'>radio-browser.info</a> and "
+               "<a href='https://github.com/iptv-org/iptv' target='_blank' rel='noopener'>iptv-org</a>, "
                "searched from your own browser; nothing from them is stored except the stations you save.</p>"
                "<p>Included software:</p><ul>%s</ul>"
                "<p class='pl-muted'>Python packages used by the server (Starlette, uvicorn, mistune, Pillow, tinytag, qrcodegen) keep their own licences.</p>" % licences)

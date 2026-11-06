@@ -512,6 +512,9 @@ def test_about_page_shows_version_credits_and_the_shipped_changelog(admin):
     html = client.get("/about", headers=BOSS).text
     assert "<h1>About</h1>" in html and __version__ in html and "MIT licence" in html
     assert "radio-browser.info" in html and "vendor/LICENSE-hlsjs.txt" in html
+    # every outside address is a link that opens in a new tab (owner, 2026-11-06)
+    assert "href='https://www.radio-browser.info/' target='_blank' rel='noopener'" in html
+    assert "href='https://github.com/iptv-org/iptv' target='_blank' rel='noopener'" in html
     assert "href='https://github.com/Erlbon/pluteus'" in html
     assert "<summary>Unreleased" in html and "<details class='pl-changelog'" in html          # the changelog is rendered, section by section
     assert "<script" not in html.split("<h2>Changelog</h2>")[1]                               # raw HTML in the file is never run

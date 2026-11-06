@@ -143,7 +143,7 @@ def test_the_status_page_shows_each_state_and_a_red_alert_for_a_security_issue()
          "url": "https://github.com/Erlbon/pluteus/security/advisories/GHSA-1"}]})
     assert "role='alert'" in sec and "Security issue in this version" in sec and "pl-dot-bad" in sec
     assert "<script>alert(1)" not in sec and "&lt;script&gt;" in sec                  # text from outside is escaped
-    assert "href='https://github.com/Erlbon/pluteus/security/advisories/GHSA-1'" in sec
+    assert "href='https://github.com/Erlbon/pluteus/security/advisories/GHSA-1' target='_blank' rel='noopener'" in sec   # a new tab
     evil = render({"state": "security", "latest": "", "advisories": [{"id": "G", "summary": "x", "url": "javascript:alert(1)"}]})
     assert "javascript:" not in evil                                                  # only github.com links become links
 
