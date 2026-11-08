@@ -92,7 +92,8 @@ def test_every_library_and_the_upload_folder_are_seen_until_unticked(server):
     admin, main, _ = server
     assert folders(main) == ["music", "books", "uploads"]
     html = admin.get("/libraries", headers=BOSS).text
-    assert "Music apps (Subsonic)" in html and html.count("name='root' value=") == 2 and "name='uploads' checked" in html
+    assert "Music apps (Subsonic)" in html and "Folders available to Subsonic" in html
+    assert html.count("name='root' value=") == 2 and "name='uploads' checked" in html
 
 
 def test_unticking_a_library_hides_it_from_music_apps_at_once(server):

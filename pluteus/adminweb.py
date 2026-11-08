@@ -21,7 +21,7 @@ FLASH = {
     "unlocked": "The lock is cleared.", "nothing": "There was nothing to clear.", "forgot": "That device is forgotten.",
     "signedout": "Signed out everywhere (sessions and known devices removed).",
     "libadded": "Library added. It is available now.", "libremoved": "Library removed. Nothing on disk was touched.",
-    "libsubsonic": "Saved. Music apps see the ticked libraries from now on (their lists refresh within two minutes).",
+    "libsubsonic": "Saved. Only the ticked folders are available to Subsonic from now on (the apps' lists refresh within two minutes).",
     "added": "User added.", "password": "Password changed.", "access": "Access saved.", "removed": "User removed.", "keyrevoked": "App key revoked.", "debugon": "Debug logging is on for 15 minutes.",
     "debugoff": "Debug logging is off.", "debugcleared": "The debug lines are cleared.", "stopped": "That stream is stopped.",
 }
@@ -369,7 +369,7 @@ def _music_box(roots: list, up, music) -> str:
             "and only where the user may open them. Leave out the libraries without music: every one that is ticked is searched for "
             "albums. The web site and the other apps are not affected.</p>")
     form = ("<form class='pl-admin-form' method='post' action='/libraries/subsonic'><fieldset class='pl-fieldset'>"
-            "<legend>Libraries music apps see</legend>%s</fieldset>"
+            "<legend>Folders available to Subsonic</legend>%s</fieldset>"
             "<button class='pl-btn pl-btn-primary' type='submit'>Save</button></form>" % boxes)
     return _box("Music apps (Subsonic)", state + form + note)
 
