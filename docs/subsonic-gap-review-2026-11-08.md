@@ -10,6 +10,8 @@ What music apps can and cannot do with pluteus today, measured against the premi
 
 **Left out on purpose:** everything that needs every folder opened or a list of the library kept (newest, byYear, byGenre across the library, frequent and highest from counts, song and album-name search, album counts in the artist list); online look-ups (similar songs, top songs, last.fm); user administration, chat, jukebox, shares and video, which a read-only music server has no use for.
 
+**Update, later the same day:** cards 2 and 3 are answered by notes instead: `layout:` in a folder's `about.md` says where its artists are (one library can mix depths), and `album.md` makes a box set an album. Card 1 shrinks to a default for folders without a note.
+
 **Effort:** small = under 2 minutes of work, medium = up to 10, large = more than 10.
 
 **Overall.** With `artist_level` the artist and album views now follow the real folders, and every call costs a handful of listings. The best next steps keep to the premise: let the admin page set the level, show box sets two levels deep, fill fields from what the folder names already say (year), read `album.md` and folder pictures as album and artist information, and add playlists as `.m3u` files in the user's upload folder, starting with the gonic export. Transcoding is the one large item that matters in the car, and it is a separate decision because it adds ffmpeg.

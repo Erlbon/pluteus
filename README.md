@@ -198,10 +198,15 @@ folders and rights as the web site (`roots`, `.private`, `.hidden`, `.adult`).
   works) or, in apps that support it, as an **API key**; the real password also works in apps that send it as `p`. Failed logins count
   against the same lock as the web login. The key opens nothing but this read-only API and can be revoked.
 - **Server address in the app:** the same address as the web site (with `base_path` if you use one), for example `https://example.org/pluteus`.
-- **How folders are read:** the folder hierarchy is everything; nothing is scanned, built or kept. Each library says how many folders
-  down its artists are: `artist_level = 1` (the default) reads the top folders as artists, `2` suits `Letter/Artist/Album`, `3`
-  `Genre/Letter/Artist/Album` (set on the `[[roots]]` entry). The folders inside an artist folder that hold songs (directly, or in
-  disc folders such as `CD1`) are its albums, and loose songs in an artist folder are an album under the artist's name. Every call
+- **How folders are read:** the folder hierarchy is everything; nothing is scanned, built or kept, and nothing is guessed: the folders
+  say how they are arranged. A folder's `about.md` may say in its front matter where the artists are below it, for example
+  `layout: letter/artist/album` in `0 - Bands/about.md`, `layout: country/artist/album` in `1.5 - Hip-hop/about.md`, `layout: album`
+  in a compilations folder (each album folder is then its own artist). A nearer note wins, so one library can mix depths. Without a
+  note, the library's `artist_level` counts from the top (`1`, the default, reads the top folders as artists; set on the `[[roots]]`
+  entry). The folders inside an artist folder that hold songs (directly, or in disc folders such as `CD1`) are its albums; a folder
+  with `album.md` is an album also when its songs sit two folders down (a box set of albums in disc folders); loose songs in an
+  artist folder are an album under the artist's name. The Folder Redactor writes these notes; pluteus only reads them, and only in the
+  folders it opens anyway (and the `about.md` of each top folder). Every call
   opens only the folders it needs, when the app asks: the artist list lists the folders above the artist level (27 letter folders
   for `Letter/Artist`), an artist lists its own folder, the alphabetical album lists and an app's full sync go artist by artist as
   far as the page they show (a next page carries on where the last one stopped), and the random lists pick a few folders at random.

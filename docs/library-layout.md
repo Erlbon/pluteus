@@ -10,7 +10,7 @@ information**, and a note sits at the level it describes. The recognised note na
 ```
 780 - Music/
   Genre/                   optional level: a library may keep artists directly under the top folder
-    about.md               a short note on the genre
+    about.md               a short note on the genre; its front matter says the layout below (`layout: artist/album`)
     Artist/
       artist.md            the band: who, when, where (the player's "About" link and Subsonic's biography)
       Album (Year)/
@@ -21,6 +21,20 @@ information**, and a note sits at the level it describes. The recognised note na
 The genre folder is optional (reported by the Redactor session as the owner's decision of 2026-10-15; the note name `about.md` is already recognised and
 needs nothing new in pluteus). Without it the tree is `Music/Artist/Album (Year)/tracks`, with `artist.md` and `album.md` at the same levels as above.
 The player's "About" link looks up to three folders above the track, so it finds an `artist.md` or `album.md` wherever it sits, and a genre `about.md` as a last resort.
+
+**The layout line.** Music apps find the artists where the notes say they are, without guessing and without opening every folder: the
+front matter of a folder's `about.md` carries `layout:`, the names of the levels below it down to the album:
+
+```markdown
+---
+layout: letter/artist/album
+---
+Bands, sorted by first letter.
+```
+
+`0 - Bands` says `letter/artist/album`, `1.5 - Hip-hop` says `country/artist/album`, a compilations or soundtracks folder says `album`.
+A nearer `about.md` wins over one above it, and a folder without one follows the library's `artist_level` setting (the top folders by
+default). `album.md` in a box-set folder makes the whole box one album even when its songs sit in `Disc 1/Album/` two folders down.
 
 **Soundtracks, compilations and "Various Artists".** A folder whose albums have different artists is a *collection*, not an artist: it gets an `about.md`
 (what the collection is), its albums sit directly beneath it and each gets an `album.md`, and it gets **no** `artist.md`:

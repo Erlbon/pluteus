@@ -45,6 +45,9 @@ One addition, optional:
   ```
 
   Plain `key: value` lines, `key: [a, b]` lists and `- item` lists, nothing nested. pluteus reads `title` (the page title) and hides the block;
+  in an `about.md` it also reads `layout`, which tells music apps how the folders below are arranged (`layout: letter/artist/album`:
+  the artists are two folders down; `country/artist/album` the same; `artist/album` one down; `album` for a collection, each album
+  folder its own artist), for everything inside that folder until a nearer `about.md` says otherwise;
   the other keys are kept for other tools (Obsidian, Jekyll and friends read the same block). A block that is not clean is left alone and shown
   as it is.
 

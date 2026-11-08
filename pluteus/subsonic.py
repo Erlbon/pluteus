@@ -35,15 +35,18 @@ from xml.sax.saxutils import escape, quoteattr
 from starlette.concurrency import run_in_threadpool
 from starlette.responses import FileResponse, PlainTextResponse, Response
 
-from . import __version__, aboutfiles, kinds, mediainfo, notes, radio, textview, thumbs
+from . import __version__, aboutfiles, kinds, markdown, mediainfo, notes, radio, textview, thumbs
 from .auth import verify_password
 from .bodies import read_limited
 from .config import UPLOADS_ROOT
-from .fs import NotFound, PathError, clamp_time
+from .fs import NotFound, PathError, clamp_time, longpath
 from .state import passing_by
 
 API_VERSION = "1.16.1"
 SEP = "\x1f"
+LAYOUT_NOTE = "about.md"        # its front matter may say how the folders below are arranged: `layout: letter/artist/album`
+ALBUM_NOTES = ("album.md", "album.nfo")      # a folder with one of these is an album, also when its songs sit two folders down (a box set)
+_LAYOUT_SECONDS = 60
 RADIO_FOLDER = "radio"          # a top-level folder of station files (.m3u): not an artist, left out of the music lists
 _XML_BAD = re.compile("[\x00-\x08\x0b\x0c\x0e-\x1f]")
 _ALBUM_CACHE_SECONDS = 120
@@ -144,6 +147,18 @@ def _iso(seconds: float) -> str:
     return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(clamp_time(seconds or 0)))
 
 
+def layout_depth(value) -> int | None:
+    """How many folders down the artists are, from a `layout:` value such as `letter/artist/album` (2), `country/artist/album` (2),
+    `artist/album` (1) or `album` (1: each album folder is its own artist, for compilations). None when it names neither."""
+    if not isinstance(value, str):
+        return None
+    levels = [w.strip().lower().rstrip("s") for w in value.split("/") if w.strip()]
+    for word in ("artist", "album"):
+        if word in levels:
+            return levels.index(word) + 1
+    return None
+
+
 def _letter(name: str) -> str:
     first = name[:1].upper()
     return first if first.isalpha() else "#"
@@ -154,6 +169,7 @@ class Subsonic:
         """throttle: object with wait(request, name) -> seconds, fail(request, name), ok(request, name)."""
         self.cfg, self.lib, self.state, self.auth, self.meta, self.throttle = cfg, lib, state, auth, meta, throttle
         self._pw_ok: dict = {}
+        self._layouts: dict = {}              # (library, folder) -> (artist depth from its about.md or None, until): a minute at most
         self._runs: dict = {}                 # (user, library) -> (next offset, album stream, until): where a paging app stopped
         self._runs_lock = threading.Lock()
         self._radio: dict = {}
@@ -342,11 +358,15 @@ class Subsonic:
             if not self._has_root(user, root):
                 raise ApiError(70, "The requested data was not found.")
 
-    def _list(self, user, root: str, parts):
+    def _folder(self, user, root: str, parts):
+        """(folders, songs, names of the other files in lower case) of one folder."""
         entries = self.lib.list_dir(user, root, parts, True, True)
         dirs = [e for e in entries if e.is_dir and not (not parts and e.name.lower() == RADIO_FOLDER)]       # no station files among the artists
         songs = [e for e in entries if not e.is_dir and kinds.kind_of(e.name) == "audio"]
-        return dirs, songs
+        return dirs, songs, {e.name.lower() for e in entries if not e.is_dir}
+
+    def _list(self, user, root: str, parts):
+        return self._folder(user, root, parts)[:2]
 
     def _name(self, root: str, parts) -> str:
         return self.lib.display_name(parts[-1]) if parts else root
@@ -415,49 +435,110 @@ class Subsonic:
             groups.setdefault(_letter(item["name"]), []).append(item)
         return [{"name": k, "artist": sorted(v, key=lambda a: a["name"].lower())} for k, v in sorted(groups.items())]
 
-    # ---- artists and albums: read from the folders as they are, when an app asks; nothing is walked, built or kept -----------------
-    # A library says how many folders down its artists are (artist_level: 1 = the top folders, 2 = Letter/Artist, 3 = Genre/Letter/Artist).
-    # An artist's albums are the folders inside the artist folder that hold songs (directly, or in disc folders inside them); songs loose in
+    # ---- artists and albums: read from the folders and their notes, when an app asks; nothing is walked, built or kept ---------------
+    # The folders say how they are arranged. A folder's about.md may carry `layout: letter/artist/album` in its front matter: the artists are
+    # then that many folders below it, for everything inside (a nearer note wins). Without a note the library's artist_level counts from
+    # the top (1 = the top folders). An artist's albums are the folders inside the artist folder that hold songs, directly or in the folders
+    # right inside them (CD1, CD2); a folder with album.md is an album also when its songs sit two folders down (a box set). Songs loose in
     # an artist folder are an album of that artist under the artist's name.
-    def _level(self, root: str) -> int:
+    def _default_level(self, root: str) -> int:
         r = self.lib.cfg.roots.get(root)
         return r.artist_level if r is not None else 1          # the upload folders: the top folders are the artists
 
+    def _layout(self, root: str, folder) -> int | None:
+        """The artist depth from the `layout:` line of a folder's about.md, None without one. Read at most once a minute per folder."""
+        r = self.lib.cfg.roots.get(root)
+        if r is None:
+            return None                                         # the upload folders carry no layout notes
+        key, now = (root, tuple(folder)), time.monotonic()
+        hit = self._layouts.get(key)
+        if hit and hit[1] > now:
+            return hit[0]
+        depth = None
+        base = os.path.join(longpath(r.path), *folder)
+        for name in (LAYOUT_NOTE, LAYOUT_NOTE.capitalize(), LAYOUT_NOTE.upper()):
+            try:
+                with open(os.path.join(base, name), "rb") as f:
+                    raw = f.read(16384)
+            except OSError:
+                continue
+            depth = layout_depth(markdown.front_matter(raw.decode("utf-8", "replace"))[0].get("layout"))
+            break
+        if len(self._layouts) > 5000:
+            self._layouts = {}
+        self._layouts[key] = (depth, now + _LAYOUT_SECONDS)
+        return depth
+
+    def _target(self, root: str, parts) -> int:
+        """How many folders down from the top the artists are on the way to `parts`: the nearest layout note above them, else the default."""
+        target, decided = self._default_level(root), False
+        for i in range(len(parts) + 1):
+            if i >= target and not (i == 1 and not decided):     # a top folder's own note counts even where the default puts the artists
+                break
+            depth = self._layout(root, parts[:i])
+            if depth is not None:
+                target, decided = i + depth, True
+        return target
+
     def _artist_of(self, root: str, parts) -> tuple:
-        """The artist folder on the way to an album or song folder: the folder at the library's artist level; () above that level."""
-        level = self._level(root)
-        return tuple(parts[:level]) if len(parts) >= level else ()
+        """The artist folder on the way to an album or song folder; () above the artist level."""
+        target = self._target(root, parts)
+        return tuple(parts[:target]) if len(parts) >= target else ()
 
     def _artist_folders(self, user, root: str) -> list:
-        """The folders at the artist level, in folder order: one listing for each folder above that level (the 27 letter folders of
-        Letter/Artist), never the artist folders themselves."""
-        layer = [()]
+        """The artist folders, in folder order: each folder above the artist level is listed (the 27 letter folders of Letter/Artist), and
+        its about.md read when it has one. A top folder's about.md is also read where the default makes the top folders the artists (one
+        small file each), so a genre folder can say how it is arranged. The artist folders themselves are not opened."""
         found = []
-        for depth in range(self._level(root)):
-            found = []
-            for parts in layer:
+
+        def down(parts, target, decided):
+            try:
+                dirs, _songs, files = self._folder(user, root, parts)
+            except (NotFound, OSError):
+                return
+            if LAYOUT_NOTE in files:
+                depth = self._layout(root, parts)
+                if depth is not None:
+                    target, decided = len(parts) + depth, True
+            for d in dirs:
+                if len(d.parts) < target:
+                    down(d.parts, target, decided)
+                    continue
+                depth = self._layout(root, d.parts) if (len(d.parts) == 1 and not decided) else None
+                if depth is not None:
+                    down(d.parts, 1 + depth, True)
+                else:
+                    found.append(d)
+
+        down((), self._default_level(root), False)
+        return found
+
+    def _album_files(self, user, root: str, parts, limit: int = 20) -> list:
+        """The song entries of an album folder: its own, else those in the folders right inside it (CD1, CD2), and with album.md also one
+        folder further down (a box set: Box/Disc 1/Album/songs). At most `limit` folders per level are opened."""
+        try:
+            dirs, songs, files = self._folder(user, root, parts)
+        except (NotFound, OSError):
+            return []
+        if songs:
+            return list(songs)
+        found = []
+        layer = dirs[:limit]
+        for depth in range(2 if files & set(ALBUM_NOTES) else 1):
+            deeper = []
+            for d in layer:
                 try:
-                    found += self._list(user, root, parts)[0]
+                    sub, inside, _files = self._folder(user, root, d.parts)
                 except (NotFound, OSError):
                     continue
-            layer = [d.parts for d in found]
+                found += inside
+                deeper += sub[:limit]
+            layer = deeper
         return found
 
     def _songs_in(self, user, root: str, parts) -> int:
-        """How many songs an album folder holds: its own, else those in the folders inside it (CD1, CD2 ...). 0 = not an album."""
-        try:
-            dirs, songs = self._list(user, root, parts)
-        except (NotFound, OSError):
-            return 0
-        if songs:
-            return len(songs)
-        total = 0
-        for d in dirs[:20]:
-            try:
-                total += len(self._list(user, root, d.parts)[1])
-            except (NotFound, OSError):
-                continue
-        return total
+        """How many songs an album folder holds (see _album_files). 0 = not an album."""
+        return len(self._album_files(user, root, parts))
 
     def _albums_of(self, user, root: str, artist) -> list:
         """[(entry, songs)] of one artist folder: its loose songs first (as an album named after the artist), then each folder inside it
@@ -513,7 +594,7 @@ class Subsonic:
             misses += 1
             r = random.choice(roots)
             parts = ()
-            for depth in range(self._level(r.name)):
+            while len(parts) < self._target(r.name, parts):
                 try:
                     dirs = self._list(user, r.name, parts)[0]
                 except (NotFound, OSError):
@@ -547,18 +628,10 @@ class Subsonic:
         return out
 
     def _album_songs(self, user, root: str, parts) -> list:
-        """The song entries of an album folder: its own; when it has none of its own, those of the folders inside it (CD1, CD2 ...).
-        For the artist folder itself (its loose songs), only those."""
-        dirs, songs = self._list(user, root, parts)
-        if songs or tuple(parts) == self._artist_of(root, parts):
-            return list(songs)
-        found = []
-        for d in dirs[:20]:
-            try:
-                found += self._list(user, root, d.parts)[1]
-            except (NotFound, OSError):
-                continue
-        return found
+        """The song entries of an album folder (see _album_files); for the artist folder itself, only its loose songs."""
+        if tuple(parts) == self._artist_of(root, parts):
+            return list(self._list(user, root, parts)[1])
+        return self._album_files(user, root, parts)
 
     # ---- endpoints -------------------------------------------------------------------------------------------------------
     def ping(self, user, p):
@@ -734,7 +807,7 @@ class Subsonic:
         artists, albums, songs = [], [], []
         for root, parts, is_dir, added in self._favourites(user, self._wanted(user, p)):
             ident = make_id(root, parts)
-            if is_dir and len(parts) == self._level(root):
+            if is_dir and len(parts) == self._target(root, parts):
                 artists.append({"id": ident, "name": self._name(root, parts), "coverArt": ident, "starred": _iso(added)})
             elif is_dir:
                 albums.append({**self._album_item(root, SimpleNamespace(parts=parts, mtime=added)), "starred": _iso(added)})
@@ -953,7 +1026,7 @@ class Subsonic:
             return []
         if kind == "starred":                                        # the album folders on the Favourites shelf, newest first
             found = [(root, SimpleNamespace(parts=parts, name=parts[-1], mtime=added), None)
-                     for root, parts, is_dir, added in self._favourites(user, wanted) if is_dir and len(parts) != self._level(root)]
+                     for root, parts, is_dir, added in self._favourites(user, wanted) if is_dir and len(parts) != self._target(root, parts)]
             return found[offset:offset + size]
         if kind == "recent":
             return [(r, e, None) for r, e in self._recent_albums(user) if not wanted or r == wanted][offset:offset + size]
