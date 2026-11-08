@@ -159,7 +159,7 @@ def create_admin_app(main_app) -> Starlette:
                         empty = next(it, None) is None
                 except OSError:
                     ok = False
-            roots.append({"name": r.name, "path": r.path, "ok": ok, "empty": empty, "free": free, "total": total,
+            roots.append({"name": r.name, "path": r.path, "ok": ok, "empty": empty, "free": free, "total": total, "subsonic": r.subsonic,
                           "seconds": time.monotonic() - began})
         return roots
 
@@ -267,7 +267,8 @@ def create_admin_app(main_app) -> Starlette:
 
     def libraries_html(can_browse: bool, flash: str = "", error: str = "", status_code: int = 200):
         roots, up = library_roots(), uploads_info()
-        return HTMLResponse(adminweb.libraries_page(ctx, roots, can_browse, bool(config_path), flash, error, up), status_code)
+        music = {"on": cfg.subsonic, "uploads": st.library.cfg.subsonic_uploads}
+        return HTMLResponse(adminweb.libraries_page(ctx, roots, can_browse, bool(config_path), flash, error, up, music), status_code)
 
     @guarded
     async def libraries(request, user):
@@ -284,7 +285,7 @@ def create_admin_app(main_app) -> Starlette:
             return await run_in_threadpool(libraries_html, can, "", str(e), 400)
         except OSError as e:
             return await run_in_threadpool(libraries_html, can, "", "The configuration file cannot be written: %s" % e, 500)
-        st.library.set_roots(new_cfg.roots)              # in use at once; a hand edit of the file is picked up by the reloader
+        st.library.set_roots(new_cfg.roots, new_cfg.subsonic_uploads)              # in use at once; a hand edit of the file is picked up by the reloader
         log.info("admin %s: libraries %s", user.name, code)
         return done("/libraries", code)
 
@@ -295,6 +296,10 @@ def create_admin_app(main_app) -> Starlette:
     @guarded
     async def library_remove(request, user):
         return await library_change(request, user, lambda m, f: m.remove_library(_first(f, "name")), "libremoved")
+
+    @guarded
+    async def library_subsonic(request, user):
+        return await library_change(request, user, lambda m, f: m.set_subsonic(f.get("root", []), "uploads" in f), "libsubsonic")
 
     @guarded
     async def library_browse(request, user):
@@ -491,7 +496,7 @@ def create_admin_app(main_app) -> Starlette:
         Route("/users/appkey", make_appkey, methods=["POST"]), Route("/users/appkey/revoke", revoke_appkey, methods=["POST"]),
         Route("/", status), Route("/about", about), Route("/logout", logout, methods=["POST"]), Route("/security", security),
         Route("/libraries", libraries), Route("/libraries/add", library_add, methods=["POST"]),
-        Route("/libraries/remove", library_remove, methods=["POST"]), Route("/libraries/browse", library_browse),
+        Route("/libraries/remove", library_remove, methods=["POST"]), Route("/libraries/subsonic", library_subsonic, methods=["POST"]), Route("/libraries/browse", library_browse),
         Route("/security/unlock", unlock, methods=["POST"]), Route("/security/forget", forget, methods=["POST"]),
         Route("/security/signout", signout, methods=["POST"]),
         Route("/users", users), Route("/users/add", add_user, methods=["POST"]),

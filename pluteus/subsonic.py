@@ -1,7 +1,8 @@
 """A read-only subset of the Subsonic / OpenSubsonic API, so that existing music apps (and Android Auto through them) can
 browse and play the audio files of the library.
 
-Turned on with `subsonic = true` in [server]. The API lives under /rest/NAME(.view). What is supported: ping, folders,
+Turned on with `subsonic = true` in [server]. Music apps see only the libraries ticked for them on the admin page
+(`subsonic = false` on a [[roots]] entry and `subsonic_uploads = false` leave one out), and only where the user may open them. The API lives under /rest/NAME(.view). What is supported: ping, folders,
 folder browsing (getIndexes / getMusicDirectory), the tag-style browsing most apps use (getArtists / getArtist / getAlbum,
 read as Artist folder / Album folder / songs), album lists, a simple search, cover art, stream and download. Everything else
 that an app may ask for at start-up (playlists, genres, ...) is answered with an empty result. Stars are the user's
@@ -202,6 +203,7 @@ class Subsonic:
         name = name[:-5] if name.endswith(".view") else name
         try:
             user = await self.authenticate(request, params)
+            await run_in_threadpool(self._check_ids, user, name, params)
             if name == "stream" and self.relay_station is not None and (target := self._station_target(params.get("id", ""))):
                 return await self.relay_station(user, *target)
             if name in self.handlers:
@@ -313,9 +315,31 @@ class Subsonic:
         return None
 
     # ---- building blocks -------------------------------------------------------------------------------------------------
+    def _shown(self, root) -> bool:
+        """Whether music apps see this library (the Subsonic ticks on the admin page's Libraries tab)."""
+        return self.lib.cfg.subsonic_uploads if root.name == UPLOADS_ROOT else root.subsonic
+
     def _roots(self, user, wanted: str = ""):
-        roots = self.lib.roots_for(user)
-        return [r for r in roots if not wanted or r.name == wanted]
+        """The libraries this user may open AND music apps may see; only `wanted` when one is given."""
+        return [r for r in self.lib.roots_for(user) if self._shown(r) and (not wanted or r.name == wanted)]
+
+    def _has_root(self, user, root: str) -> bool:
+        return any(r.name == root for r in self._roots(user))
+
+    MANY_IDS = {"star", "unstar", "saveplayqueue"}                    # these drop an id they may not use and keep the rest
+
+    def _check_ids(self, user, name: str, params) -> None:
+        """An id that points into a library music apps may not see is "not found" (junk ids are left to the call)."""
+        if name in self.MANY_IDS:
+            return
+        for value in params.get("_ids", ()):
+            target = self._station_target(value)
+            try:
+                root = target[0] if target else read_id(value)[0]
+            except ApiError:
+                continue
+            if not self._has_root(user, root):
+                raise ApiError(70, "The requested data was not found.")
 
     def _list(self, user, root: str, parts):
         entries = self.lib.list_dir(user, root, parts, True, True)
@@ -586,7 +610,7 @@ class Subsonic:
                 root, parts = read_id(ident)
             except ApiError:
                 continue                                              # a music folder number or junk
-            if not parts or not self.lib.has_root(user, root):
+            if not parts or not self._has_root(user, root):
                 continue
             path = "/".join(parts)
             if not on:
@@ -612,7 +636,7 @@ class Subsonic:
             if len(out) >= 100:
                 break
             root, parts = row["root"], tuple(row["path"].split("/"))
-            if (wanted and root != wanted) or not self.lib.has_root(user, root):
+            if (wanted and root != wanted) or not self._has_root(user, root):
                 continue
             try:
                 if row["is_dir"]:
@@ -704,7 +728,7 @@ class Subsonic:
         if not p.get("id"):
             raise ApiError(10, "Required parameter is missing.")
         root, parts = (self._folder_root(user, p["id"]), ()) if p["id"].isdigit() else read_id(p["id"])
-        if not self.lib.has_root(user, root):
+        if not self._has_root(user, root):
             raise ApiError(70, "The requested data was not found.")
         dirs, songs = self._list(user, root, parts)
         children = self._mark_stars(user, [self._dir_item(root, d) for d in dirs]) + self._songs(root, songs, user)
@@ -761,7 +785,7 @@ class Subsonic:
         out, seen = [], set()
         for row in self.state.recent_progress(user.name, 300):
             parts = tuple(row["path"].split("/"))
-            if len(parts) < 2 or kinds.kind_of(parts[-1]) != "audio" or not self.lib.has_root(user, row["root"]):
+            if len(parts) < 2 or kinds.kind_of(parts[-1]) != "audio" or not self._has_root(user, row["root"]):
                 continue
             key = (row["root"], parts[:-1])
             if key in seen:
@@ -778,7 +802,7 @@ class Subsonic:
                 root, parts = read_id(ident)
             except ApiError:
                 continue
-            if parts and self.lib.has_root(user, root) and kinds.kind_of(parts[-1]) == "audio":
+            if parts and self._has_root(user, root) and kinds.kind_of(parts[-1]) == "audio":
                 ids.append(ident)
         current = p.get("current", "")
         try:
@@ -799,7 +823,7 @@ class Subsonic:
             parts = tuple(row["path"].split("/"))
             if row["updated"] <= newer_than:
                 return None                                           # the saved queue is newer than anything the web player did
-            if len(parts) < 2 or kinds.kind_of(parts[-1]) != "audio" or row["percent"] >= 0.98 or passing_by(row["path"], row["locator"]) or not self.lib.has_root(user, row["root"]):
+            if len(parts) < 2 or kinds.kind_of(parts[-1]) != "audio" or row["percent"] >= 0.98 or passing_by(row["path"], row["locator"]) or not self._has_root(user, row["root"]):
                 continue
             match = re.fullmatch(r"t:(\d+(?:[.]\d+)?)", row["locator"] or "")
             try:

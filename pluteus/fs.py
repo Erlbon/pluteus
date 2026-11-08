@@ -129,11 +129,13 @@ class Library:
         self._real = {n: os.path.realpath(longpath(r.path)) for n, r in cfg.roots.items()}
         self._markers: dict = {}
 
-    def set_roots(self, roots: dict) -> None:
-        """Take a new set of libraries (the config file changed, or the admin page added one) without a restart."""
+    def set_roots(self, roots: dict, subsonic_uploads=None) -> None:
+        """Take a new set of libraries (the config file changed, or the admin page added one) without a restart, and whether music
+        apps see the upload folders (subsonic_uploads, when given)."""
         real = {n: os.path.realpath(longpath(r.path)) for n, r in roots.items()}
         self._real = real
-        self.cfg = dataclasses.replace(self.cfg, roots=dict(roots))
+        more = {} if subsonic_uploads is None else {"subsonic_uploads": bool(subsonic_uploads)}
+        self.cfg = dataclasses.replace(self.cfg, roots=dict(roots), **more)
 
     # ---- names -----------------------------------------------------------
     def display_name(self, name: str) -> str:

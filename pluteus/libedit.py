@@ -8,7 +8,7 @@ import os
 import re
 
 from .config import Config
-from .useredit import EditError, _join, _NAME_LINE, _parse, _q, _TABLE, apply_edit, read_config_text, validate
+from .useredit import EditError, _join, _NAME_LINE, _parse, _q, _set_key, _TABLE, apply_edit, read_config_text, validate
 
 NAME_RE = re.compile(r"^[A-Za-z0-9_-]+$")
 
@@ -86,6 +86,38 @@ def remove_root_text(text: str, name: str) -> str:
             del lines[start:end]
             return _join(lines, nl, trailing)
     raise EditError("no library named %r" % name)
+
+
+def set_subsonic_text(text: str, shown, uploads: bool) -> str:
+    """Music apps see the libraries named in `shown` and (uploads) the upload folders. Seen is the default, so a seen library loses its
+    `subsonic` line and a hidden one gets `subsonic = false`; the upload folders the same with `subsonic_uploads` in [server]."""
+    lines, nl, trailing = _parse(text)
+    blocks = _root_blocks(lines)
+    unknown = set(shown) - {b["name"] for b in blocks}
+    if unknown:
+        raise EditError("no library named %r" % sorted(unknown)[0])
+    for b in reversed(blocks):                                           # from the end, so the earlier blocks keep their places
+        body = _set_key(lines[b["start"] + 1:b["end"]], "subsonic", None if b["name"] in shown else "subsonic = false")
+        lines[b["start"] + 1:b["end"]] = body
+    server = None
+    for i, line in enumerate(lines):
+        m = _TABLE.match(line)
+        if m and m.group(1) == "[" and m.group(2).strip() == "server":
+            server = i
+            break
+    if server is None:
+        if not uploads:
+            lines += ([""] if lines and lines[-1].strip() else []) + ["[server]", "subsonic_uploads = false"]
+        return _join(lines, nl, trailing or True)
+    end = next((i for i in range(server + 1, len(lines)) if _TABLE.match(lines[i])), len(lines))
+    lines[server + 1:end] = _set_key(lines[server + 1:end], "subsonic_uploads", None if uploads else "subsonic_uploads = false")
+    return _join(lines, nl, trailing)
+
+
+def set_subsonic(path: str, shown, uploads: bool) -> Config:
+    shown = set(shown)
+    new = set_subsonic_text(read_config_text(path), shown, uploads)
+    return apply_edit(path, new, lambda c: {n for n, r in c.roots.items() if r.subsonic} == shown and c.subsonic_uploads == uploads)
 
 
 def check_folder(folder: str) -> str:

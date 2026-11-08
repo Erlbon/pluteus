@@ -189,6 +189,11 @@ Switch on `subsonic = true` in `[server]` and music apps that speak the **Subson
 DSub, Ultrasonic ...) can browse and play the audio files, **Android Auto through such an app included**. Read-only, over the same
 folders and rights as the web site (`roots`, `.private`, `.hidden`, `.adult`).
 
+- **Which libraries:** every library is seen by music apps until you untick it in the **Music apps (Subsonic)** box on the admin
+  page's Libraries tab (kept as `subsonic = false` on that `[[roots]]` entry, and `subsonic_uploads = false` in `[server]` for the upload
+  folders). Untick the libraries without music: each ticked one is searched for albums. In use at once, no restart; the web site and the
+  other apps are not affected.
+
 - **Login:** the app key of the user (see App keys above), shown once when it is made. Use it as the password (the salted-token login
   works) or, in apps that support it, as an **API key**; the real password also works in apps that send it as `p`. Failed logins count
   against the same lock as the web login. The key opens nothing but this read-only API and can be revoked.

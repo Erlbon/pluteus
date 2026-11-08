@@ -263,7 +263,7 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
     sessions = SessionManager(state, cfg.session_days)
     limiter = FailureLimiter()
     themes = Themes(cfg.themes_dir)
-    reloader = UsersReloader(config_path, auth, reload_interval, on_config=lambda c: lib.set_roots(c.roots)) if config_path else None
+    reloader = UsersReloader(config_path, auth, reload_interval, on_config=lambda c: lib.set_roots(c.roots, c.subsonic_uploads)) if config_path else None
     urls = Urls(cfg.base_path)
     thumb_cache = thumbs.ThumbCache(cfg.cache_dir or cfg.data_dir)
     thumb_gate = threading.BoundedSemaphore(3)

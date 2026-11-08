@@ -63,6 +63,9 @@ class AdminModel:
     def add_library(self, name: str, folder: str) -> Config:
         return libedit.add_root(self.path, name, folder)
 
+    def set_subsonic(self, shown, uploads: bool) -> Config:
+        return libedit.set_subsonic(self.path, shown, uploads)
+
     def remove_library(self, name: str) -> Config:
         if len(self.config().roots) <= 1:
             raise EditError("the last library cannot be removed (there must be at least one)")
