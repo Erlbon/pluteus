@@ -202,8 +202,8 @@ folders and rights as the web site (`roots`, `.private`, `.hidden`, `.adult`).
 - **How folders are read:** at any depth (`Genre/Letter/Artist/Album/songs` works as well as `Artist/Album/songs`). First a note decides:
   a folder with `album.md` is an album (its songs may sit in folders inside it), a folder with `artist.md` is the artist of the albums up
   to three levels below it. Otherwise the folder shape decides: a folder that holds songs is an album (a disc folder such as `CD1` or
-  `Disc 2 - Live` belongs to the album above it), and the folder above it is its artist; loose songs in an artist folder are an album of
-  that artist. Folder browsing in the apps shows the folders as they are. Tags (title, track, year, genre) come from the files, cached,
+  `Disc 2 - Live` belongs to the album above it, and so does a folder of songs inside an album, such as `Bonus`), and the folder above it is
+  its artist; loose songs in an artist folder are an album of that artist. Folder browsing in the apps shows the folders as they are. Tags (title, track, year, genre) come from the files, cached,
   and do not decide what is an album or an artist.
 - **The album list (music index):** the libraries ticked for music apps are walked in the background when the server starts and again
   every 30 minutes, or at once when an app asks for a scan (`startScan`). The result is kept in `musicindex.sqlite3` beside the metadata
