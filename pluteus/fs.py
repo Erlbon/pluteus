@@ -202,6 +202,12 @@ class Library:
         """Left out of its parent's listing for this user: closed, or marked .hidden and the user is not named in it."""
         return cls._closed_to(user, marks) or (marks.hidden is not None and user.name.casefold() not in marks.hidden)
 
+    def unlisted(self, user: User, root_name: str, parts) -> bool:
+        """True when this folder is left out of listings for this user (its .adult, .private or .hidden marker; the music index notes
+        which folders carry one)."""
+        path = os.path.join(longpath(self._root(user, root_name).path), *parts)
+        return self._unlisted_for(user, self._marks(path))
+
     # ---- the personal upload folder: a virtual root called "uploads", different for every user ------------------
     def uploads_enabled(self, user: User) -> bool:
         """Uploads are on, and this user has a folder: never the anonymous user (it is shared by everyone)."""

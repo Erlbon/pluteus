@@ -272,25 +272,22 @@ def test_a_music_folder_number_opens_that_library(lib):
     assert body(call(c, "getUser", username="alice"))["user"]["folder"] == [1]
 
 
-def test_several_apps_asking_at_once_share_one_scan(lib):
+def test_several_apps_asking_at_once_share_one_scan(lib, monkeypatch):
     import threading
-    c = make(lib)
-    api = [r for r in c.app.routes if getattr(r, "path", "") == "/rest/{name}"][0].endpoint.__self__
+    from pluteus import musicindex
     scans = []
-    real = api.lib.list_dir
+    real = musicindex.scan_tree
 
     def counting(*a, **k):
         scans.append(1)
         return real(*a, **k)
-    api.lib.list_dir = counting
-    try:
-        threads = [threading.Thread(target=lambda: c.get("/rest/getAlbumList2", params={"u": "alice", "p": KEY, "type": "random", "f": "json"}))
-                   for _ in range(5)]
-        [t.start() for t in threads]
-        [t.join() for t in threads]
-    finally:
-        api.lib.list_dir = real
-    assert 0 < len(scans) <= 4                                                          # not five full scans (the album walk lists 2 artists)
+    monkeypatch.setattr(musicindex, "scan_tree", counting)
+    c = make(lib)                                                                       # the first walk starts with the server
+    threads = [threading.Thread(target=lambda: c.get("/rest/getAlbumList2", params={"u": "alice", "p": KEY, "type": "random", "f": "json"}))
+               for _ in range(5)]
+    [t.start() for t in threads]
+    [t.join() for t in threads]
+    assert len(scans) == 1                                                              # one walk of the library, not five
 
 
 def test_ignored_articles_is_always_present_even_when_empty(lib):

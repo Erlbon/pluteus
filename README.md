@@ -31,7 +31,8 @@ medieval library. Pronounced "PLOO-tee-us".
 
 ## What it deliberately does not do
 
-No library database, no search across the whole library (only a name match for Subsonic apps), no "recently added", no duplicate
+No library database (only a disposable list of album folders for music apps, see below), no search across the whole library (only a
+name match for Subsonic apps), no "recently added", no duplicate
 detection, no online metadata lookups (it only reads the tags already inside your files), no HEIC conversion, no accounts for sign-up.
 Cover thumbnails exist but are off until you switch them on, and are made from the files when someone asks, never in the background. Anything that would need scanning the
 tree is left out on purpose: that lightness is the point. It is not a replacement for Nextcloud, Calibre or Jellyfin.
@@ -198,8 +199,16 @@ folders and rights as the web site (`roots`, `.private`, `.hidden`, `.adult`).
   works) or, in apps that support it, as an **API key**; the real password also works in apps that send it as `p`. Failed logins count
   against the same lock as the web login. The key opens nothing but this read-only API and can be revoked.
 - **Server address in the app:** the same address as the web site (with `base_path` if you use one), for example `https://example.org/pluteus`.
-- **How folders are read:** `Artist/Album/songs`. The first level is the artist, the second the album; tags (title, track, year, genre)
-  come from the files, cached. Cover art is the picture inside the file, else `folder.jpg` / `cover.jpg` in the folder. A folder's own `folder.jpg` / `cover.jpg` / `front.jpg` is also shown at the top right of its page in the web UI, and a file added or removed there is noticed on the next refresh.
+- **How folders are read:** at any depth (`Genre/Letter/Artist/Album/songs` works as well as `Artist/Album/songs`). First a note decides:
+  a folder with `album.md` is an album (its songs may sit in folders inside it), a folder with `artist.md` is the artist of the albums up
+  to three levels below it. Otherwise the folder shape decides: a folder that holds songs is an album (a disc folder such as `CD1` or
+  `Disc 2 - Live` belongs to the album above it), and the folder above it is its artist; loose songs in an artist folder are an album of
+  that artist. Folder browsing in the apps shows the folders as they are. Tags (title, track, year, genre) come from the files, cached,
+  and do not decide what is an album or an artist.
+- **The album list (music index):** the libraries ticked for music apps are walked in the background when the server starts and again
+  every 30 minutes, or at once when an app asks for a scan (`startScan`). The result is kept in `musicindex.sqlite3` beside the metadata
+  cache, so a restart starts from the last list; it can be deleted at any time. Nothing is written into the library. Until the first
+  walk of a library has ended (minutes for a big library on a slow disk), an app gets the albums found so far: none. Cover art is the picture inside the file, else `folder.jpg` / `cover.jpg` in the folder. A folder's own `folder.jpg` / `cover.jpg` / `front.jpg` is also shown at the top right of its page in the web UI, and a file added or removed there is noticed on the next refresh.
 - **Supported:** ping, folders, indexes and directories, artists / artist / album / song, album lists, random songs, a simple search,
   cover art (scaled down to the size the app asks for when Pillow is installed, else the original), stream and download (Range works; no
   transcoding). A music folder chosen in the app (`musicFolderId`) limits the artist and album lists, search, random songs and stars to that
