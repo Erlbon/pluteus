@@ -37,6 +37,7 @@ class Root:
     path: str
     notes: str = ""        # "edit": users with the notes right may write a folder's note file (artist.md ...) into this library, for everyone
     subsonic: bool = True  # music apps (the Subsonic API) see this library; false = left out of it (set on the admin page's Libraries tab)
+    artist_level: int = 1  # for music apps: how many folders down the artists are (1 = the top folders; 2 = Letter/Artist; 3 = Genre/Letter/Artist)
 
 
 @dataclass(frozen=True)
@@ -129,7 +130,8 @@ _SERVER_KEYS = {"host", "port", "page_size", "base_path", "realm", "auth_cache_s
                 "admin_port", "admin_host", "site_port", "update_check", "update_repo", "share_target", "join_token", "join_user", "admin_url", "library_bases", "subsonic", "subsonic_uploads", "webdav", "kosync", "thumbnails", "relay", "relay_streams_user", "relay_streams_total", "relay_key", "relay_allow", "cast", "cast_media_base", "debug"}
 _GLOBAL_KEYS = {"exclude", "extensions", "display_strip", "adult_marker", "private_marker", "hidden_marker", "metadata", "cache_dir",
                 "data_dir", "themes_dir", "theme", "uploads_dir", "upload_max_mb", "upload_quota_mb"}
-_ROOT_KEYS = {"name", "path", "notes", "subsonic"}
+MAX_ARTIST_LEVEL = 5
+_ROOT_KEYS = {"name", "path", "notes", "subsonic", "artist_level"}
 _USER_KEYS = {"name", "password_hash", "roots", "adult", "upload", "admin", "notes"}
 _CAST_DEVICE_KEYS = {"name", "address", "kind", "users"}
 CAST_KINDS = ("cast",)
@@ -232,7 +234,10 @@ def parse_config(data: dict, check_roots: bool = True) -> Config:
             raise ConfigError("root %r: notes must be \"edit\" or left out" % name)
         if not isinstance(r.get("subsonic", True), bool):
             raise ConfigError("root %r: subsonic must be true or false" % name)
-        roots[name] = Root(name, path, notes, r.get("subsonic", True))
+        level = r.get("artist_level", 1)
+        if not isinstance(level, int) or isinstance(level, bool) or not 1 <= level <= MAX_ARTIST_LEVEL:
+            raise ConfigError("root %r: artist_level must be a whole number from 1 to %d" % (name, MAX_ARTIST_LEVEL))
+        roots[name] = Root(name, path, notes, r.get("subsonic", True), level)
     if not roots:
         raise ConfigError("no [[roots]] defined")
 

@@ -198,8 +198,16 @@ folders and rights as the web site (`roots`, `.private`, `.hidden`, `.adult`).
   works) or, in apps that support it, as an **API key**; the real password also works in apps that send it as `p`. Failed logins count
   against the same lock as the web login. The key opens nothing but this read-only API and can be revoked.
 - **Server address in the app:** the same address as the web site (with `base_path` if you use one), for example `https://example.org/pluteus`.
-- **How folders are read:** `Artist/Album/songs`. The first level is the artist, the second the album; tags (title, track, year, genre)
-  come from the files, cached. Cover art is the picture inside the file, else `folder.jpg` / `cover.jpg` in the folder. A folder's own `folder.jpg` / `cover.jpg` / `front.jpg` is also shown at the top right of its page in the web UI, and a file added or removed there is noticed on the next refresh.
+- **How folders are read:** the folder hierarchy is everything; nothing is scanned, built or kept. Each library says how many folders
+  down its artists are: `artist_level = 1` (the default) reads the top folders as artists, `2` suits `Letter/Artist/Album`, `3`
+  `Genre/Letter/Artist/Album` (set on the `[[roots]]` entry). The folders inside an artist folder that hold songs (directly, or in
+  disc folders such as `CD1`) are its albums, and loose songs in an artist folder are an album under the artist's name. Every call
+  opens only the folders it needs, when the app asks: the artist list lists the folders above the artist level (27 letter folders
+  for `Letter/Artist`), an artist lists its own folder, the alphabetical album lists and an app's full sync go artist by artist as
+  far as the page they show (a next page carries on where the last one stopped), and the random lists pick a few folders at random.
+  What would need every folder opened is left out: the newest albums, album and song names in a search (artist names are
+  searched, and their albums come along), the number of albums in the artist list (shown when the artist is opened), and a check
+  that a folder at the artist level holds music. Tags (title, track, year, genre) come from the files, cached. Cover art is the picture inside the file, else `folder.jpg` / `cover.jpg` in the folder. A folder's own `folder.jpg` / `cover.jpg` / `front.jpg` is also shown at the top right of its page in the web UI, and a file added or removed there is noticed on the next refresh.
 - **Supported:** ping, folders, indexes and directories, artists / artist / album / song, album lists, random songs, a simple search,
   cover art (scaled down to the size the app asks for when Pillow is installed, else the original), stream and download (Range works; no
   transcoding). A music folder chosen in the app (`musicFolderId`) limits the artist and album lists, search, random songs and stars to that

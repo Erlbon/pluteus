@@ -81,7 +81,7 @@ def test_album_lists_search_and_folders_carry_the_heart(lib):
     call(c, "star", albumId=ALBUM)
     newest = body(call(c, "getAlbumList2", type="alphabeticalByName"))["albumList2"]["album"]
     assert {a["name"]: bool(a.get("starred")) for a in newest} == {"Ompa": True, "Solo": False}
-    found = body(call(c, "search3", query="omp"))["searchResult3"]
+    found = body(call(c, "search3", query="kaiz"))["searchResult3"]
     assert found["album"][0]["starred"]
     children = body(call(c, "getMusicDirectory", id=ARTIST))["directory"]["child"]
     assert [bool(x.get("starred")) for x in children if x["isDir"]] == [True]
@@ -95,7 +95,7 @@ def test_music_folder_id_limits_every_list_that_takes_it(tmp_path, lib):
     assert names(body(call(c, "getArtists"))["artists"]) == ["Kaizers", "Solo", "Wardruna"]
     assert names(body(call(c, "getArtists", musicFolderId="2"))["artists"]) == ["Wardruna"]
     assert names(body(call(c, "getArtists", musicFolderId="1"))["artists"]) == ["Kaizers", "Solo"]
-    for kind in ("alphabeticalByName", "newest", "random", "alphabeticalByArtist"):
+    for kind in ("alphabeticalByName", "random", "alphabeticalByArtist"):
         listed = body(call(c, "getAlbumList2", type=kind, musicFolderId="2"))["albumList2"]["album"]
         assert [a["name"] for a in listed] == ["Runaljod"], kind
     everything = body(call(c, "search3", query="", musicFolderId="1"))["searchResult3"]

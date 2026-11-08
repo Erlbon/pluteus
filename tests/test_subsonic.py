@@ -160,7 +160,7 @@ def test_tag_style_browsing(lib):
     assert len(body(call(c, "getRandomSongs", size="5"))["randomSongs"]["song"]) >= 1
 
 
-def test_artists_only_lists_folders_with_music(lib):
+def test_artists_are_the_folders_as_they_are_and_albums_are_checked_when_an_artist_is_opened(lib):
     (lib / "Comics" / "Batman").mkdir(parents=True)
     (lib / "Comics" / "Batman" / "01.cbz").write_bytes(b"PK")
     (lib / "Empty").mkdir()
@@ -168,15 +168,18 @@ def test_artists_only_lists_folders_with_music(lib):
     (lib / "Kaizers" / "Artwork" / "a.jpg").write_bytes(JPEG)
     c = make(lib)
     names = [a["name"] for g in body(call(c, "getArtists"))["artists"]["index"] for a in g["artist"]]
-    assert names == ["Kaizers", "Solo"]
+    assert names == ["Comics", "Empty", "Kaizers", "Solo"]                              # no folder is opened to check it for music
     artist = body(call(c, "getArtist", id=subsonic.make_id("music", ("Kaizers",))))["artist"]
     assert artist["albumCount"] == 1                                                  # the picture-only folder is no album
+    assert body(call(c, "getArtist", id=subsonic.make_id("music", ("Comics",))))["artist"]["albumCount"] == 0
 
 
 def test_search(lib):
     c = make(lib)
-    found = body(call(c, "search3", query="omp"))["searchResult3"]
+    found = body(call(c, "search3", query="kaiz"))["searchResult3"]                    # artist names are searched; their albums come along
+    assert [a["name"] for a in found["artist"]] == ["Kaizers"]
     assert [a["name"] for a in found["album"]] == ["Ompa"] and len(found["song"]) == 2
+    assert not body(call(c, "search3", query="omp"))["searchResult3"].get("album")       # album names are not (every folder would be opened)
     everything = body(call(c, "search3", query=""))["searchResult3"]                   # an empty query lists the library (app sync)
     assert [a["name"] for a in everything["artist"]] == ["Kaizers", "Solo"]
     assert [a["name"] for a in everything["album"]] == ["Ompa", "Solo"] and not everything.get("song")
@@ -253,14 +256,14 @@ def test_albums_and_artists_carry_the_fields_clients_require(lib):
     for a in albums:
         assert a["songCount"] >= 0 and a["duration"] >= 0 and a["created"].endswith("Z") and a["id"].startswith("p")
     artists = body(call(c, "getArtists"))["artists"]["index"]
-    assert [a["albumCount"] for g in artists for a in g["artist"]] == [1, 1]
+    assert [a["albumCount"] for g in artists for a in g["artist"]] == [0, 0]               # not counted: that would open every artist folder
 
 
 def test_lists_we_cannot_know_are_empty_not_the_whole_library(lib):
     c = make(lib)
-    for kind in ("starred", "highest", "frequent", "recent", "byYear", "byGenre"):      # starred and recent: none given yet
+    for kind in ("starred", "highest", "frequent", "recent", "byYear", "byGenre", "newest"):      # starred and recent: none given yet
         assert not body(call(c, "getAlbumList2", type=kind))["albumList2"].get("album"), kind
-    assert [a["name"] for a in body(call(c, "getAlbumList2", type="newest"))["albumList2"]["album"]]       # newest still works
+    assert [a["name"] for a in body(call(c, "getAlbumList2", type="alphabeticalByName"))["albumList2"]["album"]] == ["Ompa", "Solo"]
 
 
 def test_a_music_folder_number_opens_that_library(lib):
@@ -271,26 +274,6 @@ def test_a_music_folder_number_opens_that_library(lib):
     assert body(call(c, "getIndexes", musicFolderId="9"))["error"]["code"] == 70
     assert body(call(c, "getUser", username="alice"))["user"]["folder"] == [1]
 
-
-def test_several_apps_asking_at_once_share_one_scan(lib):
-    import threading
-    c = make(lib)
-    api = [r for r in c.app.routes if getattr(r, "path", "") == "/rest/{name}"][0].endpoint.__self__
-    scans = []
-    real = api.lib.list_dir
-
-    def counting(*a, **k):
-        scans.append(1)
-        return real(*a, **k)
-    api.lib.list_dir = counting
-    try:
-        threads = [threading.Thread(target=lambda: c.get("/rest/getAlbumList2", params={"u": "alice", "p": KEY, "type": "random", "f": "json"}))
-                   for _ in range(5)]
-        [t.start() for t in threads]
-        [t.join() for t in threads]
-    finally:
-        api.lib.list_dir = real
-    assert 0 < len(scans) <= 4                                                          # not five full scans (the album walk lists 2 artists)
 
 
 def test_ignored_articles_is_always_present_even_when_empty(lib):
