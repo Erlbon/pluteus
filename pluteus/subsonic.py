@@ -5,7 +5,9 @@ Turned on with `subsonic = true` in [server]. The API lives under /rest/NAME(.vi
 folder browsing (getIndexes / getMusicDirectory), the tag-style browsing most apps use (getArtists / getArtist / getAlbum,
 read as Artist folder / Album folder / songs), album lists, a simple search, cover art, stream and download. Everything else
 that an app may ask for at start-up (playlists, genres, ...) is answered with an empty result. Stars are the user's
-Favourites shelf (star, unstar, getStarred2, and `starred` on the items), and lyrics come as OpenSubsonic songLyrics. A saved play queue
+Favourites shelf (star, unstar, getStarred2, the `starred` album list, and `starred` with the time of the star on songs, albums and
+artists; a starred top folder is an artist), and lyrics come as OpenSubsonic songLyrics. `musicFolderId` limits every list that takes it,
+and a cover asked for with `size` is scaled down (Pillow, cached with the /thumb pictures). A saved play queue
 (savePlayQueue / getPlayQueue, one per user) lets another device resume, and `recent` albums come from the saved positions.
 
 Login: every user may have ONE app key (made on the admin page). It works as an OpenSubsonic API key (`apiKey`), as the
@@ -30,7 +32,7 @@ from xml.sax.saxutils import escape, quoteattr
 from starlette.concurrency import run_in_threadpool
 from starlette.responses import FileResponse, PlainTextResponse, Response
 
-from . import __version__, aboutfiles, kinds, mediainfo, notes, radio, textview
+from . import __version__, aboutfiles, kinds, mediainfo, notes, radio, textview, thumbs
 from .auth import verify_password
 from .bodies import read_limited
 from .config import UPLOADS_ROOT
@@ -43,7 +45,7 @@ MAX_ALBUMS = 3000
 RADIO_FOLDER = "radio"          # a top-level folder of station files (.m3u): not an artist, left out of the music lists
 _XML_BAD = re.compile("[\x00-\x08\x0b\x0c\x0e-\x1f]")
 _ALBUM_CACHE_SECONDS = 120
-UNKNOWN_LISTS = {"starred", "highest", "frequent", "byYear", "byGenre"}
+UNKNOWN_LISTS = {"highest", "frequent", "byYear", "byGenre"}
 
 
 class ApiError(Exception):
@@ -136,9 +138,8 @@ def plain_text(markdown_text: str, limit: int = 4000) -> str:
     return text[:limit].rstrip()
 
 
-def _now_iso() -> str:
-    """A timestamp for `starred`: the Favourites shelf keeps no star time a client could use, and apps only look for the field."""
-    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+def _iso(seconds: float) -> str:
+    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(clamp_time(seconds or 0)))
 
 
 def _letter(name: str) -> str:
@@ -155,6 +156,8 @@ class Subsonic:
         self._albums_lock = threading.Lock()
         self._radio: dict = {}
         self.relay_station = None             # set by the app when the relay is on: async (user, root, parts, number) -> Response
+        self.thumb_cache = thumbs.ThumbCache()                 # the app hands over its own cache and gate, shared with /thumb
+        self.thumb_gate = threading.BoundedSemaphore(3)
         self.handlers = {
             "ping": self.ping, "getlicense": self.license, "getopensubsonicextensions": self.extensions,
             "getmusicfolders": self.music_folders, "getindexes": self.indexes, "getmusicdirectory": self.music_directory,
@@ -344,16 +347,26 @@ class Subsonic:
         out = [self._song(root, e, t) for e, t in zip(entries, tags)]
         out.sort(key=lambda s: (s.get("discNumber") or 0, s.get("track") or 9999))
         if user is not None:
-            self._mark_stars(user, root, out)
+            self._mark_stars(user, out)
         return out
 
-    def _mark_stars(self, user, root: str, items: list) -> None:
-        """Items that are on the user's Favourites shelf carry `starred`, so the heart shows in the app."""
-        paths = [i["path"] for i in items if i.get("path")]
-        flags = self.state.shelf_flags(user.name, root, paths) if paths else {}
+    def _mark_stars(self, user, items: list) -> list:
+        """Items (songs, albums, artists) that are on the user's Favourites shelf carry `starred`, the time they were put there,
+        so the heart shows in the app. The library and path are read from each item's id."""
+        by_root: dict = {}
         for item in items:
-            if "favourite" in flags.get(item.get("path"), ()):
-                item["starred"] = _now_iso()
+            try:
+                root, parts = read_id(item.get("id", ""))
+            except ApiError:
+                continue
+            if parts:
+                by_root.setdefault(root, []).append(("/".join(parts), item))
+        for root, pairs in by_root.items():
+            times = self.state.shelf_times(user.name, "favourite", root, [path for path, _ in pairs])
+            for path, item in pairs:
+                if path in times:
+                    item["starred"] = _iso(times[path])
+        return items
 
     def _dir_item(self, root: str, entry) -> dict:
         ident = make_id(root, entry.parts)
@@ -591,35 +604,49 @@ class Subsonic:
     def unstar(self, user, p):
         return self._star(user, p, False)
 
-    def _starred(self, user) -> dict:
-        songs, albums = [], []
-        for row in self.state.shelf_list(user.name, "favourite")[:100]:          # newest first
+    def _favourites(self, user, wanted: str = "") -> list:
+        """[(root, parts, is_dir, added)] of the Favourites shelf that this user can still open, newest first, at most 100;
+        only library `wanted` when one is given."""
+        out = []
+        for row in self.state.shelf_list(user.name, "favourite"):
+            if len(out) >= 100:
+                break
             root, parts = row["root"], tuple(row["path"].split("/"))
-            if not self.lib.has_root(user, root):
+            if (wanted and root != wanted) or not self.lib.has_root(user, root):
                 continue
             try:
                 if row["is_dir"]:
                     self.lib.folder_path(user, root, parts)
-                    item = self._album_item(root, SimpleNamespace(parts=parts, mtime=0))
-                    item["starred"] = _now_iso()
-                    albums.append(item)
-                else:
-                    info = self.lib.file_info(user, root, parts, True)
-                    if kinds.kind_of(info.name) != "audio":
-                        continue
-                    entry = SimpleNamespace(parts=parts, name=info.name, path=info.path, size=info.size, mtime=info.mtime)
-                    item = self._song(root, entry, self.meta.song_tags(entry))
-                    item["starred"] = _now_iso()
-                    songs.append(item)
+                elif kinds.kind_of(self.lib.file_info(user, root, parts, True).name) != "audio":
+                    continue
             except (NotFound, PathError, OSError):
                 continue
-        return {"artist": [], "album": albums, "song": songs}
+            out.append((root, parts, row["is_dir"], row["added"]))
+        return out
+
+    def _starred(self, user, p) -> dict:
+        """A starred top folder is an artist, a deeper folder an album."""
+        artists, albums, songs = [], [], []
+        for root, parts, is_dir, added in self._favourites(user, self._wanted(user, p)):
+            ident = make_id(root, parts)
+            if is_dir and len(parts) == 1:
+                artists.append({"id": ident, "name": self._name(root, parts), "coverArt": ident, "starred": _iso(added)})
+            elif is_dir:
+                albums.append({**self._album_item(root, SimpleNamespace(parts=parts, mtime=added)), "starred": _iso(added)})
+            else:
+                try:
+                    info = self.lib.file_info(user, root, parts, True)
+                except (NotFound, PathError, OSError):
+                    continue
+                entry = SimpleNamespace(parts=parts, name=info.name, path=info.path, size=info.size, mtime=info.mtime)
+                songs.append({**self._song(root, entry, self.meta.song_tags(entry)), "starred": _iso(added)})
+        return {"artist": artists, "album": albums, "song": songs}
 
     def starred(self, user, p):
-        return {"starred": self._starred(user)}
+        return {"starred": self._starred(user, p)}
 
     def starred2(self, user, p):
-        return {"starred2": self._starred(user)}
+        return {"starred2": self._starred(user, p)}
 
     # ---- lyrics (OpenSubsonic songLyrics): timed lines from a .lrc file or the tag, else the plain text ---------------------
     def lyrics_by_id(self, user, p):
@@ -656,9 +683,13 @@ class Subsonic:
             raise ApiError(70, "The requested data was not found.")
         return read_id(value)[0]
 
+    def _wanted(self, user, p) -> str:
+        """The library named by `musicFolderId`, or "" for all of them."""
+        return self._folder_root(user, p["musicFolderId"]) if p.get("musicFolderId") else ""
+
     def indexes(self, user, p):
-        wanted = self._folder_root(user, p["musicFolderId"]) if p.get("musicFolderId") else ""
-        artists = self._top_folders(user, wanted)
+        wanted = self._wanted(user, p)
+        artists = self._mark_stars(user, self._top_folders(user, wanted))
         files = []
         for r in self._roots(user, wanted):
             try:
@@ -676,12 +707,13 @@ class Subsonic:
         if not self.lib.has_root(user, root):
             raise ApiError(70, "The requested data was not found.")
         dirs, songs = self._list(user, root, parts)
-        children = [self._dir_item(root, d) for d in dirs] + self._songs(root, songs, user)
+        children = self._mark_stars(user, [self._dir_item(root, d) for d in dirs]) + self._songs(root, songs, user)
         return {"directory": {"id": p["id"], "parent": make_id(root, parts[:-1]) if parts else None,
                               "name": self._name(root, parts), "child": children}}
 
     def artists(self, user, p):
-        return {"artists": {"ignoredArticles": "", "index": self._grouped(self._top_folders(user))}}
+        artists = self._mark_stars(user, self._top_folders(user, self._wanted(user, p)))
+        return {"artists": {"ignoredArticles": "", "index": self._grouped(artists)}}
 
     def artist(self, user, p):
         root, parts = read_id(p.get("id", ""))
@@ -697,13 +729,14 @@ class Subsonic:
         if not dirs and songs:
             albums.append(self._album_item(root, SimpleNamespace(parts=parts), len(songs)))
         name = self._name(root, parts)
-        return {"artist": {"id": p["id"], "name": name, "coverArt": p["id"], "albumCount": len(albums), "album": albums}}
+        found = self._mark_stars(user, [{"id": p["id"], "name": name, "coverArt": p["id"], "albumCount": len(albums)}])[0]
+        return {"artist": {**found, "album": self._mark_stars(user, albums)}}
 
     def album(self, user, p):
         root, parts = read_id(p.get("id", ""))
         _, songs = self._list(user, root, parts)
         listed = self._songs(root, songs, user)
-        starred = {"starred": _now_iso()} if parts and "favourite" in self.state.shelf_flags(user.name, root, ["/".join(parts)]).get("/".join(parts), ()) else {}
+        starred = {k: v for k, v in self._mark_stars(user, [{"id": p["id"]}])[0].items() if k == "starred"}
         return {"album": {**starred, "id": p["id"], "name": self._name(root, parts), "title": self._name(root, parts),
                           "artist": self.lib.display_name(parts[0]) if len(parts) > 1 else "",
                           "artistId": make_id(root, parts[:1]) if len(parts) > 1 else None, "coverArt": p["id"],
@@ -719,7 +752,7 @@ class Subsonic:
             raise ApiError(70, "The requested data was not found.")
         entry = SimpleNamespace(parts=parts, name=info.name, path=info.path, size=info.size, mtime=info.mtime)
         item = self._song(root, entry, self.meta.song_tags(entry))
-        self._mark_stars(user, root, [item])
+        self._mark_stars(user, [item])
         return {"song": item}
 
     def _recent_albums(self, user) -> list:
@@ -798,7 +831,7 @@ class Subsonic:
                 continue                                              # a file that is gone or no longer visible drops out
             entry = SimpleNamespace(parts=parts, name=info.name, path=info.path, size=info.size, mtime=info.mtime)
             item = self._song(root, entry, self.meta.song_tags(entry))
-            self._mark_stars(user, root, [item])
+            self._mark_stars(user, [item])
             entries.append(item)
         if not entries:
             return {"playQueue": {}}
@@ -807,12 +840,16 @@ class Subsonic:
                               "changed": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(clamp_time(saved["updated"]))),
                               "changedBy": saved.get("by", "")}}
 
-    def _sorted_albums(self, user, kind: str) -> list:
-        if kind in UNKNOWN_LISTS:                                    # no play counts, stars, years or genres are kept: an honest empty list
+    def _sorted_albums(self, user, kind: str, wanted: str = "") -> list:
+        """[(root, folder entry)] in the order of an album list type; only library `wanted` when one is given."""
+        if kind in UNKNOWN_LISTS:                                    # no play counts, ratings, years or genres are kept: an honest empty list
             return []
+        if kind == "starred":                                        # the album folders on the Favourites shelf, newest first
+            return [(root, SimpleNamespace(parts=parts, name=parts[-1], mtime=added))
+                    for root, parts, is_dir, added in self._favourites(user, wanted) if is_dir and len(parts) > 1]
         if kind == "recent":
-            return self._recent_albums(user)
-        albums = list(self._all_albums(user))
+            return [a for a in self._recent_albums(user) if not wanted or a[0] == wanted]
+        albums = [a for a in self._all_albums(user) if not wanted or a[0] == wanted]
         if kind == "random":
             random.shuffle(albums)
         elif kind == "newest":
@@ -831,25 +868,26 @@ class Subsonic:
             size, offset = 10, 0
         return size, offset
 
-    def album_list2(self, user, p):
+    def _album_page(self, user, p) -> list:
         size, offset = self._window(p)
-        albums = self._sorted_albums(user, p.get("type", "alphabeticalByName"))[offset:offset + size]
-        return {"albumList2": {"album": [self._album_item(r, e) for r, e in albums]}}
+        albums = self._sorted_albums(user, p.get("type", "alphabeticalByName"), self._wanted(user, p))[offset:offset + size]
+        return self._mark_stars(user, [self._album_item(r, e) for r, e in albums])
+
+    def album_list2(self, user, p):
+        return {"albumList2": {"album": self._album_page(user, p)}}
 
     def album_list(self, user, p):
-        size, offset = self._window(p)
-        albums = self._sorted_albums(user, p.get("type", "alphabeticalByName"))[offset:offset + size]
-        return {"albumList": {"album": [self._album_item(r, e) for r, e in albums]}}
+        return {"albumList": {"album": self._album_page(user, p)}}
 
     def random_songs(self, user, p):
         size, _ = self._window({"size": p.get("size", "10")})
         songs = []
-        for r, e in self._sorted_albums(user, "random")[:12]:
+        for r, e in self._sorted_albums(user, "random", self._wanted(user, p))[:12]:
             try:
                 _, inside = self._list(user, r, e.parts)
             except (NotFound, OSError):
                 continue
-            songs += self._songs(r, inside)
+            songs += self._songs(r, inside, user)
             if len(songs) >= size * 3:
                 break
         random.shuffle(songs)
@@ -869,8 +907,9 @@ class Subsonic:
         """(artists, albums, songs) matching the query. An EMPTY query means everything (artists and albums; songs come with
         their albums): this is how Subsonic apps load the whole library."""
         query = re.sub(r"[\"*]", "", p.get("query", "")).strip().lower()
-        artists = [a for a in self._top_folders(user) if query in a["name"].lower()]
-        albums = [(r, e) for r, e in self._all_albums(user) if query in self._name(r, e.parts).lower()]
+        wanted = self._wanted(user, p)
+        artists = [a for a in self._top_folders(user, wanted) if query in a["name"].lower()]
+        albums = [(r, e) for r, e in self._all_albums(user) if (not wanted or r == wanted) and query in self._name(r, e.parts).lower()]
         albums.sort(key=lambda item: self._name(item[0], item[1].parts).lower())
         artists.sort(key=lambda a: a["name"].lower())
         if not query:
@@ -881,20 +920,20 @@ class Subsonic:
                 _, inside = self._list(user, r, e.parts)
             except (NotFound, OSError):
                 continue
-            songs += self._songs(r, inside)
+            songs += self._songs(r, inside, user)
         return artists, albums, songs
 
-    def search3(self, user, p):
+    def _search_result(self, user, p) -> dict:
         artists, albums, songs = self._search(user, p)
-        return {"searchResult3": {"artist": self._paged(p, "artist", artists),
-                                  "album": [self._album_item(r, e) for r, e in self._paged(p, "album", albums)],
-                                  "song": self._paged(p, "song", songs)}}
+        return {"artist": self._mark_stars(user, self._paged(p, "artist", artists)),
+                "album": self._mark_stars(user, [self._album_item(r, e) for r, e in self._paged(p, "album", albums)]),
+                "song": self._paged(p, "song", songs)}
+
+    def search3(self, user, p):
+        return {"searchResult3": self._search_result(user, p)}
 
     def search2(self, user, p):
-        artists, albums, songs = self._search(user, p)
-        return {"searchResult2": {"artist": self._paged(p, "artist", artists),
-                                  "album": [self._album_item(r, e) for r, e in self._paged(p, "album", albums)],
-                                  "song": self._paged(p, "song", songs)}}
+        return {"searchResult2": self._search_result(user, p)}
 
     def user_info(self, user, p):
         roles = {r: False for r in ("adminRole", "settingsRole", "uploadRole", "playlistRole", "coverArtRole", "commentRole",
@@ -927,8 +966,26 @@ class Subsonic:
             found = self._folder_art(user, root, parts, 1)
         if found is None:
             return PlainTextResponse("No cover", 404)
-        data, mime = found
+        data, mime = self._smaller(*found, p.get("size", ""))
         return Response(data, media_type=mime, headers={"X-Content-Type-Options": "nosniff", "Cache-Control": "private, max-age=86400"})
+
+    def _smaller(self, data: bytes, mime: str, size: str):
+        """(bytes, mime) of the picture scaled down to `size` pixels wide (rounded up to one of the thumbnail widths), when the app
+        asks for a size up to the largest of those; cached on disk. The original when it asks for none or more, when Pillow is not
+        installed, or when the picture cannot be scaled."""
+        if not size.isdigit() or int(size) > thumbs.MAX_WIDTH:
+            return data, mime
+        width = thumbs.clamp_width(size)
+        key = "subsonic|%s|%d" % (hashlib.sha1(data, usedforsecurity=False).hexdigest(), width)
+        hit = self.thumb_cache.get(key)
+        if hit is not None:
+            return hit, "image/jpeg"
+        with self.thumb_gate:                                         # a few at a time: each one decodes a whole picture in memory
+            small = thumbs.scaled(data, width)
+        if not small:
+            return data, mime
+        self.thumb_cache.put(key, small[0])
+        return small
 
     def _folder_art(self, user, root: str, parts, depth: int):
         dirs, songs = self._list(user, root, parts)

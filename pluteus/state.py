@@ -284,8 +284,18 @@ class StateDB:
     def shelf_list(self, username: str, shelf: str) -> list:
         """The entries of one shelf: "next" in the order the user chose, "favourite" newest first."""
         order = "rank ASC" if shelf == "next" else "added DESC"
-        rows = self._all("SELECT root, path, is_dir FROM shelves WHERE username=? AND shelf=? ORDER BY " + order, (username, shelf))
-        return [{"root": r[0], "path": r[1], "is_dir": bool(r[2])} for r in rows]
+        rows = self._all("SELECT root, path, is_dir, added FROM shelves WHERE username=? AND shelf=? ORDER BY " + order, (username, shelf))
+        return [{"root": r[0], "path": r[1], "is_dir": bool(r[2]), "added": r[3]} for r in rows]
+
+    def shelf_times(self, username: str, shelf: str, root: str, paths: list) -> dict:
+        """{path: time it was put on the shelf} for those of the given paths of one library that are on that shelf."""
+        out: dict = {}
+        for i in range(0, len(paths), 400):
+            chunk = paths[i:i + 400]
+            rows = self._all("SELECT path, added FROM shelves WHERE username=? AND shelf=? AND root=? AND path IN (%s)" % ",".join("?" * len(chunk)),
+                             (username, shelf, root, *chunk))
+            out.update(dict(rows))
+        return out
 
     def shelf_move(self, username: str, shelf: str, root: str, path: str, up: bool) -> bool:
         """Swap an entry of the "next" list with its neighbour above (up) or below."""

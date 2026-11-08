@@ -2216,6 +2216,7 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
     if cfg.subsonic:
         from .subsonic import Subsonic
         api = Subsonic(cfg, lib, state, auth, meta, Throttle())
+        api.thumb_cache, api.thumb_gate = thumb_cache, thumb_gate
         routes.append(Route("/rest/{name}", api.handle, methods=["GET", "POST"]))
         if cfg.relay:
             async def subsonic_station(user, root, parts, number):

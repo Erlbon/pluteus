@@ -258,7 +258,7 @@ def test_albums_and_artists_carry_the_fields_clients_require(lib):
 
 def test_lists_we_cannot_know_are_empty_not_the_whole_library(lib):
     c = make(lib)
-    for kind in ("starred", "highest", "frequent", "recent", "byYear", "byGenre"):
+    for kind in ("starred", "highest", "frequent", "recent", "byYear", "byGenre"):      # starred and recent: none given yet
         assert not body(call(c, "getAlbumList2", type=kind))["albumList2"].get("album"), kind
     assert [a["name"] for a in body(call(c, "getAlbumList2", type="newest"))["albumList2"]["album"]]       # newest still works
 
