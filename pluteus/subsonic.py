@@ -493,12 +493,12 @@ class Subsonic:
         return {(r, a.parts) for r, a in albums}, {(r, a.artist) for r, a in albums}
 
     def _album_songs(self, user, root: str, parts) -> list:
-        """The song entries of an album folder: its own songs, and those of the folders the index counts as part of it (disc folders, a
-        bonus folder); when it has no songs of its own (an album.md album), those of every folder inside it."""
+        """The song entries of an album folder: its own songs, and those of its disc folders (CD1, CD2 ...); when it has no songs of its
+        own (an album.md album), those of every folder inside it."""
         dirs, songs = self._list(user, root, parts)
         found = list(songs)
         for d in dirs:
-            if not songs or musicindex.DISC.match(d.name) or self._album_of(root, d.parts)[0] == tuple(parts):
+            if not songs or musicindex.DISC.match(d.name):
                 try:
                     found += self._list(user, root, d.parts)[1]
                 except (NotFound, OSError):

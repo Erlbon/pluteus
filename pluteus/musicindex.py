@@ -7,8 +7,7 @@ The rules, the first one that knows wins:
   1. A note decides. A folder with `album.md` (or `album.nfo`) is an album, with its songs directly in it or in the folders inside it (CD1,
      CD2 ...). A folder with `artist.md` (or `artist.nfo`) is the artist of the albums at most three levels below it.
   2. Otherwise the folder shape decides. A folder that holds songs is an album (a disc folder such as `CD1` belongs to the album above it),
-     and the folder above an album is its artist. A folder of songs inside an album (Bonus) is part of that album. Loose songs in an artist
-     folder (one among folders that are mostly artists) are an album of that artist, and so are songs in a top folder of the library.
+     and the folder above an album is its artist. Songs in a top folder of the library make that folder an album of its own artist.
 
 So `0 - Bands/H/Handsome Family, The/[2016] - Unseen/01.mp3` is the album `[2016] - Unseen` by `Handsome Family, The`, at any depth.
 Tags are not read here. The folders marked .adult, .private or .hidden on the way to an album are kept with it, so every user's list can be
@@ -122,33 +121,11 @@ def scan_tree(lib, root: str, top: str) -> list:
         if parts:
             albums_in[parts[:-1]] = albums_in.get(parts[:-1], 0) + 1
 
-    votes: dict = {}
-
     def artist_level(parts) -> bool:
-        """A folder with songs among folders that are mostly artists (they hold albums): loose songs in an artist folder, not an album of
-        the folder above (`W/Wig Wam` among `W/We/[2008] - Tension` and the other bands). A majority, so one album with a bonus folder
-        inside does not turn all its neighbours into artists."""
+        """A folder with songs among folders that are artists (they hold albums): loose songs in an artist folder, not an album of the
+        folder above (`W/Wig Wam` next to `W/We/[2008] - Tension`)."""
         parent = parts[:-1]
-        if parent not in votes:
-            artists = albums_only = 0
-            for s in folders.get(parent, (0, ()))[1]:
-                if albums_in.get(parent + (s,)):
-                    artists += 1
-                elif parent + (s,) in counts:
-                    albums_only += 1
-            votes[parent] = artists > albums_only
-        return votes[parent]
-
-    # A folder of songs inside an album folder is part of that album (Bonus, Extras), unless the folder holding it is an artist folder
-    # with loose songs of its own (Yello's single next to Yello's albums). Deepest first, so a bonus folder inside a bonus folder ends up
-    # in the album too. The votes above are taken before this, on the folders as they are.
-    for parts in sorted(counts, key=len, reverse=True):
-        parent = parts[:-1]
-        if parent and folders.get(parent, (0,))[0] and parent in counts and not folders[parts][2] and not artist_level(parent):
-            counts[parent] += counts.pop(parts)
-    albums_in = {}
-    for parts in counts:
-        albums_in[parts[:-1]] = albums_in.get(parts[:-1], 0) + 1
+        return any(albums_in.get(parent + (s,)) for s in folders.get(parent, (0, ()))[1] if s != parts[-1])
 
     albums = []
     for parts, songs in counts.items():
