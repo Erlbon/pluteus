@@ -164,8 +164,21 @@
   book.loaded.metadata.then(function (m) { rtl = m && m.direction === "rtl"; });
 
   /* ---- turning pages: buttons, keys, edge taps, swipes ---- */
-  function next() { closeMenus(); return rtl ? rendition.prev() : rendition.next(); }
-  function prev() { closeMenus(); return rtl ? rendition.next() : rendition.prev(); }
+  /* One turn at a time. epub.js queues every turn, and the step into the next chapter is slow (that chapter is loaded and laid out
+     first: a quarter of a second on a slowed-down computer, longer on a phone). A second tap made while it loaded ran afterwards and
+     skipped the new chapter's first page. So a turn asked for while one is still running is dropped, whether it comes from a tap, a
+     swipe, a key, the wheel or a button. Inside a chapter a turn is over in a few hundredths of a second, so quick taps still each turn. */
+  var turning = false, turnGuard = null;
+  function turn(forward) {
+    closeMenus();
+    if (turning) return;
+    turning = true;
+    function done() { turning = false; clearTimeout(turnGuard); }
+    turnGuard = setTimeout(done, 4000);                  // never stuck, should epub.js not answer
+    Promise.resolve(forward !== rtl ? rendition.next() : rendition.prev()).then(done, done);
+  }
+  function next() { turn(true); }
+  function prev() { turn(false); }
   $("next").addEventListener("click", next);
   $("prev").addEventListener("click", prev);
   // a tap on the page (tapzones.js): upper part back, lower part forward. The book's text is a frame of its own, so its taps are passed on
