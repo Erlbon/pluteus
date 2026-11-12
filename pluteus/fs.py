@@ -12,6 +12,7 @@ import errno
 import mimetypes
 import os
 import re
+import stat
 import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
@@ -85,12 +86,18 @@ def sort_entries(entries: list, sort: str = "name", desc: bool = False) -> list:
 
 
 def _is_link(entry) -> bool:
-    """A symbolic link or, on Windows, a junction (an os.scandir entry: the answer costs no system call). Junctions are only
-    recognised from Python 3.12 on; before that one is listed like a folder and refused when it is opened."""
-    for question in ("is_symlink", "is_junction"):
-        ask = getattr(entry, question, None)
-        if ask is not None and ask():
-            return True
+    """A symbolic link or, on Windows, a junction (an os.scandir entry: the answer costs no system call). Python 3.12 has
+    DirEntry.is_junction(); on 3.11 a junction is told by its reparse tag, which the directory listing carries too."""
+    if entry.is_symlink():
+        return True
+    ask = getattr(entry, "is_junction", None)
+    if ask is not None:
+        return bool(ask())
+    if _NT:                                              # Python 3.11 on Windows
+        try:
+            return getattr(entry.stat(follow_symlinks=False), "st_reparse_tag", 0) == stat.IO_REPARSE_TAG_MOUNT_POINT
+        except OSError:
+            return False
     return False
 
 

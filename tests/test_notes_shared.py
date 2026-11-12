@@ -14,6 +14,7 @@ from notehelp import with_note
 from pluteus import notes
 from pluteus.config import parse_config, ConfigError
 from pluteus.config import Root
+from pluteus.fs import longpath
 
 FOLDER = "/note/books/Good%20Author"
 
@@ -81,7 +82,8 @@ def test_only_note_names_and_real_folders_inside_the_library(shared, tmp_path):
         assert post(me, name=bad, text="x", where="library", version="", action="save").status_code == 400, bad
     assert me.get("/note/books/Nope?where=library", headers=HTML).status_code == 404
     assert me.get("/note/books/..%2F..", headers=HTML).status_code in (400, 404)
-    assert not list(tmp_path.rglob("evil.exe"))
+    # os.walk on the long-path form: pathlib's rglob (before Python 3.12) cannot open the library folder whose name ends in a dot
+    assert not [n for _, _, names in os.walk(longpath(str(tmp_path))) for n in names if n == "evil.exe"]
 
 
 def test_a_shared_note_can_be_removed_and_a_symlink_is_never_followed(shared, tmp_path):

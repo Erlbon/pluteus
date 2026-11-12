@@ -687,7 +687,20 @@ def test_card13_release_badges_are_filled_in_on_every_call_from_one_rendering(mi
 
 def test_card13_a_text_that_takes_too_long_is_shown_as_plain_text(monkeypatch):
     monkeypatch.setattr(markdown, "RENDER_SECONDS", 0.3)
-    text = "[a](" * 8000 + "<b>&"
+
+    def endless_markdown(*args, **kwargs):
+        """A parser that would run for ten seconds of plain Python calls. (A real slow text, such as 8000 times "[a](", is not slow
+        on every Python: 3.15's regular expressions finish it at once. A stand-in makes the test mean the same everywhere.)"""
+        def parse(body):
+            def step():
+                return None
+            end = time.monotonic() + 10
+            while time.monotonic() < end:
+                step()
+            return "<p>finished</p>"
+        return parse
+    monkeypatch.setattr(markdown.mistune, "create_markdown", endless_markdown)
+    text = "[a](" * 50 + "<b>&"
     began = time.perf_counter()
     shown = _render(text)
     assert time.perf_counter() - began < 4                               # not the ten seconds it takes to finish
@@ -725,3 +738,33 @@ def test_card13_the_cache_is_bounded(monkeypatch):
         _render("text number %d" % i)
     assert len(markdown._cache) <= 5
     assert "number 19" in _render("text number 19")
+
+
+def test_card6_a_junction_is_told_apart_on_python_3_11_by_its_reparse_tag(monkeypatch):
+    """Python 3.12 has DirEntry.is_junction(); 3.11 has not, and a junction there has to be told by the reparse tag of the listing."""
+    import stat as stat_module
+
+    from pluteus import fs
+
+    class Stat:
+        def __init__(self, tag):
+            self.st_reparse_tag = tag
+
+    class Old311Entry:                                    # a DirEntry as 3.11 has it: no is_junction
+        def __init__(self, tag, symlink=False):
+            self._tag, self._symlink = tag, symlink
+
+        def is_symlink(self):
+            return self._symlink
+
+        def stat(self, follow_symlinks=True):
+            assert follow_symlinks is False               # the link itself, never what it leads to
+            return Stat(self._tag)
+
+    monkeypatch.setattr(fs, "_NT", True)
+    assert fs._is_link(Old311Entry(stat_module.IO_REPARSE_TAG_MOUNT_POINT)) is True        # a junction
+    assert fs._is_link(Old311Entry(0)) is False                                            # a folder
+    assert fs._is_link(Old311Entry(0x9000001A)) is False                                   # a OneDrive placeholder is not a link
+    assert fs._is_link(Old311Entry(0, symlink=True)) is True
+    monkeypatch.setattr(fs, "_NT", False)
+    assert fs._is_link(Old311Entry(stat_module.IO_REPARSE_TAG_MOUNT_POINT)) is False       # elsewhere there are no junctions
