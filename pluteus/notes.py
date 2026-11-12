@@ -114,6 +114,27 @@ def read(lib, user, root: str, parts, name: str):
     return raw.decode("utf-8", "replace"), version_of(path), in_place
 
 
+def _oversize(path) -> bool:
+    try:
+        return bool(path) and os.path.isfile(longpath(path)) and os.path.getsize(longpath(path)) > MAX_NOTE_BYTES
+    except OSError:
+        return False
+
+
+def too_large(lib, user, root: str, parts, name: str, where: str = "own") -> bool:
+    """Whether the note the editor would open is there but above MAX_NOTE_BYTES. read() and read_shared() give None for such a file, the
+    same as for no note, so the editor opened empty and every save was refused ("changed on disk"). `where` is "own" (the user's own note:
+    the overlay file, or the file in their upload folder) or "library" (the library's shared note). False when there is no such note."""
+    try:
+        if where == "library":
+            found = _shared_target(lib, user, root, parts, name)
+            return bool(found) and not os.path.islink(longpath(os.path.join(*found))) and _oversize(os.path.join(*found))
+        found = target(root, parts, name)
+        return bool(found) and _oversize(_file(lib, user, found[0], found[1]))
+    except Exception:                                      # noqa: BLE001  a folder that cannot be seen: no note to be too large
+        return False
+
+
 def _ensure_folders(lib, user, folder_parts: tuple) -> str:
     here = ()
     for part in folder_parts:

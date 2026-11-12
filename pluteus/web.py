@@ -7,6 +7,7 @@ from html import escape
 
 from . import __version__, kinds, mediainfo, radio
 from .icons import COLOR_SPRITE, OUTLINE_SPRITE, ico
+from .notes import MAX_NOTE_BYTES
 from .themes import DEFAULT
 from .urls import Urls
 
@@ -885,8 +886,9 @@ def streams_page(ctx: Ctx, entries: list, key_note: str, message: str = "", erro
 
 def note_editor_page(ctx: Ctx, root: str, parts: tuple, *, name: str, names: tuple, text: str, versions: dict, in_place: bool, exists: bool,
                      from_library: bool, preview_html: str = "", error: str = "", back_url: str = "", where_kind: str = "own",
-                     choices: tuple = ()) -> str:
-    """Edit (or start) a folder's note. `name` is empty for a new note, which then picks one of `names`."""
+                     choices: tuple = (), too_large: bool = False) -> str:
+    """Edit (or start) a folder's note. `name` is empty for a new note, which then picks one of `names`. `too_large`: the note is there but
+    above the editor's size limit (notes.too_large), so the page says so instead of opening an empty editor."""
     urls = ctx.urls
     where = ("your upload folder" if in_place else "your own upload folder (under Notes), visible only to you; the library itself is not changed")
     if where_kind == "library":
@@ -904,9 +906,26 @@ def note_editor_page(ctx: Ctx, root: str, parts: tuple, *, name: str, names: tup
             "<p class='pl-muted'>Saved in %s.</p>" % where)
     err = ("<p class='pl-flash pl-error' role='alert'>%s</p>" % escape(error)) if error else ""
     preview = ("<section class='pl-card'><h2>Preview</h2><div class='pl-markdown'>%s</div></section>" % preview_html) if preview_html else ""
+    # what Remove asks (scheme.js shows it) says what really goes: the library's own note is gone for everybody
+    if in_place:
+        sure = "Remove this note from your upload folder?"
+    elif len(choices) > 1:                                   # the "Save it as" choice above decides which note the button removes
+        sure = ("Remove the note? Saved as your own note, only your copy is removed. "
+                "Saved as a note in the library, the shared note is removed for everybody who sees this folder.")
+    elif where_kind == "library":
+        sure = "Remove this note from the library? It is the shared note: it is removed for everybody who sees this folder."
+    else:
+        sure = "Remove your note? The library is not touched."
     remove = ("<button class='pl-btn pl-btn-danger' type='submit' name='action' value='remove' formnovalidate "
-              "data-confirm='Remove your note? The library is not touched.'>Remove</button>") if exists else ""
+              "data-confirm='%s'>Remove</button>" % escape(sure)) if exists else ""
     title = "Edit note" if name else "Add a note"
+    if too_large:                                            # no form: it would open empty, and every save of it would be refused
+        body = ("<main class='pl-main'><h1>%s</h1><p class='pl-muted'>%s</p>"
+                "<p class='pl-flash pl-error' role='alert'>This note is too large to edit here: the editor takes notes up to %d KB. "
+                "To change it, download the file, edit it and put it back.</p>"
+                "<p><a class='pl-btn' href='%s'>Back</a></p></main>"
+                % (title, escape("/".join((root, *parts, name) if name else (root, *parts))), MAX_NOTE_BYTES // 1024, escape(back_url)))
+        return layout(title, body, ctx)
     form = ("<form class='pl-card' method='post' action='%s' autocomplete='off'><input type='hidden' name='v_own' value='%s'><input type='hidden' name='v_library' value='%s'>%s%s"
             "<label class='pl-field'><span>Text (Markdown)</span><textarea name='text' rows='18' maxlength='65536' spellcheck='true'>%s</textarea></label>"
             "<p><button class='pl-btn pl-btn-primary' type='submit' name='action' value='save'>Save</button> "

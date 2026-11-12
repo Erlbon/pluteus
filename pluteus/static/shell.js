@@ -29,13 +29,25 @@
   /* ---- the player ---- */
   function icon(button, name) { var i = button.querySelector(".pl-icon"); if (i) i.className = "pl-icon pl-i-" + name; }
   var listeners = [];                        // pages in the frame that want to know when the player changes (the radio page)
+  /* A page in the frame registers a function; when the frame shows another page that function must go, or every page ever shown stays in
+     memory and runs on each change (Chrome does not throw when a function of a page that is gone is called). So each one is kept with the
+     document that was in the frame when it registered, and only those of the document shown now are kept and called. */
+  function frameDoc() { try { return frame.contentDocument; } catch (e) { return null; } }
+  function listen(list, fn) { if (typeof fn === "function") list.push({ fn: fn, doc: frameDoc() }); }
+  function tell(list) {
+    var doc = frameDoc();
+    return list.filter(function (l) {
+      if (l.doc !== doc) return false;
+      try { l.fn(); return true; } catch (e) { return false; }
+    });
+  }
   function playingNow() { return !audio.paused && !audio.ended && !audio.error; }
   function paint() {
     var playing = playingNow();
     icon(playBtn, playing ? "pause" : "play");
     playBtn.setAttribute("aria-label", playing ? "Pause" : "Play");
     if ("mediaSession" in navigator) navigator.mediaSession.playbackState = playing ? "playing" : "paused";
-    listeners = listeners.filter(function (fn) { try { fn(); return true; } catch (e) { return false; } });     // a page that is gone throws
+    listeners = tell(listeners);
   }
   function live() { return !!(queue[index] && queue[index].live); }
   function show() {
@@ -212,7 +224,7 @@
   function frameFull() { return !!frame && (document.fullscreenElement || document.webkitFullscreenElement) === frame; }
   function fsChanged() {
     if (!frameFull()) fsMode = "";
-    fsListeners = fsListeners.filter(function (fn) { try { fn(); return true; } catch (e) { return false; } });       // a page that is gone throws: dropped
+    fsListeners = tell(fsListeners);
   }
   document.addEventListener("fullscreenchange", fsChanged);
   document.addEventListener("webkitfullscreenchange", fsChanged);
@@ -232,7 +244,7 @@
       fsChanged();
     },
     exit: function () { (document.exitFullscreen || document.webkitExitFullscreen || function () {}).call(document); },
-    onChange: function (fn) { fsListeners.push(fn); }
+    onChange: function (fn) { listen(fsListeners, fn); }
   };
 
   /* what the pages in the frame may call */
@@ -261,7 +273,10 @@
     position: function () { return audio.currentTime; },
     currentUrl: function () { return queue[index] ? queue[index].url : ""; },
     nowText: function () { return queue[index] && queue[index].live ? (queue[index].nowText || "") : ""; },
-    onState: function (fn) { listeners.push(fn); }
+    onState: function (fn) { listen(listeners, fn); },
+    /* a page that changed its own address without loading a new page (a film going on to the next file): the shell's address follows,
+       so a reload or a restored tab opens the file that is playing, not the first one */
+    pageChanged: function () { mirror(); }
   };
 
   /* ---- the frame: keep the address bar, the title and light/dark in step with it ---- */
@@ -292,5 +307,10 @@
     } catch (e) { /* ignore */ }
   }
   new MutationObserver(function () { syncScheme(root); }).observe(root, { attributes: true, attributeFilter: ["data-scheme"] });
-  frame.addEventListener("load", mirror);
+  frame.addEventListener("load", function () {
+    mirror();
+    var doc = frameDoc();                                  // the page before this one is gone: so are the functions it registered
+    listeners = listeners.filter(function (l) { return l.doc === doc; });
+    fsListeners = fsListeners.filter(function (l) { return l.doc === doc; });
+  });
 })();

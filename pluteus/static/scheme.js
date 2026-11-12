@@ -60,6 +60,25 @@
   });
 })();
 
+/* "Are you sure?": a form, or a button that sends one, with data-confirm asks before anything is sent (delete a file, remove a note,
+   forget the view choices). It lives here because this is the one script every page loads, the admin page included; it listens on the
+   document, so it also covers forms added later. A button's own text wins over its form's. Answering no also keeps the form's own
+   handlers from running. */
+(function () {
+  var clicked = null;                                     // the button that was pressed, for browsers without SubmitEvent.submitter
+  document.addEventListener("click", function (e) {
+    var b = e.target && e.target.closest ? e.target.closest("button, input[type=submit], input[type=image]") : null;
+    clicked = b && b.form ? b : null;
+  }, true);
+  document.addEventListener("submit", function (e) {
+    var form = e.target, by = e.submitter || (clicked && clicked.form === form ? clicked : null);
+    clicked = null;
+    if (!form || !form.getAttribute) return;
+    var text = (by && by.getAttribute("data-confirm")) || form.getAttribute("data-confirm");
+    if (text && !window.confirm(text)) { e.preventDefault(); e.stopPropagation(); }
+  }, true);
+})();
+
 /* The back arrow of a viewer or reader (#back, a link to the folder): when this file was opened from that folder, a click steps back in the
    browser's history instead of adding the folder as a new entry, so the browser's Back from the folder does not land on the file again.
    Moving between files REPLACES the history entry (see viewer-media.js), so the folder stays one step behind however many files were played.
