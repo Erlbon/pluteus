@@ -11,6 +11,7 @@ import dataclasses
 import hashlib
 import hmac
 import os
+import threading
 import time
 
 DEFAULT_N, DEFAULT_R, DEFAULT_P = 2 ** 14, 8, 1
@@ -47,13 +48,19 @@ class Authenticator:
         self._trusted: dict = {}          # hash of a header that was verified -> (user name, when); see trusted_user()
         # Burned on unknown user names so they cost the same time as a wrong password.
         self._dummy = hash_password("dummy")
+        # authenticate() runs on worker threads and takes one scrypt long; set_users/forget_user run meanwhile. A login that was being
+        # checked when the remembered logins were dropped must not put itself back: it remembers nothing when the number has moved on.
+        self._lock = threading.Lock()
+        self._generation = 0
 
     def set_users(self, users: dict) -> None:
         """Swap the user table (config reload). Cached logins are dropped so removed or changed users stop at once."""
-        self.users = users
-        self._cache = {}
-        self._bad = {}
-        self._trusted = {}
+        with self._lock:
+            self._generation += 1
+            self.users = users
+            self._cache = {}
+            self._bad = {}
+            self._trusted = {}
 
     def user_for_key(self, key: str):
         """The user name whose app key this is, or None (see keypath.py). Compared in constant time; there are only a few users."""
@@ -86,8 +93,38 @@ class Authenticator:
     def forget_user(self, name: str) -> None:
         """Drop every remembered login of one user (the admin page's "sign out everywhere"): reader apps then have to
         prove the password again."""
-        self._cache = {k: v for k, v in self._cache.items() if v[0] != name}
-        self._trusted = {k: v for k, v in self._trusted.items() if v[0] != name}
+        with self._lock:
+            self._generation += 1
+            self._cache = {k: v for k, v in self._cache.items() if v[0] != name}
+            self._trusted = {k: v for k, v in self._trusted.items() if v[0] != name}
+
+    def key_user(self, header):
+        """The (read-only) User when the header's password IS that user's app key, else None. No password hashing: an app key is a long
+        random secret, compared in constant time, so this is cheap and is no guess at a password. It is asked before the wrong-password
+        lock is looked at: a lock on a name stops strangers guessing its password, never the owner's own reader apps."""
+        creds = self.parse_basic(header)
+        if not creds:
+            return None
+        name = self.canonical_name(creds[0])
+        if name not in self.users:
+            return None
+        secret = self.appkeys(name)
+        if not (secret and hmac.compare_digest(secret.encode("utf-8"), creds[1].encode("utf-8"))):
+            return None
+        self._remember(hashlib.sha256(header[6:].strip().encode("utf-8")).hexdigest(), name, True, self._generation)
+        return self.restricted(self.users[name])
+
+    def _remember(self, key: str, name: str, via_key: bool, generation: int) -> None:
+        now = time.monotonic()
+        with self._lock:
+            if generation != self._generation:          # the logins were dropped while this one was being checked
+                return
+            if len(self._cache) > 1000:
+                self._cache = {k: v for k, v in self._cache.items() if v[1] > now}
+            self._cache[key] = (name, now + self.cache_seconds, via_key)
+            if len(self._trusted) > 1000:
+                self._trusted = {k: v for k, v in self._trusted.items() if now - v[1] < TRUSTED_SECONDS}
+            self._trusted[key] = (name, now, via_key)
 
     def trusted_user(self, header, max_age: float = TRUSTED_SECONDS):
         """The User for credentials that were verified at some point in the last `max_age` seconds (default 14 days),
@@ -150,6 +187,7 @@ class Authenticator:
             return None
         key = hashlib.sha256(header[6:].strip().encode("utf-8")).hexdigest()
         now = time.monotonic()
+        generation = self._generation
         hit = self._cache.get(key)
         if hit and hit[1] > now:
             return self._view(hit[0], hit[2])
@@ -164,14 +202,11 @@ class Authenticator:
             else:
                 user = self.check(*creds)
         if user is None:
-            if len(self._bad) > 1000:
-                self._bad = {k: v for k, v in self._bad.items() if v > now}
-            self._bad[key] = now + BAD_SECONDS
+            with self._lock:
+                if generation == self._generation:
+                    if len(self._bad) > 1000:
+                        self._bad = {k: v for k, v in self._bad.items() if v > now}
+                    self._bad[key] = now + BAD_SECONDS
             return None
-        if len(self._cache) > 1000:
-            self._cache = {k: v for k, v in self._cache.items() if v[1] > now}
-        self._cache[key] = (user.name, now + self.cache_seconds, via_key)
-        if len(self._trusted) > 1000:
-            self._trusted = {k: v for k, v in self._trusted.items() if now - v[1] < TRUSTED_SECONDS}
-        self._trusted[key] = (user.name, now, via_key)
+        self._remember(key, user.name, via_key, generation)
         return user

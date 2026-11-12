@@ -93,7 +93,17 @@ class FailureLimiter:
             if len(self._fails) > 5000:
                 for key in list(self._fails):
                     self._recent(key, now)
+            if len(self._strikes) > 5000 or len(self._locked) > 5000:      # someone cycling through invented names
+                self._prune(now)
         return started
+
+    def _prune(self, now: float) -> None:
+        """Forget locks that are over and lock counts that would be forgiven anyway; if that is not enough, the oldest counts go."""
+        self._locked = {name: until for name, until in self._locked.items() if until > now}
+        self._strikes = {name: row for name, row in self._strikes.items() if now - row[1] <= FORGET_AFTER}
+        if len(self._strikes) > 5000:
+            keep = sorted(self._strikes.items(), key=lambda item: item[1][1], reverse=True)[:2500]
+            self._strikes = dict(keep)
 
     def failure_ip(self, ip: str, now=None) -> None:
         """Count one wrong app KEY against the address only. Keys are long random secrets, so a wrong one is never a guess at a

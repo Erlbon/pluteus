@@ -6,7 +6,9 @@ API calls get a plain 401 so they can show their own login prompt.
 """
 from __future__ import annotations
 
+import asyncio
 import contextvars
+import errno
 import functools
 import hashlib
 import hmac
@@ -37,7 +39,8 @@ from .auth import Authenticator
 from .bodies import read_limited
 from .cbz import CbzError
 from .config import MIME_TYPES, UPLOADS_ROOT, Config
-from .fs import SORTS, Library, NotFound, PathError, clamp_time, longpath, sort_entries
+from .fs import SORTS, Library, NotFound, PathError, Unavailable, clamp_time, longpath, sort_entries
+from .logingate import LoginGate
 from .meta import MetaCache, MetaService
 from .ratelimit import FailureLimiter
 from .reload import UsersReloader
@@ -76,11 +79,19 @@ RADIO_CSP = CSP.replace("default-src 'self';", "default-src 'self'; media-src 's
 IPTV_CSP = (RADIO_CSP.replace("media-src 'self' http: https:;", "media-src 'self' blob: http: https:;", 1)
             .replace("connect-src 'self';", "connect-src 'self' http: https:;", 1))
 NO_CACHE = {"Cache-Control": "no-cache"}
+# what a browser would run or apply if a page pointed a <script> or <link> at it: downloads of these go out as plain bytes
+_ACTIVE_TYPES = {"text/javascript", "application/javascript", "application/x-javascript", "application/ecmascript", "text/ecmascript",
+                 "text/css", "application/wasm", "text/html", "application/xhtml+xml", "image/svg+xml", "text/xml", "application/xml"}
 NO_SHUFFLE_MARKERS = (".noshuffle", "noshuffle", "noshuffle.txt")      # an empty file with one of these names keeps a folder out of Shuffle
 
 
+# An OSError that means "the share or drive is away for the moment" (answered 503, try again); every other one is a real failure (500).
+_OFFLINE_ERRNOS = {getattr(errno, name) for name in ("EIO", "ENETDOWN", "ENETUNREACH", "ENETRESET", "EHOSTDOWN", "EHOSTUNREACH",
+                                                     "ETIMEDOUT", "ESTALE", "ENODEV", "ENXIO", "ENOTCONN") if hasattr(errno, name)}
+_OFFLINE_WINERRORS = {21, 51, 53, 55, 59, 64, 67, 121, 1231, 1232}      # device not ready, network path/name gone, timeouts
 _SECRET_QUERY = {"p", "apikey", "t", "s", "password", "token", "key", "secret"}
 access_log = logging.getLogger("pluteus.access")
+_LOG_UNSAFE = re.compile(r'[\x00-\x1f\x7f"\u0085  ]')      # control characters, line separators and the quote the line is wrapped in
 
 
 def _logged_target(scope) -> str:
@@ -90,13 +101,14 @@ def _logged_target(scope) -> str:
     if "/join/" in path:
         path = path.split("/join/")[0] + "/join/***"
     query = scope.get("query_string", b"").decode("latin-1")
-    if not query:
-        return path
-    shown = []
-    for pair in query.split("&"):
-        name, sep, value = pair.partition("=")
-        shown.append(name + sep + ("***" if sep and name.lower() in _SECRET_QUERY else value))
-    return path + "?" + "&".join(shown)
+    if query:
+        shown = []
+        for pair in query.split("&"):
+            name, sep, value = pair.partition("=")
+            shown.append(name + sep + ("***" if sep and name.lower() in _SECRET_QUERY else value))
+        path += "?" + "&".join(shown)
+    # The path arrives percent-DECODED: a %0A in the address must not start a new (invented) line in the log.
+    return _LOG_UNSAFE.sub(lambda m: "%%%02X" % ord(m.group()), path)
 
 
 class AccessLog:
@@ -195,6 +207,20 @@ class SecurityHeaders:
         await self.app(scope, receive, wrapped)
 
 
+class Reload:
+    """Picks up changed users (config.toml edited by hand, the command line or the admin page) before ANY request is answered: the
+    login form, Subsonic, KOReader sync and the address-key route log people in without passing through resolve(), and a removed
+    user or a changed password must stop working there too. The check itself is one stat() at most every few seconds."""
+
+    def __init__(self, app, reloader=None):
+        self.app, self.reloader = app, reloader
+
+    async def __call__(self, scope, receive, send):
+        if self.reloader is not None and scope["type"] == "http":
+            self.reloader.maybe_reload()
+        await self.app(scope, receive, send)
+
+
 class StripBase:
     """Serve under a URL prefix whether the reverse proxy removes it or not: a request that still carries the
     prefix has it taken off, so routes always see plain paths and every link we emit carries the prefix."""
@@ -240,6 +266,21 @@ def _safe_next(target: str, base: str, fallback: str) -> str:
     return target
 
 
+def not_modified(request: Request, etag: str) -> bool:
+    """True when the client says it already has this version (If-None-Match). The header may list several tags, and a proxy that
+    compresses the answer marks ours weak (W/"..."): both still mean "the same file"."""
+    sent = request.headers.get("if-none-match", "")
+    if not sent:
+        return False
+    tags = {t.strip().removeprefix("W/") for t in sent.split(",")}
+    return etag in tags or "*" in tags
+
+
+def file_etag(info) -> str:
+    """The version tag of a library file as it is on disk: it changes when the size or the date does."""
+    return '"%s"' % hashlib.md5(("%s-%s" % (info.size, info.mtime)).encode(), usedforsecurity=False).hexdigest()
+
+
 def too_big(request: Request, limit: int) -> bool:
     """True when the client announces a body above `limit` bytes, before any of it is read into memory."""
     try:
@@ -262,11 +303,15 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
     auth = Authenticator(cfg.users, cfg.auth_cache_seconds, appkeys=state.get_appkey)
     sessions = SessionManager(state, cfg.session_days)
     limiter = FailureLimiter()
+    login_gate = LoginGate()
     themes = Themes(cfg.themes_dir)
     reloader = UsersReloader(config_path, auth, reload_interval, on_config=lambda c: lib.set_roots(c.roots, c.subsonic_uploads)) if config_path else None
     urls = Urls(cfg.base_path)
     thumb_cache = thumbs.ThumbCache(cfg.cache_dir or cfg.data_dir)
-    thumb_gate = threading.BoundedSemaphore(3)
+    thumb_gate = threading.BoundedSemaphore(3)       # inside the worker: never more than three pictures decoded at once, whoever asks
+    thumb_turns = asyncio.Semaphore(3)               # in front of it, on the event loop: those who wait hold no worker thread
+    fetch_slots: dict = {}                           # user name -> asyncio.Semaphore (see fetch_turn); one per user, so it stays small
+    upload_locks: dict = {}                          # user name -> asyncio.Lock (see upload_turn)
     backup_dir = os.path.join(cfg.data_dir, "backups") if cfg.data_dir else ""
     housekeeping_due = [0.0]
     # Only the realm: some reader apps parse the challenge themselves and give up on the optional charset part (RFC 7617), and then never send
@@ -330,11 +375,14 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
             log.warning("login for %r is locked for %d s after repeated wrong passwords (lock number %d)",
                         (name or "")[:40], seconds, number)
 
-    def refusal_reason(creds) -> str:
-        """Why a Basic login was refused, with hints about the usual reader-app slips (never the password itself)."""
+    def refusal_reason(creds, hints: bool = True) -> str:
+        """Why a Basic login was refused, with hints about the usual reader-app slips (never the password itself). The hints (how long
+        the password was, spaces around it) are for the debug log only: the normal log says no more than "wrong password"."""
         if creds is None:
             return "the Authorization header could not be read"
         name, password = creds
+        if not hints:
+            return "wrong password" if auth.canonical_name(name) in auth.users else "no such user"
         if auth.canonical_name(name) not in auth.users:
             near = [n for n in auth.users if n.lower() == name.strip().lower()]
             return "no such user" + (" (a name that differs only in letter case matches more than one user)" if len(near) > 1 else "")
@@ -363,9 +411,7 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
 
     async def resolve(request: Request):
         """(user or None, seconds to wait when throttled). Password hashing and the hourly housekeeping run on
-        worker threads, never on the event loop."""
-        if reloader:
-            reloader.maybe_reload()
+        worker threads, never on the event loop. (Changed users are picked up before this, for every request: see Reload.)"""
         now = time.monotonic()
         if now >= housekeeping_due[0]:
             housekeeping_due[0] = now + 3600
@@ -387,22 +433,36 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
             creds = auth.parse_basic(header)
             mark(request, describe_login(creds) + ".")
             name, ip = (auth.canonical_name(creds[0]) if creds else ""), limiter_ip(request)       # the throttle counts the user a login means, however it is spelled
-            known, device_id, _ = device_state(request, name)
-            wait = limiter.wait_seconds(name, ip, device=device_id, known=known)
-            if wait:
-                # Locked for strangers. Credentials that were verified earlier (a reader app that has logged in before)
-                # still work: only someone who already knows the password can send them.
-                trusted = auth.trusted_user(header)
-                mark(request, "Locked for %d s for a new device%s." % (wait, "; accepted because these credentials were verified earlier" if trusted else ""))
-                return (trusted, 0) if trusted else (None, wait)
-            user = await run_in_threadpool(auth.authenticate, header)
+            # The app key first: it is no guess at a password, so a lock on the name does not stop it and it does not lift one either.
+            user = await run_in_threadpool(auth.key_user, header)
             if user:
-                limiter.success(name, device_id)
-                mark(request, "Accepted as %r." % user.name)
+                mark(request, "Accepted as %r (app key)." % user.name)
                 return user, 0
-            note_failure(name, ip, device_id, known)
-            mark(request, "Refused: " + refusal_reason(creds) + ".")
-            log.warning("login refused for %r from %s: %s", (name or "")[:40], ip, refusal_reason(creds))
+            known, device_id, _ = device_state(request, name)
+            async with login_gate.turn(name):           # one check at a time per name: the throttle is read AFTER the checks before this one
+                user = auth.cached_user(header)
+                if user:
+                    mark(request, "Basic login accepted (checked a moment ago)")
+                    return user, 0
+                if auth.known_bad(header):
+                    mark(request, "Basic login refused: exactly these credentials failed a moment ago")
+                    return None, 0
+                wait = limiter.wait_seconds(name, ip, device=device_id, known=known)
+                if wait:
+                    # Locked for strangers. Credentials that were verified earlier (a reader app that has logged in before)
+                    # still work: only someone who already knows the password can send them.
+                    trusted = auth.trusted_user(header)
+                    mark(request, "Locked for %d s for a new device%s." % (wait, "; accepted because these credentials were verified earlier" if trusted else ""))
+                    return (trusted, 0) if trusted else (None, wait)
+                user = await run_in_threadpool(auth.authenticate, header)
+                if user:
+                    if not user.read_only:              # only a proven password clears the name's failures and locks
+                        limiter.success(name, device_id)
+                    mark(request, "Accepted as %r." % user.name)
+                    return user, 0
+                note_failure(name, ip, device_id, known)
+            mark(request, "Refused: " + refusal_reason(creds) + ".")          # the debug log (off unless asked for) gets the hints
+            log.warning("login refused for %r from %s: %s", (name or "")[:40], ip, refusal_reason(creds, hints=False))
             return None, 0
         if cfg.anonymous_user:
             return auth.users.get(cfg.anonymous_user), 0
@@ -502,9 +562,18 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
                     return PlainTextResponse("Not found", 404)
                 except FileNotFoundError:               # the file vanished between the check and the read
                     return PlainTextResponse("Not found", 404)
-                except OSError:                         # share offline, permission denied, ...: not the caller's fault
+                except Unavailable as e:                # the share is offline: not the caller's fault, and worth trying again
+                    log.warning("%s %s: the library storage is not available (%s)", request.method, request.url.path, e)
                     return PlainTextResponse("The library storage is not available right now.", 503,
                                              headers={"Retry-After": "30"})
+                except OSError as e:                    # permission denied, disk full, a socket error inside the handler, ...
+                    offline = isinstance(e, (TimeoutError, ConnectionError)) or e.errno in _OFFLINE_ERRNOS \
+                        or getattr(e, "winerror", None) in _OFFLINE_WINERRORS
+                    log.warning("%s %s failed: %r", request.method, request.url.path, e)
+                    if offline:
+                        return PlainTextResponse("The library storage is not available right now.", 503,
+                                                 headers={"Retry-After": "30"})
+                    return PlainTextResponse("The server could not do that (the reason is in its log).", 500)
             return wrapper
         return decorate
 
@@ -526,8 +595,7 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
         so an edited theme file shows on the next reload yet unchanged ones cost no download."""
         st = path.stat()
         etag = '"%s"' % hashlib.md5(("%s-%s" % (st.st_mtime_ns, st.st_size)).encode(), usedforsecurity=False).hexdigest()
-        sent = {t.strip().removeprefix("W/") for t in request.headers.get("if-none-match", "").split(",")}
-        if etag in sent:
+        if not_modified(request, etag):
             return Response(status_code=304, headers={"ETag": etag, **NO_CACHE})
         return FileResponse(path, media_type=STATIC_TYPES.get(path.suffix.lower()), headers={"ETag": etag, **NO_CACHE})
 
@@ -577,17 +645,18 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
         next_url = _safe_next(form.get("next", ""), cfg.base_path, urls.home())
         ip = limiter_ip(request)
         known, device_id, last_ip = device_state(request, username)
-        wait = limiter.wait_seconds(username, ip, device=device_id, known=known)
-        if wait:
-            return HTMLResponse(web.login_page(login_ctx(), next_url,
-                                                "Too many failed attempts. Try again in %d seconds." % wait,
-                                                username), 429, headers={"Retry-After": str(wait)})
-        user = await run_in_threadpool(auth.check, username, password)
-        if user is None:
-            note_failure(username, ip, device_id, known)
-            return HTMLResponse(web.login_page(login_ctx(), next_url, "Wrong user name or password.",
-                                               username), 401)
-        limiter.success(username, device_id)
+        async with login_gate.turn(username):           # one check at a time per name (see logingate.py)
+            wait = limiter.wait_seconds(username, ip, device=device_id, known=known)
+            if wait:
+                return HTMLResponse(web.login_page(login_ctx(), next_url,
+                                                    "Too many failed attempts. Try again in %d seconds." % wait,
+                                                    username), 429, headers={"Retry-After": str(wait)})
+            user = await run_in_threadpool(auth.check, username, password)
+            if user is None:
+                note_failure(username, ip, device_id, known)
+                return HTMLResponse(web.login_page(login_ctx(), next_url, "Wrong user name or password.",
+                                                   username), 401)
+            limiter.success(username, device_id)
         token = sessions.start(user)
         real_ip = client_ip(request)
         device_token, _ = sessions.remember_device(request.cookies.get(DEVICE_COOKIE), user, real_ip)
@@ -988,6 +1057,9 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
     @guarded("web")
     async def settings(request: Request, user):
         if request.method == "POST":
+            if cfg.anonymous_user and user.name == cfg.anonymous_user:
+                # everyone without a login IS this user: one visitor's theme or view would become every visitor's
+                return PlainTextResponse("Settings are kept per user: sign in to change them.", 403)
             raw_form = await read_limited(request, 16384)
             if raw_form is None:
                 return PlainTextResponse("Request too large", 413)
@@ -1020,20 +1092,33 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
     def flash_url(parts: tuple, **query) -> str:
         return urls.browse(UPLOADS_ROOT, parts) + "?" + urlencode({k: v for k, v in query.items() if v not in ("", None)})
 
+    def upload_turn(username: str) -> asyncio.Lock:
+        """`async with upload_turn(name):` around everything that measures a user's upload folder and then writes into it. The quota is
+        "what is there now, plus this": two uploads measuring at the same moment would each be given the whole remainder. With a quota
+        set, a user's uploads therefore go one after the other (other users are not held up); without one there is nothing to guard."""
+        lock = upload_locks.get(username)
+        if lock is None:
+            lock = upload_locks[username] = asyncio.Lock()
+        return lock
+
     async def accept_upload(request: Request, user, parts: tuple) -> Response:
         """Stream the files of a multipart POST into the folder `parts` of the user's own upload area."""
         folder = await run_in_threadpool(lib.upload_dir, user, parts)
         max_bytes = cfg.upload_max_mb * 1024 * 1024
-        quota_left = None
-        if cfg.upload_quota_mb:
-            used = await run_in_threadpool(uploads.tree_size, lib.upload_base(user))
-            quota_left = max(0, cfg.upload_quota_mb * 1024 * 1024 - used)
         if too_big(request, max_bytes * uploads.MAX_FILES):
             return PlainTextResponse("Upload too large", 413)
         wants_json = "application/json" in request.headers.get("accept", "")
+
+        async def receive(quota_left):
+            return await uploads.receive(request.stream(), request.headers.get("content-type", ""), folder,
+                                         max_bytes=max_bytes, quota_left=quota_left, is_hidden=lib.is_hidden_name)
         try:
-            intake = await uploads.receive(request.stream(), request.headers.get("content-type", ""), folder,
-                                           max_bytes=max_bytes, quota_left=quota_left, is_hidden=lib.is_hidden_name)
+            if cfg.upload_quota_mb:
+                async with upload_turn(user.name):
+                    used = await run_in_threadpool(uploads.tree_size, lib.upload_base(user))
+                    intake = await receive(max(0, cfg.upload_quota_mb * 1024 * 1024 - used))
+            else:
+                intake = await receive(None)
         except uploads.UploadError:
             return PlainTextResponse("Send the files as multipart/form-data", 415)
         except (MultipartParseError, ValueError):
@@ -1344,9 +1429,12 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
         mime = kinds.INLINE_MIME.get(ext)
         if mime is None:
             raise NotFound("not shown inline")
-        headers = {"X-Content-Type-Options": "nosniff", "Cache-Control": "private, max-age=300"}
+        etag = file_etag(info)
+        headers = {"X-Content-Type-Options": "nosniff", "Cache-Control": "private, max-age=300", "ETag": etag}
         if ext in kinds.SANDBOXED:
             headers["Content-Security-Policy"] = "sandbox; default-src 'none'; style-src 'unsafe-inline'"
+        if not_modified(request, etag) and "range" not in request.headers:      # the five minutes are up and the file is the same: no second download
+            return Response(status_code=304, headers=headers)
         return FileResponse(info.path, media_type=mime, headers=headers)       # no filename: displayed, not downloaded
 
     @guarded("web")
@@ -1392,6 +1480,15 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
         except vault.VaultError:
             return None, 'The stored stream "%s" cannot be opened. Add it again under Settings, My streams.' % name
 
+    def fetch_turn(username: str) -> asyncio.Semaphore:
+        """`async with fetch_turn(name):` around a fetch the server makes for a user (a playlist, a pasted address): two at a time per user.
+        The fetch has its own time limit (relay.fetch_body); this stops one user's pile of slow ones from taking every worker thread.
+        Those who wait do it here on the event loop and hold no thread."""
+        slot = fetch_slots.get(username)
+        if slot is None:
+            slot = fetch_slots[username] = asyncio.Semaphore(2)
+        return slot
+
     async def hls_playlist(user, lease: str, address: str, stream: str = "", entry=None) -> Response:
         """The HLS playlist at `address` with every address in it replaced by a signed token that only this user can use (see relay.sign).
         Each fetch of a playlist renews the stream's lease, which counts against the stream limits."""
@@ -1401,7 +1498,8 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
             return PlainTextResponse("Too many streams are open through the server right now. Close one and try again.", 429,
                                      headers={"Retry-After": "10"})
         try:
-            data, _, final = await run_in_threadpool(relay.fetch_body, address, relay.MAX_PLAYLIST, entry)
+            async with fetch_turn(user.name):
+                data, _, final = await run_in_threadpool(relay.fetch_body, address, relay.MAX_PLAYLIST, entry)
         except relay.Refused as e:
             relay_limits.drop_lease(user.name, lease)
             return PlainTextResponse(e.message, e.status)
@@ -1589,7 +1687,8 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
             return JSONResponse({"error": "That is too many at once."}, 413)
         try:
             data = json.loads(raw.decode("utf-8"))
-            result = await run_in_threadpool(stationsave.apply_logos, lib, cfg.upload_quota_mb, user, data.get("kind", ""), data.get("items"))
+            async with upload_turn(user.name):
+                result = await run_in_threadpool(stationsave.apply_logos, lib, cfg.upload_quota_mb, user, data.get("kind", ""), data.get("items"))
         except (ValueError, UnicodeDecodeError, AttributeError):
             return JSONResponse({"error": "The request was not understood."}, 400)
         except uploads.UploadError as e:
@@ -1609,8 +1708,8 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
             return JSONResponse({"error": "That picture is too large."}, 413)
 
         def save() -> str:
-            folder = lib.upload_dir(user, parts[:-1])
-            path = os.path.join(folder, parts[-1])
+            folder, name = lib.upload_entry(user, parts)          # every part checked, the last one too (no separator, no excluded name)
+            path = os.path.join(folder, name)
             if not os.path.isfile(longpath(path)) or os.path.islink(longpath(path)):
                 raise NotFound("no such station file")
             try:
@@ -1632,7 +1731,8 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
                     pass
             return urls.cover(root, parts) + "?t=%d" % time.time()
         try:
-            return JSONResponse({"url": await run_in_threadpool(save)})
+            async with upload_turn(user.name):
+                return JSONResponse({"url": await run_in_threadpool(save)})
         except ValueError:
             return JSONResponse({"error": "That is not a picture pluteus can use (PNG, JPEG or WebP)."}, 400)
         except uploads.UploadError as e:
@@ -1657,7 +1757,8 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
             if not cfg.relay:
                 return JSONResponse({"error": "The server fetches a playlist only when the relay is on (relay = true). Download the file and choose it instead."}, 400)
             try:
-                body, _, _ = await run_in_threadpool(relay.fetch_body, str(url).strip(), m3uimport.MAX_TEXT)
+                async with fetch_turn(user.name):
+                    body, _, _ = await run_in_threadpool(relay.fetch_body, str(url).strip(), m3uimport.MAX_TEXT)
             except relay.Refused as e:
                 return JSONResponse({"error": e.message}, 400 if e.status < 500 else 502)
             text = body.decode("utf-8-sig", "replace")
@@ -1785,7 +1886,7 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
         data, mime = found
         etag = '"%s"' % hashlib.sha1(data).hexdigest()[:20]
         headers = {"X-Content-Type-Options": "nosniff", "Cache-Control": "private, max-age=86400", "ETag": etag}
-        if request.headers.get("if-none-match") == etag:
+        if not_modified(request, etag):
             return Response(status_code=304, headers=headers)
         return Response(data, media_type=mime, headers=headers)
 
@@ -1859,7 +1960,7 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
             etag = '"%s"' % hashlib.md5(("%s-%s-%d" % (info.size, info.mtime, number)).encode(),
                                         usedforsecurity=False).hexdigest()
             headers = {"ETag": etag, "Cache-Control": "private, max-age=86400"}     # a page never changes
-            if etag in {t.strip() for t in request.headers.get("if-none-match", "").split(",")}:
+            if not_modified(request, etag):
                 return Response(status_code=304, headers=headers)
             data = await run_in_threadpool(cbz.read_page, info.path, pages[number], cbz.MAX_PAGE_BYTES, external)
         except CbzError as e:
@@ -1908,6 +2009,16 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
         thumb_cache.put(key, small[0])
         return small
 
+    async def make_thumb_in_turn(info, root: str, width: int):
+        """make_thumb with the waiting done HERE, on the event loop. A page of covers asks for fifty at once; if each waited for its turn
+        inside a worker thread (as they once did), the waiting ones would hold every thread and the rest of the site would stand still."""
+        key = "%s|%s|%s|%d" % (info.path, info.size, info.mtime, width)
+        hit = await run_in_threadpool(thumb_cache.get, key)
+        if hit is not None:
+            return hit, "image/jpeg"
+        async with thumb_turns:
+            return await run_in_threadpool(make_thumb, info, root, width)
+
     @guarded("media")
     async def thumb(request: Request, user):
         """A small JPEG of a book's cover (?w= the width in pixels), for the OPDS feeds."""
@@ -1917,14 +2028,14 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
         parts = _parts(request.path_params["path"])
         info = await run_in_threadpool(lib.file_info, user, root, parts, cfg.show_all_files)
         width = thumbs.clamp_width(request.query_params.get("w", ""))
-        found = await run_in_threadpool(make_thumb, info, root, width)
+        etag = '"%s"' % hashlib.sha1(("%s|%s|%d" % (info.size, info.mtime, width)).encode()).hexdigest()[:20]
+        headers = {"ETag": etag, "Cache-Control": "private, max-age=86400", "X-Content-Type-Options": "nosniff"}
+        if not_modified(request, etag):                         # before any picture is read: the client already has this one
+            return Response(status_code=304, headers=headers)
+        found = await make_thumb_in_turn(info, root, width)
         if found is None:
             raise NotFound("no cover")
         data, mime = found
-        etag = '"%s"' % hashlib.sha1(("%s|%s|%d" % (info.size, info.mtime, width)).encode()).hexdigest()[:20]
-        headers = {"ETag": etag, "Cache-Control": "private, max-age=86400", "X-Content-Type-Options": "nosniff"}
-        if request.headers.get("if-none-match") == etag:
-            return Response(status_code=304, headers=headers)
         return Response(data, media_type=mime, headers=headers)
 
     def covers_for(root: str, entry):
@@ -2129,7 +2240,13 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
         parts = _parts(request.path_params["path"])
         info = await run_in_threadpool(lib.file_info, user, root, parts, cfg.show_all_files)
         # Always a download, never displayed in our origin: unknown and active types (html, svg, ...) cannot run here.
-        return FileResponse(info.path, media_type=info.mime, filename=info.name)
+        # A script or a stylesheet is sent as plain bytes: "attachment" does not stop a page from naming this address in a <script src>,
+        # and the page policy allows scripts from our own origin, so an uploaded .js must never be served AS a script.
+        mime = "application/octet-stream" if (info.mime or "").split(";")[0].strip().lower() in _ACTIVE_TYPES else info.mime
+        etag = file_etag(info)
+        if not_modified(request, etag) and "range" not in request.headers:
+            return Response(status_code=304, headers={"ETag": etag})
+        return FileResponse(info.path, media_type=mime, filename=info.name, headers={"ETag": etag})
 
     routes = [
         Route("/healthz", healthz),
@@ -2212,7 +2329,12 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
             limiter.failure_ip(limiter_ip(request))              # a wrong KEY counts against the address only
 
         def ok(self, request, name):
+            """A real PASSWORD was proven for this name (never call it for an app key or a token made from one)."""
             limiter.success(name)
+
+        def turn(self, name):
+            """`async with throttle.turn(name):` around wait(), the password check and fail()/ok(): one check at a time per name."""
+            return login_gate.turn(name)
     if cfg.subsonic:
         from .subsonic import Subsonic
         api = Subsonic(cfg, lib, state, auth, meta, Throttle())
@@ -2356,7 +2478,9 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
     if cfg.debug:
         log.warning("debug logging is ON (debug = true in the config): every request is described in the log; no passwords, keys or cookie values")
     app = Starlette(routes=routes, middleware=[Middleware(AccessLog, debug=debug), Middleware(SecurityHeaders),
+                                              Middleware(Reload, reloader=reloader),
                                               Middleware(keypath.KeyPath, auth=auth, base=cfg.base_path)])
+    app.state.login_gate = login_gate
     app.state.library = lib
     app.state.state = state
     app.state.sessions = sessions
