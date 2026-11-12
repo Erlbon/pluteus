@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 import os
 import re
 import sqlite3
@@ -18,7 +19,9 @@ from concurrent.futures import ThreadPoolExecutor
 from urllib.parse import unquote
 
 from . import mediainfo
+from .aboutfiles import safe_xml
 from .dbutil import open_database
+from .ziputil import open_zip
 
 log = logging.getLogger("pluteus.meta")
 _SCHEMA = "CREATE TABLE IF NOT EXISTS meta (path TEXT PRIMARY KEY, size INTEGER, mtime REAL, data TEXT);"
@@ -28,6 +31,11 @@ NS = {"c": "urn:oasis:names:tc:opendocument:xmlns:container",
       "dc": "http://purl.org/dc/elements/1.1/"}
 OPF_ROLE = "{http://www.idpf.org/2007/opf}role"
 MAX_XML_BYTES = 2 * 1024 * 1024        # refuse absurdly large container/OPF files (zip bombs)
+MAX_FIELD = 300                        # characters kept of a title, an author's name, a series name or a language
+MAX_AUTHORS = 20
+MAX_NUMBER = 20                        # characters kept of a series number
+# The errors a damaged book usually gives. The readers below catch every Exception (a file can fail in ways nobody listed:
+# zlib.error, TypeError, EOFError ...); the name is kept for code that imports it.
 _READ_ERRORS = (OSError, zipfile.BadZipFile, KeyError, ValueError, ET.ParseError, RuntimeError,
                 NotImplementedError, AttributeError, OverflowError)
 
@@ -36,7 +44,17 @@ def _read_member(zf: zipfile.ZipFile, names: dict, name: str) -> bytes:
     real = names[name.lower()]
     if zf.getinfo(real).file_size > MAX_XML_BYTES:
         raise ValueError("member too large")
-    return zf.read(real)
+    with zf.open(real) as f:                       # bounded while it is read, whatever the header claims
+        data = f.read(MAX_XML_BYTES + 1)
+    if len(data) > MAX_XML_BYTES:
+        raise ValueError("member too large")
+    return data
+
+
+def read_xml_member(zf: zipfile.ZipFile, names: dict, name: str):
+    """The root element of an XML member (the container, the package file). Raises for one that is too large, declares a document type
+    or entities (aboutfiles.safe_xml) or does not parse."""
+    return safe_xml(_read_member(zf, names, name), MAX_XML_BYTES)
 
 
 def _text(el) -> str:
@@ -44,11 +62,15 @@ def _text(el) -> str:
 
 
 def _number(text: str) -> str:
+    """A series number as people write it: "3.0" is "3", "2.5" stays, text that is no number is kept as it is (capped), and "nan",
+    "inf" or "1e999" are no number at all ('')."""
     try:
         value = float(text)
-    except ValueError:
-        return text.strip()
-    return str(int(value)) if value == int(value) else str(value)
+    except (ValueError, OverflowError):
+        return text.strip()[:MAX_NUMBER]
+    if not math.isfinite(value):
+        return ""
+    return (str(int(value)) if value == int(value) else str(value))[:MAX_NUMBER]
 
 
 def parse_opf(opf: ET.Element) -> dict:
@@ -58,18 +80,20 @@ def parse_opf(opf: ET.Element) -> dict:
     out: dict = {}
     title = next((t for t in (_text(e) for e in md.findall("dc:title", NS)) if t), "")
     if title:
-        out["title"] = title
+        out["title"] = title[:MAX_FIELD]
     authors = []
     for e in md.findall("dc:creator", NS):
         role = e.get(OPF_ROLE)
-        name = _text(e)
+        name = _text(e)[:MAX_FIELD]
         if name and role in (None, "", "aut") and name not in authors:
             authors.append(name)
+            if len(authors) >= MAX_AUTHORS:
+                break
     if authors:
         out["authors"] = authors
     lang = next((t for t in (_text(e) for e in md.findall("dc:language", NS)) if t), "")
     if lang:
-        out["language"] = lang
+        out["language"] = lang[:MAX_FIELD]
     date = next((t for t in (_text(e) for e in md.findall("dc:date", NS)) if t), "")
     m = re.match(r"\d{4}", date)
     if m:
@@ -77,10 +101,11 @@ def parse_opf(opf: ET.Element) -> dict:
     # Series: Calibre's meta tags first, then EPUB 3 collections.
     metas = md.findall("opf:meta", NS)
     by_name = {e.get("name"): e.get("content") for e in metas if e.get("name")}
-    if by_name.get("calibre:series"):
-        out["series"] = by_name["calibre:series"].strip()
-        if by_name.get("calibre:series_index"):
-            out["series_index"] = _number(by_name["calibre:series_index"])
+    if (by_name.get("calibre:series") or "").strip():
+        out["series"] = by_name["calibre:series"].strip()[:MAX_FIELD]
+        number = _number(by_name.get("calibre:series_index") or "")
+        if number:
+            out["series_index"] = number
     else:
         refines: dict = {}
         for e in metas:
@@ -91,23 +116,25 @@ def parse_opf(opf: ET.Element) -> dict:
             if e.get("property") == "belongs-to-collection" and _text(e):
                 info = refines.get(e.get("id") or "", {})
                 if info.get("collection-type", "series") == "series":
-                    out["series"] = _text(e)
-                    if info.get("group-position"):
-                        out["series_index"] = _number(info["group-position"])
+                    out["series"] = _text(e)[:MAX_FIELD]
+                    number = _number(info.get("group-position") or "")
+                    if number:
+                        out["series_index"] = number
                     break
     return out
 
 
 def read_epub_metadata(path: str) -> dict | None:
-    """Metadata dict (possibly empty), or None when the file is not a readable EPUB."""
+    """Metadata dict (possibly empty), or None when the file is not a readable EPUB. Never raises: a damaged or hostile book is
+    simply a book without metadata."""
     try:
-        with zipfile.ZipFile(path) as zf:
+        with open_zip(path) as zf:
             names = {n.lower(): n for n in zf.namelist()}
-            container = ET.fromstring(_read_member(zf, names, "META-INF/container.xml"))
+            container = read_xml_member(zf, names, "META-INF/container.xml")
             rootfile = container.find(".//c:rootfile", NS)
             opf_path = unquote(rootfile.get("full-path"))
-            return parse_opf(ET.fromstring(_read_member(zf, names, opf_path)))
-    except _READ_ERRORS:
+            return parse_opf(read_xml_member(zf, names, opf_path))
+    except Exception:                                   # noqa: BLE001  one bad book must never fail the folder it is in
         return None
 
 
@@ -157,7 +184,10 @@ class MetaService:
         hit = self.cache.get(entry.path, entry.size, entry.mtime)
         if hit is not None:
             return hit
-        data = read_epub_metadata(entry.path) or {}
+        try:
+            data = read_epub_metadata(entry.path) or {}
+        except Exception:                               # noqa: BLE001  whatever went wrong, the book has no metadata; remembered as that
+            data = {}
         self.cache.put(entry.path, entry.size, entry.mtime, data)
         return data
 

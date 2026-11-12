@@ -84,6 +84,16 @@ def sort_entries(entries: list, sort: str = "name", desc: bool = False) -> list:
     return dirs + files
 
 
+def _is_link(entry) -> bool:
+    """A symbolic link or, on Windows, a junction (an os.scandir entry: the answer costs no system call). Junctions are only
+    recognised from Python 3.12 on; before that one is listed like a folder and refused when it is opened."""
+    for question in ("is_symlink", "is_junction"):
+        ask = getattr(entry, question, None)
+        if ask is not None and ask():
+            return True
+    return False
+
+
 def check_segment(seg: str) -> None:
     if seg in ("", ".", "..") or "\x00" in seg or "/" in seg:
         raise PathError("bad path segment")
@@ -165,20 +175,38 @@ class Library:
                     names.add(name.strip().casefold())
         return frozenset(names)
 
+    @staticmethod
+    def _probe(path: str):
+        """Is the marker file there? True, False, or None when the question could not be answered (the share dropped out, a
+        time-out, no permission). Only "there is no such file" counts as absent."""
+        try:
+            os.stat(path)
+        except (FileNotFoundError, NotADirectoryError):
+            return False
+        except OSError:
+            return None
+        return True
+
     def _marks(self, dirpath: str) -> Marks:
         """Which marker files sit in this folder (cached for a minute): three existence checks, and a read only
-        for the markers that exist."""
+        for the markers that exist. A check that fails is read as "the marker is there, naming nobody": closed to everyone
+        who needs it to be absent, never open by mistake. That answer is not cached, so the folder is back with the storage."""
         now = time.monotonic()
         hit = self._markers.get(dirpath)
         if hit and hit[1] > now:
             return hit[0]
         cfg = self.cfg
+        paths = [os.path.join(dirpath, m) for m in (cfg.adult_marker, cfg.private_marker, cfg.hidden_marker)]
+        there = [self._probe(p) for p in paths]
 
-        def names(marker: str):
-            path = os.path.join(dirpath, marker)
-            return self._names_in(path) if os.path.exists(path) else None
+        def names(i: int):
+            if there[i] is False:
+                return None
+            return self._names_in(paths[i]) if there[i] else frozenset()
 
-        marks = Marks(os.path.exists(os.path.join(dirpath, cfg.adult_marker)), names(cfg.private_marker), names(cfg.hidden_marker))
+        marks = Marks(there[0] is not False, names(1), names(2))
+        if None in there:
+            return marks
         if len(self._markers) > 20000:
             self._markers.clear()
         self._markers[dirpath] = (marks, now + 60)
@@ -216,7 +244,15 @@ class Library:
             os.makedirs(longpath(path), exist_ok=True)
         except OSError as err:
             raise Unavailable(err.errno or errno.EIO, "the upload folder cannot be created: %s" % err)
+        from . import uploads                               # here, not at the top: uploads imports this module
+        uploads.sweep_once(path)                            # the first use in this process clears out what a killed server left behind
         return path
+
+    def _asked_top(self, user: User, root_name: str) -> str:
+        """The root's folder as _dir_path starts from it (not resolved; _top is the resolved one)."""
+        if root_name == UPLOADS_ROOT:
+            return longpath(os.path.join(self.cfg.uploads_dir, user.name))
+        return longpath(self.cfg.roots[root_name].path)
 
     def _root(self, user: User, root_name: str):
         if root_name == UPLOADS_ROOT:
@@ -256,9 +292,10 @@ class Library:
         return path
 
     def _inside(self, user: User, root_name: str, path: str) -> None:
-        """Refuse anything whose real location (symlinks, junctions) leaves the root."""
-        real = os.path.normcase(os.path.realpath(path))
-        top = os.path.normcase(self._top(user, root_name))
+        """Refuse anything whose real location (symlinks, junctions) leaves the root, or lies in a folder this user may not open."""
+        real_path = os.path.realpath(path)
+        top_path = self._top(user, root_name)
+        real, top = os.path.normcase(real_path), os.path.normcase(top_path)
         if real != top and not real.startswith(top.rstrip(os.sep) + os.sep):
             raise NotFound("outside the root")
         # The request named the path; the filesystem may have resolved it differently (8.3 short names such as
@@ -266,6 +303,19 @@ class Library:
         for seg in real[len(top):].split(os.sep):
             if seg and self._excluded(seg):
                 raise NotFound("excluded")
+        # So must the markers. _dir_path checked the folders the request named; when the real path below the root is another
+        # one (a link to a folder under an .adult or .private marker), every real folder from the root down is checked too.
+        asked, base = os.path.normcase(path), os.path.normcase(self._asked_top(user, root_name)).rstrip(os.sep)
+        if asked.startswith(base) and asked[len(base):].strip(os.sep) == real[len(top):].strip(os.sep):
+            return
+        segs = [s for s in real_path[len(top_path):].split(os.sep) if s]
+        if segs and not os.path.isdir(real_path):
+            segs.pop()                                          # a file: its folders carry the markers
+        folder = top_path
+        for seg in [""] + segs:
+            folder = os.path.join(folder, seg) if seg else folder
+            if self._closed_to(user, self._marks(folder)):
+                raise NotFound("closed")
 
     def canonical_parts(self, user: User, root_name: str, info, requested: tuple) -> tuple:
         """The path below the root with the exact spelling on disk. Windows ignores letter case, so a request for
@@ -312,7 +362,9 @@ class Library:
                                 or not e.is_file():
                             continue
                         st = e.stat() if stat else None
-                    except OSError:
+                        if _is_link(e):
+                            self._inside(user, root_name, e.path)   # a link is listed only when what it leads to may be opened
+                    except (OSError, NotFound):
                         continue
                     entry = Entry(name, self.display_name(name) if is_dir else name, is_dir,
                                   0 if (is_dir or st is None) else st.st_size,

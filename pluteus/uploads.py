@@ -12,6 +12,7 @@ import os
 import re
 import secrets
 import shutil
+import threading
 import time
 import unicodedata
 
@@ -71,6 +72,48 @@ def tree_size(path: str) -> int:
         except OSError:
             continue
     return total
+
+
+_PART = re.compile(r"^\.up-[0-9a-f]{16}\.part$")       # the temp file of one upload part (Intake._headers_finished)
+PART_MAX_AGE = 24 * 3600
+_swept: set = set()
+_swept_lock = threading.Lock()
+
+
+def sweep_stale_parts(path: str, now: float | None = None) -> int:
+    """Delete the upload temp files (.up-*.part) older than a day in a user's upload folder tree, and say how many went. A server that
+    was killed in the middle of an upload leaves them behind: hidden, so the user can neither see nor delete them, yet counted against
+    the quota. One that is younger may be an upload still arriving and is left alone. Never raises."""
+    now = time.time() if now is None else now
+    gone, stack = 0, [longpath(path)]
+    while stack:
+        try:
+            with os.scandir(stack.pop()) as it:
+                for e in it:
+                    try:
+                        if e.is_dir(follow_symlinks=False):
+                            stack.append(e.path)
+                        elif _PART.match(e.name) and e.is_file(follow_symlinks=False) \
+                                and now - e.stat(follow_symlinks=False).st_mtime > PART_MAX_AGE:
+                            os.remove(e.path)
+                            gone += 1
+                    except OSError:
+                        continue
+        except OSError:
+            continue
+    return gone
+
+
+def sweep_once(path: str) -> None:
+    """sweep_stale_parts, the first time this upload folder is used in this process (fs.Library.upload_base calls it on every use)."""
+    key = os.path.normcase(path)
+    if key in _swept:
+        return
+    with _swept_lock:
+        if key in _swept:
+            return
+        _swept.add(key)
+    sweep_stale_parts(path)
 
 
 def _claim(dirpath: str, name: str) -> str:
