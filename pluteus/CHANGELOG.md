@@ -2,7 +2,7 @@
 
 Release notes are taken from the section of the tagged version (`## 0.5.0 ...`).
 
-## Unreleased
+## 0.9.28 - 2026-11-12
 - **A tap log for the ebook reader (for finding a double page turn on a real phone).** Settings has a new switch, **Tap log (for a bug report)**, off by default. While it is off nothing is recorded or stored and no button shows. While it is on, the reader records, with times, every tap, key and swipe as the page receives it, what each tap was decided to be (a page forward, a page back, ignored and why), every page turn with the scroll numbers behind it (and a turn dropped because another was running), where the reader was, and the screen's pixel ratio and size. A **Log** button opens a panel with **Mark** (press it when something goes wrong), **Copy** and **Clear**. It is kept in this browser only (the last 600 lines, for this tab, surviving a reload), is never sent anywhere, and holds no book text. Tested with a phone over adb wireless debugging: taps, double taps and the last page of a chapter all behaved.
 - **Code review of 0.9.27: 73 fixes** (`docs/code-review-2026-11-12.md` has every finding with its number). The ones a user or owner can notice:
   - **The login lock holds.** Password checks for one name now go one at a time, so a burst of guesses sent at the same moment is stopped at five like any other; before, all of them were checked. A music app or reader app logged in with an app key no longer lifts the lock on its user, and the key itself keeps working while the name is locked (also after a restart). A changed password or a removed user stops working everywhere at once: the login form, Subsonic, KOReader sync and the admin page.
