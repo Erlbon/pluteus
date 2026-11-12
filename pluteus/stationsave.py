@@ -5,16 +5,21 @@ file names, addresses must be plain http(s), the text of each file is built here
 written only inside the user's upload folder, within their space limit."""
 from __future__ import annotations
 
+import codecs
 import os
+import queue
 import re
-from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeout, as_completed
+import secrets
+import threading
+import time
 
-from . import fetchimage, uploads
+from . import fetchimage, streams, uploads
 from .fs import longpath
 
 KINDS = {"radio": "Radio", "tv": "IPTV"}
 MAX_STATIONS = 300
 LOGO_BUDGET = 25.0                 # seconds for all the logos of one save together
+LOGO_WORKERS = 6                   # logos fetched at once
 LOGO_EXTENSIONS = (".png", ".jpg")
 _ADDRESS = re.compile(r"https?://[^\s\x00-\x1f\x7f]{1,2000}", re.IGNORECASE)
 _CONTROL = re.compile(r"[\x00-\x1f\x7f]")
@@ -52,23 +57,54 @@ def _fetch_logos(entries: list) -> dict:
     found = {}
     if not wanted:
         return found
-    pool = ThreadPoolExecutor(max_workers=6)
-    jobs = {pool.submit(fetchimage.fetch_logo, u): i for i, u in wanted.items()}
-    try:
-        for job in as_completed(jobs, timeout=LOGO_BUDGET):
+    # Plain daemon threads, not a pool: a pool's threads are waited for when the server stops, so one stuck logo host would hold up the
+    # shutdown. Each thread takes the next logo only while the budget lasts, so none outlives the budget by more than the one fetch it
+    # is in (fetchimage limits that), and a result that comes after the budget is simply dropped.
+    deadline = time.monotonic() + LOGO_BUDGET
+    todo: queue.SimpleQueue = queue.SimpleQueue()
+    done: queue.SimpleQueue = queue.SimpleQueue()
+    for item in wanted.items():
+        todo.put(item)
+
+    def work() -> None:
+        while time.monotonic() < deadline:
             try:
-                result = job.result()
-            except Exception:                                  # noqa: BLE001
+                index, address = todo.get_nowait()
+            except queue.Empty:
+                return
+            try:
+                result = fetchimage.fetch_logo(address)
+            except Exception:                                  # noqa: BLE001  even an unexpected failure only costs the logo
                 result = None
-            if result:
-                found[jobs[job]] = result
-    except FuturesTimeout:
-        pass
-    pool.shutdown(wait=False, cancel_futures=True)
+            done.put((index, result))
+
+    for _ in range(min(LOGO_WORKERS, len(wanted))):
+        threading.Thread(target=work, name="pluteus-logo", daemon=True).start()
+    for _ in range(len(wanted)):
+        try:
+            index, result = done.get(timeout=max(0.0, deadline - time.monotonic()))
+        except queue.Empty:
+            break
+        if result:
+            found[index] = result
     return found
 
 
-_write = uploads.write_atomic
+def _write(folder: str, file_name: str, raw: bytes) -> None:
+    """Write `raw` as folder/file_name through a hidden temporary file, so a reader never sees half of it. The temporary name is random:
+    two saves of the same station file at once (two tabs, a double click) each write their own and the later one wins, where a shared
+    name had them write into, rename or delete each other's. Raises UploadError('write')."""
+    temp = os.path.join(folder, ".%s.tmp" % secrets.token_hex(8))
+    try:
+        with open(longpath(temp), "xb") as f:
+            f.write(raw)
+        uploads._replace(longpath(temp), longpath(os.path.join(folder, file_name)))
+    except OSError:
+        try:
+            os.remove(longpath(temp))
+        except OSError:
+            pass
+        raise uploads.UploadError("write")
 
 
 def _folder(lib, user, parts: tuple, raw: str) -> tuple:
@@ -151,6 +187,7 @@ def save(lib, quota_mb: int, user, data) -> dict:
                 logos += 1
                 if quota_left is not None:
                     quota_left -= len(data_bytes)
+    streams.forget_counts()                              # the home page's "212 stations" is kept for a minute: not across a save
     return {"saved": saved, "skipped": skipped, "logos": logos, "folder": "/".join(base)}
 
 
@@ -275,11 +312,15 @@ def apply_logos(lib, quota_mb: int, user, kind: str, items: list) -> dict:
             with open(longpath(path), "rb") as f:
                 original = f.read(262144 + 1)
             if len(original) <= 262144:
-                text = original.decode("utf-8", "replace")
+                # Read as the station reader reads it (UTF-8, else cp1252) and written back in the encoding it had, so every letter
+                # stays the byte it was. A file that is neither is left alone: decoding it with replacement marks and saving that
+                # would destroy its letters for good.
+                text, encoding = radio.decode_text(original, strict=True)
                 updated = _with_logo_attribute(text, _logo_address(item.get("logo")), stem)
                 if updated != text:
-                    _write(folder, names[-1], updated.encode("utf-8"))
-        except OSError:
+                    mark = codecs.BOM_UTF8 if encoding == "utf-8-sig" else b""
+                    _write(folder, names[-1], mark + updated.encode("cp1252" if encoding == "cp1252" else "utf-8"))
+        except (OSError, UnicodeError):                    # not text we can read, or the logo's address has a letter cp1252 lacks
             pass
         fetched += 1
     return {"fetched": fetched, "failed": failed, "skipped": skipped}

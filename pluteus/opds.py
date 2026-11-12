@@ -4,6 +4,8 @@ from __future__ import annotations
 import time
 import xml.etree.ElementTree as ET
 
+from .safetext import clean
+
 ATOM = "http://www.w3.org/2005/Atom"
 OPDS = "http://opds-spec.org/2010/catalog"
 DC = "http://purl.org/dc/terms/"
@@ -28,9 +30,23 @@ def _iso(ts: float) -> str:
     return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(ts))
 
 
+def linkable(entries: list) -> list:
+    """The entries whose name can be written into an address. A file name that is not valid Unicode (a Latin-1 name on a Linux disk,
+    which Python hands over with lone surrogates) cannot: percent-encoding it raises, and no address made from it would lead back to
+    the file, since a request path is read as UTF-8. Such an entry is left out of a feed or a WebDAV listing instead of failing all of
+    it. (A control character in a name is no problem for an address: it is percent-encoded; safetext.clean handles the display text.)"""
+    def writable(name: str) -> bool:
+        try:
+            name.encode("utf-8")
+        except UnicodeEncodeError:
+            return False
+        return True
+    return [e for e in entries if writable(e.name)]
+
+
 def _text(parent, tag: str, text: str):
     el = ET.SubElement(parent, _q(tag))
-    el.text = text
+    el.text = clean(text)                                # a name or a tag from disk: XML refuses control characters and lone surrogates
     return el
 
 
@@ -66,12 +82,12 @@ def book_entry(title: str, entry_id: str, href: str, mime: str, updated: float, 
     for name in meta.get("authors", ()):
         _text(ET.SubElement(e, _q("author")), "name", name)
     if meta.get("language"):
-        ET.SubElement(e, "{%s}language" % DC).text = meta["language"]
+        ET.SubElement(e, "{%s}language" % DC).text = clean(meta["language"])
     if meta.get("year"):
-        ET.SubElement(e, "{%s}issued" % DC).text = meta["year"]
+        ET.SubElement(e, "{%s}issued" % DC).text = clean(meta["year"])
     if meta.get("series"):
         label = meta["series"] + (" #" + meta["series_index"] if meta.get("series_index") else "")
-        ET.SubElement(e, _q("content"), {"type": "text"}).text = label
+        ET.SubElement(e, _q("content"), {"type": "text"}).text = clean(label)
     ET.SubElement(e, "{%s}format" % DC).text = mime
     ET.SubElement(e, _q("link"), {"rel": ACQUISITION_REL, "href": href, "type": mime,
                                   "length": str(size)})

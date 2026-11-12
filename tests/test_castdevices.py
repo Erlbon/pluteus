@@ -42,6 +42,7 @@ class FakeMedia:
 
 class FakeCast:
     def __init__(self):
+        self.cast_info = type("I", (), {"host": "192.168.1.50", "port": 8009})()         # where it was found: the backend takes it by address
         self.media_controller = FakeMedia()
         self.status = type("S", (), {"volume_level": 0.4})()
         self.volumes, self.waited = [], None

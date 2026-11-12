@@ -85,18 +85,19 @@ def _name(text: str) -> str:
     return _CONTROL.sub("", text).strip()[:120]
 
 
+def decode_text(raw: bytes, strict: bool = False) -> tuple:
+    """(text, encoding) of a station file's bytes: UTF-8 (a byte-order mark is dropped: 'utf-8-sig'), else cp1252, which is what an
+    old Windows program saved. For reading, a byte cp1252 does not have becomes a replacement mark; `strict` raises UnicodeDecodeError
+    instead, for a caller that writes the text back (stationsave.apply_logos) and must not save such marks into the file."""
+    try:
+        return raw.decode("utf-8-sig"), ("utf-8-sig" if raw.startswith(b"\xef\xbb\xbf") else "utf-8")
+    except UnicodeDecodeError:
+        return raw.decode("cp1252", "strict" if strict else "replace"), "cp1252"
+
+
 def read_file(path: str) -> list:
     """[(name, url)] of a station file on disk (a small text file: only its first 64 KB is read); [] when unreadable or no station."""
-    try:
-        with open(path, "rb") as f:
-            raw = f.read(64 * 1024)
-    except OSError:
-        return []
-    try:
-        text = raw.decode("utf-8-sig")
-    except UnicodeDecodeError:
-        text = raw.decode("cp1252", "replace")
-    return parse(text)
+    return [(n, u) for n, u, _ in read_file_streams(path)]
 
 
 def read_file_streams(path: str) -> list:
@@ -106,11 +107,7 @@ def read_file_streams(path: str) -> list:
             raw = f.read(64 * 1024)
     except OSError:
         return []
-    try:
-        text = raw.decode("utf-8-sig")
-    except UnicodeDecodeError:
-        text = raw.decode("cp1252", "replace")
-    return _parse(text)
+    return _parse(decode_text(raw)[0])
 
 
 def _parse(text: str) -> list:
