@@ -305,7 +305,8 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
     limiter = FailureLimiter()
     login_gate = LoginGate()
     themes = Themes(cfg.themes_dir)
-    reloader = UsersReloader(config_path, auth, reload_interval, on_config=lambda c: lib.set_roots(c.roots, c.subsonic_uploads)) if config_path else None
+    reloader = UsersReloader(config_path, auth, reload_interval, on_config=lambda c: lib.set_roots(c.roots, c.subsonic_uploads),
+                              on_removed=state.purge_user) if config_path else None
     urls = Urls(cfg.base_path)
     thumb_cache = thumbs.ThumbCache(cfg.cache_dir or cfg.data_dir)
     thumb_gate = threading.BoundedSemaphore(3)       # inside the worker: never more than three pictures decoded at once, whoever asks
@@ -468,8 +469,8 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
             return auth.users.get(cfg.anonymous_user), 0
         return None, 0
 
-    def theme_for(username: str) -> str:
-        choice = state.get_prefs(username).get("theme") if username else None
+    def theme_for(username: str, prefs=None) -> str:
+        choice = (state.get_prefs(username) if prefs is None else prefs).get("theme") if username else None
         for name in (choice, cfg.theme):
             if name and themes.exists(name):
                 return name
@@ -494,21 +495,17 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
             return ""
         return "http://%s:%d/" % (host, cfg.admin_port)
 
-    def icons_for(username: str) -> str:
-        choice = state.get_prefs(username).get("icons") if username else None
-        return choice if choice in ("gold", "aurora", "color") else "gold"
-
-    def view_for(username: str) -> str:
-        return "grid" if state.get_prefs(username).get("view") == "grid" else "list"
-
     def ctx_for(user, view: str = "") -> web.Ctx:
-        return web.Ctx(urls, user.name, theme_for(user.name), readers=True, admin_link=current_admin_link.get(),
-                       icons=icons_for(user.name), view=(view or view_for(user.name)) if cfg.thumbnails else "list",
+        prefs = state.get_prefs(user.name)              # read once for the whole page (it was seven look-ups)
+        icons = prefs.get("icons")
+        return web.Ctx(urls, user.name, theme_for(user.name, prefs), readers=True, admin_link=current_admin_link.get(),
+                       icons=icons if icons in ("gold", "aurora", "color") else "gold",
+                       view=(view or ("grid" if prefs.get("view") == "grid" else "list")) if cfg.thumbnails else "list",
                        thumbs=cfg.thumbnails,
-                       extras=state.get_prefs(user.name).get("player_extras", True) is not False,
-                       tv_sound=state.get_prefs(user.name).get("tv_sound", True) is not False,
-                       view_scope="folder" if state.get_prefs(user.name).get("view_scope") == "folder" else "all",
-                       queue_subfolders=state.get_prefs(user.name).get("queue_subfolders", True) is not False)
+                       extras=prefs.get("player_extras", True) is not False,
+                       tv_sound=prefs.get("tv_sound", True) is not False,
+                       view_scope="folder" if prefs.get("view_scope") == "folder" else "all",
+                       queue_subfolders=prefs.get("queue_subfolders", True) is not False)
 
     def unauthorized(request: Request, mode: str, wait: int) -> Response:
         if wait:
@@ -994,6 +991,8 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
         # Size and date of every file are only read when the sort needs them; otherwise only for the page that is shown
         # (one system call per file: about 0.7 ms each across a Docker bind mount, so 900 files would cost 0.6 s).
         entries = await run_in_threadpool(lib.list_dir, user, root, parts, cfg.show_all_files, sort in ("size", "date"))
+        entries = opds.linkable(entries)                         # a name that cannot be written into an address is left out, not a failed page
+        listed = entries if cfg.show_all_files else None         # the whole folder as it was just read (a filtered list would hide the .m3u files)
         entries = radio.hide_logos(entries)                      # a station's picture is its cover, not a second item in the list
         if request.query_params.get("plain") != "1":
             def stream_folder():
@@ -1001,7 +1000,7 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
                     path = lib.folder_path(user, root, parts)
                 except (NotFound, PathError, OSError):
                     return None
-                return streams.collect(path) if streams.is_stream_folder(path) else None
+                return streams.collect(path) if streams.is_stream_folder(path, listed) else None      # no second look at the folder
             found = await run_in_threadpool(stream_folder)
             if found and found[0]:
                 others = sum(1 for e in entries if not e.is_dir and not radio.is_radio_file(e.name))      # files the grid does not show
@@ -1034,17 +1033,19 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
             # the List / Covers switch on a folder page is remembered (the shared anonymous user keeps none): for every folder, or for
             # this folder only, as the user chose in Settings; a folder with no choice of its own follows the general one
             def remember_and_find() -> str:
-                prefs = dict(state.get_prefs(user.name))
+                prefs = state.get_prefs(user.name)
                 per_folder = prefs.get("view_scope") == "folder"
                 key = "/".join((root,) + parts)
-                folders = dict(prefs.get("view_folders") or {})
-                if asked and per_folder and folders.get(key) != asked:
-                    folders[key] = asked
-                    prefs["view_folders"] = dict(list(folders.items())[-500:])                    # a long list is trimmed from the oldest end
-                    state.set_prefs(user.name, prefs)
-                elif asked and not per_folder and prefs.get("view") != asked:
-                    prefs["view"] = asked
-                    state.set_prefs(user.name, prefs)
+                folders = prefs.get("view_folders") or {}
+                if asked and (folders.get(key) != asked if per_folder else prefs.get("view") != asked):
+                    def remember(stored: dict) -> None:           # read, change and write in one step: a second tab's change is not lost
+                        if stored.get("view_scope") == "folder":
+                            kept = dict(stored.get("view_folders") or {})
+                            kept[key] = asked
+                            stored["view_folders"] = dict(list(kept.items())[-500:])              # a long list is trimmed from the oldest end
+                        else:
+                            stored["view"] = asked
+                    state.update_prefs(user.name, remember)
                 return asked or (folders.get(key, "") if per_folder else "")
             shown_view = await run_in_threadpool(remember_and_find)
         folder_covers = await run_in_threadpool(lib.folders_with_cover, shown) if cfg.thumbnails else frozenset()
@@ -1065,24 +1066,26 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
                 return PlainTextResponse("Request too large", 413)
             form = _form(raw_form)
             choice, icons = form.get("theme", ""), form.get("icons", "")
-            prefs = dict(state.get_prefs(user.name))
-            if themes.exists(choice):
-                prefs["theme"] = choice
-            if icons in ("gold", "aurora", "color"):
-                prefs["icons"] = icons
-            if form.get("view") in ("list", "grid"):
-                prefs["view"] = form["view"]
-            if form.get("view_scope") in ("all", "folder"):
-                prefs["view_scope"] = form["view_scope"]
-            if form.get("reset_views") == "1":                      # every folder follows the general choice again
-                prefs.pop("view_folders", None)
-            if form.get("extras") in ("show", "hide"):
-                prefs["player_extras"] = form["extras"] == "show"
-            if form.get("tv_sound") in ("keep", "stop"):
-                prefs["tv_sound"] = form["tv_sound"] == "keep"
-            if form.get("queue_subfolders") in ("yes", "no"):
-                prefs["queue_subfolders"] = form["queue_subfolders"] == "yes"
-            state.set_prefs(user.name, prefs)
+            theme_ok = themes.exists(choice)
+
+            def change(prefs: dict) -> None:                        # applied to what is stored NOW, in one step (state.update_prefs)
+                if theme_ok:
+                    prefs["theme"] = choice
+                if icons in ("gold", "aurora", "color"):
+                    prefs["icons"] = icons
+                if form.get("view") in ("list", "grid"):
+                    prefs["view"] = form["view"]
+                if form.get("view_scope") in ("all", "folder"):
+                    prefs["view_scope"] = form["view_scope"]
+                if form.get("reset_views") == "1":                  # every folder follows the general choice again
+                    prefs.pop("view_folders", None)
+                if form.get("extras") in ("show", "hide"):
+                    prefs["player_extras"] = form["extras"] == "show"
+                if form.get("tv_sound") in ("keep", "stop"):
+                    prefs["tv_sound"] = form["tv_sound"] == "keep"
+                if form.get("queue_subfolders") in ("yes", "no"):
+                    prefs["queue_subfolders"] = form["queue_subfolders"] == "yes"
+            await run_in_threadpool(state.update_prefs, user.name, change)
             return RedirectResponse(urls.settings() + "?saved=1", 303)
         return HTMLResponse(web.settings_page(ctx_for(user), themes.names(), "saved" in request.query_params,
                                               stations=lib.uploads_enabled(user),
@@ -1476,7 +1479,7 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
         if key_id != vlt.key_id:
             return None, 'The stored stream "%s" was stored with another key and cannot be opened. Add it again under Settings, My streams.' % name
         try:
-            return vlt.open(blob), ""
+            return vault.open_stored(vlt, state, user_name, name), ""        # bound to this user and name (an older entry is re-sealed so)
         except vault.VaultError:
             return None, 'The stored stream "%s" cannot be opened. Add it again under Settings, My streams.' % name
 
@@ -1537,7 +1540,7 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
                     have = [n for n, _, _ in await run_in_threadpool(state.stream_list, user.name)]
                     if len(have) >= 30 and name not in have:
                         raise ValueError("At most 30 stored streams.")
-                    await run_in_threadpool(state.stream_put, user.name, name, vlt.seal(entry), vlt.key_id)
+                    await run_in_threadpool(state.stream_put, user.name, name, vlt.seal(entry, user.name, name), vlt.key_id)
                     message = 'Saved "%s".' % name
             except ValueError as e:
                 error = str(e)
@@ -1548,7 +1551,7 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
                 status = "other-key"
             else:
                 try:
-                    shown = vault.describe(vlt.open(blob))
+                    shown = vault.describe(vlt.open(blob, user.name, name))
                 except vault.VaultError:
                     status = "damaged"
             entries.append({"name": name, "status": status, "shown": shown})
@@ -2095,11 +2098,13 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
                 return JSONResponse({"error": "expected {locator, percent}"}, 400)
             if not isinstance(locator, str) or not locator or len(locator) > 2048 or percent != percent:
                 return JSONResponse({"error": "invalid locator or percent"}, 400)
-            state.put_progress(user.name, root, path, locator, percent)
-            if percent >= 0.98:                                   # finished: it leaves the "Read next" list by itself
-                state.shelf_remove(user.name, "next", root, path)
+            def store() -> None:                                  # on a worker thread: a write waits for the disk, the event loop must not
+                state.put_progress(user.name, root, path, locator, percent)
+                if percent >= 0.98:                               # finished: it leaves the "Read next" list by itself
+                    state.shelf_remove(user.name, "next", root, path)
+            await run_in_threadpool(store)
             return JSONResponse({"ok": True})
-        return JSONResponse(state.get_progress(user.name, root, path) or {})
+        return JSONResponse(await run_in_threadpool(state.get_progress, user.name, root, path) or {})
 
     # ---- OPDS and downloads (reader apps) ---------------------------------------------
     SHELF_TITLES = {"favourite": "Favourites", "next": "Read next"}
@@ -2190,6 +2195,7 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
         root = request.path_params["root"]
         parts = _parts(request.path_params.get("path", ""))
         listing = await run_in_threadpool(lib.list_dir, user, root, parts, False, False)    # names only: see with_stats
+        listing = opds.linkable(listing)                # one name that is not valid Unicode must not fail the whole feed
         shown, page, pages = opds.paginate(listing, _page_number(request), cfg.page_size)
         shown = await run_in_threadpool(lib.with_stats, shown)                              # size and date of this page only
         here = urls.opds(root, parts)
@@ -2481,6 +2487,7 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
                                               Middleware(Reload, reloader=reloader),
                                               Middleware(keypath.KeyPath, auth=auth, base=cfg.base_path)])
     app.state.login_gate = login_gate
+    app.state.reloader = reloader
     app.state.library = lib
     app.state.state = state
     app.state.sessions = sessions

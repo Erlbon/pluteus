@@ -18,6 +18,7 @@ The key opens nothing but this read-only API. Failed logins count against the sa
 """
 from __future__ import annotations
 
+import asyncio
 import base64
 import hashlib
 import hmac
@@ -217,6 +218,7 @@ class Subsonic:
         self.relay_station = None             # set by the app when the relay is on: async (user, root, parts, number) -> Response
         self.thumb_cache = thumbs.ThumbCache()                 # the app hands over its own cache and gate, shared with /thumb
         self.thumb_gate = threading.BoundedSemaphore(3)
+        self.cover_turns = asyncio.Semaphore(4)         # getCoverArt calls in the worker pool at once (see handle)
         self.handlers = {
             "ping": self.ping, "getlicense": self.license, "getopensubsonicextensions": self.extensions,
             "getmusicfolders": self.music_folders, "getindexes": self.indexes, "getmusicdirectory": self.music_directory,
@@ -267,7 +269,11 @@ class Subsonic:
             if name == "stream" and self.relay_station is not None and (target := self._station_target(params.get("id", ""))):
                 return await self.relay_station(user, *target)
             if name in self.handlers:
-                result = await run_in_threadpool(self.handlers[name], user, params)
+                if name == "getcoverart":               # an album grid asks for fifty at once: they wait here, not each in a worker thread
+                    async with self.cover_turns:
+                        result = await run_in_threadpool(self.handlers[name], user, params)
+                else:
+                    result = await run_in_threadpool(self.handlers[name], user, params)
                 if isinstance(result, Response):
                     return result
                 return render(envelope(result), fmt)
@@ -311,15 +317,16 @@ class Subsonic:
         user = await run_in_threadpool(self._check_key_password, name, password)
         if user is not None:
             return user
-        wait = self.throttle.wait(request, name)
-        if wait:
-            raise ApiError(40, "Too many failed attempts. Try again in %d seconds." % wait)
-        user = await run_in_threadpool(self._check_real_password, name, password)
-        if user is None:
-            self.throttle.fail(request, name)
-            raise ApiError(40, "Wrong username or password.")
-        self.throttle.ok(request, user.name)
-        return user
+        async with self.throttle.turn(name):            # one password check at a time per name: the throttle is read after the checks before this one
+            wait = self.throttle.wait(request, name)
+            if wait:
+                raise ApiError(40, "Too many failed attempts. Try again in %d seconds." % wait)
+            user = await run_in_threadpool(self._check_real_password, name, password)
+            if user is None:
+                self.throttle.fail(request, name)
+                raise ApiError(40, "Wrong username or password.")
+            self.throttle.ok(request, user.name)
+            return user
 
     @staticmethod
     def _same(a: str, b: str) -> bool:

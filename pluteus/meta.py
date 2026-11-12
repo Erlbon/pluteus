@@ -152,7 +152,7 @@ class MetaCache:
         try:
             with self._lock:
                 row = self._db.execute("SELECT size, mtime, data FROM meta WHERE path=?", (path,)).fetchone()
-        except sqlite3.Error:
+        except (sqlite3.Error, ValueError):          # ValueError: a path that is not valid Unicode cannot be a key (it is read afresh each time)
             return None
         if row and row[0] == size and row[1] == mtime:
             try:
@@ -166,7 +166,7 @@ class MetaCache:
             with self._lock, self._db:
                 self._db.execute("INSERT OR REPLACE INTO meta VALUES (?,?,?,?)",
                                  (path, size, mtime, json.dumps(data, ensure_ascii=False)))
-        except sqlite3.Error:
+        except (sqlite3.Error, ValueError):          # ValueError: a path that is not valid Unicode cannot be a key (it is read afresh each time)
             pass
 
     def close(self) -> None:

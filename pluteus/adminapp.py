@@ -34,6 +34,7 @@ from .app import _PLAIN_HOST as PLAIN_HOST
 from .app import SecurityHeaders
 from .config import ConfigError
 from .fs import longpath
+from .logingate import LoginGate
 from .themes import DEFAULT
 from .updatecheck import UpdateChecker
 from .urls import Urls
@@ -53,7 +54,8 @@ def create_admin_app(main_app) -> Starlette:
     st = main_app.state
     cfg, state, auth, limiter, themes = st.cfg, st.state, st.auth, st.limiter, st.themes
     config_path = st.config_path
-    updates = UpdateChecker(cfg.update_repo) if cfg.update_check else None
+    login_gate = LoginGate()              # its own: this app runs on its own event loop (its own port and thread)
+    updates =UpdateChecker(cfg.update_repo) if cfg.update_check else None
     if updates:
         updates.status()                  # starts the first check in a background thread now, so the dot is ready when the page is first opened
     ctx = Ctx(Urls(""), "", cfg.theme if themes.exists(cfg.theme) else DEFAULT)
@@ -83,18 +85,25 @@ def create_admin_app(main_app) -> Starlette:
             return None, 0
         creds = auth.parse_basic(header)
         name = creds[0] if creds else ""
-        wait = limiter.wait_seconds(name, "")
-        if wait:
-            trusted = auth.trusted_user(header)
-            return (trusted, 0) if trusted else (None, wait)
-        user = await run_in_threadpool(auth.authenticate, header)
-        if user:
-            limiter.success(name)
-            return user, 0
-        seconds, number = limiter.failure(name, "")
-        if seconds:
-            log.warning("admin page: login for %r is locked for %d s (lock number %d)", name[:40], seconds, number)
-        return None, 0
+        async with login_gate.turn(name):               # one password check at a time per name (see logingate.py)
+            user = auth.cached_user(header)             # settled by the request this one waited for
+            if user:
+                return user, 0
+            if auth.known_bad(header):
+                return None, 0
+            wait = limiter.wait_seconds(name, "")
+            if wait:
+                trusted = auth.trusted_user(header)
+                return (trusted, 0) if trusted else (None, wait)
+            user = await run_in_threadpool(auth.authenticate, header)
+            if user:
+                if not user.read_only:                  # an app key proves nothing about the password: it clears no lock
+                    limiter.success(name)
+                return user, 0
+            seconds, number = limiter.failure(name, "")
+            if seconds:
+                log.warning("admin page: login for %r is locked for %d s (lock number %d)", name[:40], seconds, number)
+            return None, 0
 
     def site_link(request) -> str:
         """The normal pluteus site on the host name this page was opened with: its own port (site_port, else port) and
