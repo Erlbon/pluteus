@@ -512,7 +512,8 @@ def test_about_page_shows_version_credits_and_the_shipped_changelog(admin):
     assert "href='https://www.radio-browser.info/' target='_blank' rel='noopener'" in html
     assert "href='https://github.com/iptv-org/iptv' target='_blank' rel='noopener'" in html
     assert "href='https://github.com/Erlbon/pluteus'" in html
-    assert "<summary>Unreleased" in html and "<details class='pl-changelog'" in html          # the changelog is rendered, section by section
+    # the changelog is rendered, section by section: the newest is the unreleased one, or (right after a release) this version's own
+    assert ("<summary>Unreleased" in html or "<summary>%s" % __version__ in html) and "<details class='pl-changelog'" in html
     assert "<script" not in html.split("<h2>Changelog</h2>")[1]                               # raw HTML in the file is never run
     assert "href='/about'" in client.get("/", headers=BOSS).text                              # reachable from the Status page
     assert client.get("/about", follow_redirects=False).status_code in (303, 401, 403)        # like every admin page: not without a login

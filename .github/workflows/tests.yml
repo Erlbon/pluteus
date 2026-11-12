@@ -62,8 +62,8 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
-      - name: Install bsdtar
-        run: sudo apt-get update && sudo apt-get install -y libarchive-tools
+      - name: Install bsdtar, and ffmpeg (the video tests make their test videos with it)
+        run: sudo apt-get update && sudo apt-get install -y libarchive-tools ffmpeg
       - run: python -m pip install ".[dev,browser]"
       - name: Google Chrome (the tests start it by its channel name; the runner image has it, otherwise Playwright installs it)
         run: google-chrome --version || python -m playwright install --with-deps chrome

@@ -5,7 +5,6 @@ import dataclasses
 import logging
 import os
 
-import httpx
 from conftest import basic
 from test_login_web import HTML, login, make, post
 
@@ -16,13 +15,36 @@ from pluteus.ratelimit import FailureLimiter
 ORIGIN = {"origin": "http://testserver"}
 
 
+async def _call(app, method, url, headers=None, content=b""):
+    """One request straight into the ASGI app (no HTTP client library: which one a test environment has differs); its status code."""
+    path, _, query = url.partition("?")
+    body = content.encode() if isinstance(content, str) else content
+    head = [(b"host", b"testserver")] + [(k.lower().encode(), v.encode()) for k, v in (headers or {}).items()]
+    if body:
+        head.append((b"content-length", str(len(body)).encode()))
+    scope = {"type": "http", "asgi": {"version": "3.0"}, "http_version": "1.1", "method": method, "scheme": "http", "path": path,
+             "raw_path": path.encode(), "query_string": query.encode(), "root_path": "", "headers": head,
+             "client": ("testclient", 50000), "server": ("testserver", 80)}
+    sent, status = [False], []
+
+    async def receive():
+        if not sent[0]:
+            sent[0] = True
+            return {"type": "http.request", "body": body, "more_body": False}
+        return {"type": "http.disconnect"}
+
+    async def send(message):
+        if message["type"] == "http.response.start":
+            status.append(message["status"])
+    await app(scope, receive, send)
+    return status[0]
+
+
 def burst(app, requests):
     """Send `requests` ((method, url, kwargs) each) at the same moment; the status codes, in order."""
     async def run():
-        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://testserver") as client:
-            answers = await asyncio.gather(*(client.request(m, u, **kw) for m, u, kw in requests))
-            return [a.status_code for a in answers]
-    return asyncio.run(run())
+        return await asyncio.gather(*(_call(app, m, u, kw.get("headers"), kw.get("content", b"")) for m, u, kw in requests))
+    return list(asyncio.run(run()))
 
 
 # ---- card 1: a parallel burst of guesses -------------------------------------------------------------------------
