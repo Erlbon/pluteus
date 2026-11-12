@@ -12,7 +12,6 @@ import errno
 import mimetypes
 import os
 import re
-import stat
 import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
@@ -36,6 +35,7 @@ class Unavailable(OSError):
 
 _PROBES = ThreadPoolExecutor(max_workers=16, thread_name_prefix="probe")
 _NT = os.name == "nt"
+_REPARSE_TAG_MOUNT_POINT = 0xA0000003      # IO_REPARSE_TAG_MOUNT_POINT: a junction (the stat module has the name on Windows only)
 _SPLIT = re.compile(r"(\d+)")
 _MAX_TIME = 2 ** 31 - 1          # year 2038; Windows time functions refuse values far outside 1970..3000
 
@@ -95,7 +95,7 @@ def _is_link(entry) -> bool:
         return bool(ask())
     if _NT:                                              # Python 3.11 on Windows
         try:
-            return getattr(entry.stat(follow_symlinks=False), "st_reparse_tag", 0) == stat.IO_REPARSE_TAG_MOUNT_POINT
+            return getattr(entry.stat(follow_symlinks=False), "st_reparse_tag", 0) == _REPARSE_TAG_MOUNT_POINT
         except OSError:
             return False
     return False

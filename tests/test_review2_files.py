@@ -742,8 +742,6 @@ def test_card13_the_cache_is_bounded(monkeypatch):
 
 def test_card6_a_junction_is_told_apart_on_python_3_11_by_its_reparse_tag(monkeypatch):
     """Python 3.12 has DirEntry.is_junction(); 3.11 has not, and a junction there has to be told by the reparse tag of the listing."""
-    import stat as stat_module
-
     from pluteus import fs
 
     class Stat:
@@ -762,9 +760,9 @@ def test_card6_a_junction_is_told_apart_on_python_3_11_by_its_reparse_tag(monkey
             return Stat(self._tag)
 
     monkeypatch.setattr(fs, "_NT", True)
-    assert fs._is_link(Old311Entry(stat_module.IO_REPARSE_TAG_MOUNT_POINT)) is True        # a junction
+    assert fs._is_link(Old311Entry(0xA0000003)) is True        # a junction
     assert fs._is_link(Old311Entry(0)) is False                                            # a folder
     assert fs._is_link(Old311Entry(0x9000001A)) is False                                   # a OneDrive placeholder is not a link
     assert fs._is_link(Old311Entry(0, symlink=True)) is True
     monkeypatch.setattr(fs, "_NT", False)
-    assert fs._is_link(Old311Entry(stat_module.IO_REPARSE_TAG_MOUNT_POINT)) is False       # elsewhere there are no junctions
+    assert fs._is_link(Old311Entry(0xA0000003)) is False       # elsewhere there are no junctions
