@@ -1,6 +1,17 @@
 # systemd unit for the Linux download. Copy the program to /opt/pluteus/pluteus and your config to /etc/pluteus/config.toml, then:
+#   sudo useradd --system --no-create-home pluteus                      (once; the account the server runs as)
+#   sudo mkdir -p /var/lib/pluteus /etc/pluteus                         (data_dir = "/var/lib/pluteus" in the config)
+#   sudo chown -R pluteus: /var/lib/pluteus /etc/pluteus && sudo chmod 750 /etc/pluteus
 #   sudo cp tools/pluteus.service /etc/systemd/system/pluteus.service
 #   sudo systemctl daemon-reload && sudo systemctl enable --now pluteus
+#
+# The server may write in two places only:
+#   /var/lib/pluteus   its state (logins, reading progress, backups) and the metadata cache
+#   /etc/pluteus       the config: the admin page's Users and Libraries tabs and `pluteus user ...` save by writing a
+#                      temporary file and config.toml.bak beside config.toml, so the FOLDER must be writable by the
+#                      pluteus account, not only the file. Keep nothing else in it.
+# Both folders must exist before the unit starts. Everything else, the libraries included, is read-only for the server.
+# If you use uploads (uploads_dir), put that folder under /var/lib/pluteus or add it to ReadWritePaths below.
 [Unit]
 Description=Pluteus library server
 After=network-online.target
@@ -13,7 +24,7 @@ User=pluteus
 NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=read-only
-ReadWritePaths=/var/lib/pluteus
+ReadWritePaths=/var/lib/pluteus /etc/pluteus
 PrivateTmp=true
 
 [Install]

@@ -3,6 +3,9 @@ name: Docker image
 # Builds the Docker image and (only when asked) publishes it to the GitHub Container Registry as ghcr.io/<owner>/pluteus:<version> and :latest.
 # Manual on purpose: Actions > Docker image > Run workflow. "Publish" off = build and smoke test only. A package published from a private
 # repository starts out private; make it public under the package's settings only if you want others to pull it.
+#
+# Pinned: the base image by digest and the Python packages by hash (Dockerfile, requirements.lock), the actions by commit
+# (the version is the comment behind each; to move one: gh api repos/OWNER/NAME/commits/TAG --jq .sha).
 
 on:
   workflow_dispatch:
@@ -26,7 +29,7 @@ jobs:
     env:
       TAG: ${{ github.event.inputs.tag }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.event.inputs.tag }}
       - name: Check the tag against the version
@@ -35,16 +38,34 @@ jobs:
           [ "$TAG" = "v$version" ] || { echo "Tag $TAG does not match version $version"; exit 1; }
           echo "VERSION=$version" >> "$GITHUB_ENV"
           echo "IMAGE=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/pluteus" >> "$GITHUB_ENV"
-      - name: Build (this machine's architecture) and smoke test
+      - name: Build (this machine's architecture)
+        run: docker build -t pluteus:smoke .
+      - name: "Smoke test: its own first user, then the container as the compose file runs it; healthy, pages, a thumbnail"
         run: |
-          docker build -t pluteus:smoke .
           docker run --rm pluteus:smoke python -m pluteus --version
-          docker run --rm pluteus:smoke python -m pluteus hash-password --help > /dev/null
-      - uses: docker/setup-qemu-action@v4
+          docker run --rm pluteus:smoke python -c "import sys, ssl, PIL; print('Python', sys.version); print(ssl.OPENSSL_VERSION); print('Pillow', PIL.__version__)"
+          python3 tools/smoke.py prepare smoke --port 8080 --admin-port 8101 --host 0.0.0.0 --admin-host 0.0.0.0 --library /library/books --data /data --open-to-all
+          docker run --rm -i -v "$PWD/smoke/config:/config" pluteus:smoke python -m pluteus user add smoke --config /config/config.toml --admin --all-roots --password-stdin < smoke/password.txt
+          docker run -d --name smoke --read-only --tmpfs /tmp --cap-drop ALL --security-opt no-new-privileges:true -p 8080:8080 -p 8101:8101 -v "$PWD/smoke/config:/config" -v "$PWD/smoke/library:/library/books:ro" pluteus:smoke
+          status=0
+          python3 tools/smoke.py check smoke --base http://127.0.0.1:8080 --admin http://127.0.0.1:8101 || status=$?
+          # The image's own HEALTHCHECK must come to "healthy" (its first probe runs 30 seconds after the start).
+          health=starting
+          for attempt in $(seq 1 60); do
+            health=$(docker inspect --format '{{.State.Health.Status}}' smoke)
+            [ "$health" = starting ] || break
+            sleep 2
+          done
+          echo "container health: $health"
+          docker logs smoke
+          docker rm -f smoke
+          [ "$health" = healthy ] || { echo "the container did not become healthy"; exit 1; }
+          exit "$status"
+      - uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
         if: ${{ github.event.inputs.publish == 'true' }}
-      - uses: docker/setup-buildx-action@v4
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
         if: ${{ github.event.inputs.publish == 'true' }}
-      - uses: docker/login-action@v4
+      - uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
         if: ${{ github.event.inputs.publish == 'true' }}
         with:
           registry: ghcr.io
@@ -52,7 +73,7 @@ jobs:
           password: ${{ github.token }}
       - name: Build for amd64 and arm64 and push
         if: ${{ github.event.inputs.publish == 'true' }}
-        uses: docker/build-push-action@v7
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: .
           platforms: linux/amd64,linux/arm64

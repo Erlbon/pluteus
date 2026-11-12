@@ -1,6 +1,8 @@
 # Example. In config.toml set host = "0.0.0.0", data_dir = "/data" and use the container paths below.
 #
 # Tested on Docker Desktop (Windows): builds, starts healthy, serves, keeps state across restarts (see README).
+# Not tested yet: the Dockerfile as changed on 2026-11-12 (base image pinned by digest, packages from requirements.lock
+# with their hashes checked, pluteus copied instead of installed). The Docker workflow's smoke test covers it on GitHub.
 #
 # Mount the config FOLDER, not the single file: `pluteus user ...` saves by replacing the file, and on Linux hosts
 # Docker can keep a single-file mount pointing at the old one (not seen on Docker Desktop for Windows).

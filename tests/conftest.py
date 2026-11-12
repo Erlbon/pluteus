@@ -1,6 +1,7 @@
 """A small fake library on disk plus an app wired to it. Built in pytest's tmp_path."""
 import base64
 import os
+import time
 
 import pytest
 from epub_factory import make_epub
@@ -12,6 +13,17 @@ from pluteus.config import parse_config
 from pluteus.fs import longpath
 
 FAST = dict(n=2 ** 4)   # tiny scrypt cost, tests only
+
+
+def wait_until(condition, timeout=10.0, step=0.01):
+    """Poll `condition` until it is true (returns its value) or `timeout` seconds have passed (returns the last, false
+    value). For tests that wait for a thread: no fixed sleep that is too short on a slow machine and too long on a fast one."""
+    deadline = time.monotonic() + timeout
+    while True:
+        value = condition()
+        if value or time.monotonic() >= deadline:
+            return value
+        time.sleep(step)
 
 
 def _touch(path, data=b"x"):

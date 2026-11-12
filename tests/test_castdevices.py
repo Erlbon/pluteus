@@ -8,7 +8,7 @@ import urllib.request
 
 import pytest
 import uvicorn
-from conftest import basic
+from conftest import basic, wait_until
 from test_cast import ALICE, DEVICES, SONG, library_song, play  # noqa: F401 - library_song is a fixture
 from test_login_web import make
 
@@ -151,23 +151,23 @@ def live(cfg, tmp_path, library_song):
             self._casts[device.name] = object()
     castdevices.BACKENDS["cast"], saved = Backend, castdevices.BACKENDS["cast"]
     try:
-        probe = socket.socket()
-        probe.bind(("127.0.0.1", 0))
-        port = probe.getsockname()[1]
-        probe.close()
-        # opened as 127.0.0.1 a TV could not reach the server, which Pluteus refuses: the config says which address to hand out
-        _, app = make(cfg, tmp_path, cast=True, cast_devices=DEVICES[:1], cast_media_base="http://127.0.0.1:%d" % port)
-        server = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=port, log_level="warning"))
-        thread = threading.Thread(target=server.run, daemon=True)
-        thread.start()
-        for _ in range(100):
-            if server.started:
-                break
-            time.sleep(0.05)
-        assert server.started
-        yield "http://127.0.0.1:%d" % port, app
-        server.should_exit = True
-        thread.join(10)
+        # The listening socket is bound to port 0 here and handed to the server still open, so the port read back from it
+        # cannot be taken by another process in between (the app has to know its own address before it is made).
+        listener = socket.socket()
+        listener.bind(("127.0.0.1", 0))
+        port = listener.getsockname()[1]
+        try:
+            # opened as 127.0.0.1 a TV could not reach the server, which Pluteus refuses: the config says which address to hand out
+            _, app = make(cfg, tmp_path, cast=True, cast_devices=DEVICES[:1], cast_media_base="http://127.0.0.1:%d" % port)
+            server = uvicorn.Server(uvicorn.Config(app, log_level="warning"))
+            thread = threading.Thread(target=lambda: server.run(sockets=[listener]), daemon=True)
+            thread.start()
+            assert wait_until(lambda: server.started, timeout=20)
+            yield "http://127.0.0.1:%d" % port, app
+            server.should_exit = True
+            thread.join(10)
+        finally:
+            listener.close()
     finally:
         castdevices.BACKENDS["cast"] = saved
 

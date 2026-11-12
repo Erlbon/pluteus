@@ -2,7 +2,13 @@ name: Release
 
 # Push a tag like v0.5.0 (it must equal "v" + the version in pluteus/__init__.py, and pluteus/CHANGELOG.md needs a "## 0.5.0" section) to build
 # pluteus.exe on Windows and pluteus-linux-x86_64.tar.gz on Linux, test both, and publish them as a GitHub Release.
+# The two builds run side by side and only hand their files over; the release is made by a third job, and only when both
+# builds and both smoke tests passed. So there is never a public release with one of the two files missing.
 # Re-running on an existing tag (Actions > Release > Run workflow) uploads the files again instead of failing.
+#
+# Everything a build takes from outside is pinned: the Python packages by hash (requirements-build.lock, see
+# tools/make_lock.py), the actions by commit (the version is the comment behind each; to move one:
+# gh api repos/OWNER/NAME/commits/TAG --jq .sha), the Docker images by digest (docker buildx imagetools inspect NAME:TAG).
 
 on:
   push:
@@ -14,24 +20,26 @@ on:
         required: true
 
 permissions:
-  contents: write
+  contents: read
+
+env:
+  TAG: ${{ github.event.inputs.tag || github.ref_name }}
 
 jobs:
   windows:
     runs-on: windows-latest
     timeout-minutes: 30
-    env:
-      TAG: ${{ github.event.inputs.tag || github.ref_name }}
-      GH_TOKEN: ${{ github.token }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.event.inputs.tag || github.ref }}
-      - uses: actions/setup-python@v7
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.12"
           cache: pip
-      - run: python -m pip install ".[dev]" pyinstaller
+          cache-dependency-path: requirements-build.lock
+      # pluteus itself is not installed: the tests and PyInstaller read it from the checkout.
+      - run: python -m pip install --require-hashes -r requirements-build.lock
       - name: Check the tag against the version, and write the release notes
         shell: bash
         run: |
@@ -43,52 +51,93 @@ jobs:
       - run: python -m pytest -q
       - name: Build pluteus.exe
         run: python -m PyInstaller pluteus.spec --noconfirm
-      - name: Smoke test the program
+      - name: "Smoke test the program: its own first user, then serve with the admin page; health, pages, a thumbnail"
         shell: bash
         run: |
           ./dist/pluteus.exe --version
-          ./dist/pluteus.exe share tests --port 8600 --no-qr > share.log 2>&1 &
-          sleep 8
-          curl -fsS http://127.0.0.1:8600/healthz
-          curl -fsS -o /dev/null http://127.0.0.1:8600/static/base.css
-          curl -fsS -o /dev/null http://127.0.0.1:8600/static/vendor/epub.min.js
-          curl -fsS -o /dev/null http://127.0.0.1:8600/
-          cat share.log
-      - name: Publish the GitHub Release
+          PLUTEUS_BUILD_INFO=1 ./dist/pluteus.exe
+          python tools/smoke.py prepare smoke --port 8600 --admin-port 8601
+          ./dist/pluteus.exe user add smoke --config smoke/config/config.toml --admin --all-roots --password-stdin < smoke/password.txt
+          ./dist/pluteus.exe check-config --config smoke/config/config.toml
+          ./dist/pluteus.exe serve --config smoke/config/config.toml > serve.log 2>&1 &
+          status=0
+          python tools/smoke.py check smoke --base http://127.0.0.1:8600 --admin http://127.0.0.1:8601 || status=$?
+          taskkill //F //T //IM pluteus.exe > /dev/null 2>&1 || true
+          cat serve.log
+          exit "$status"
+      - name: Collect the files for the release
         shell: bash
         run: |
-          if gh release view "$TAG" >/dev/null 2>&1; then
-            gh release upload "$TAG" dist/pluteus.exe --clobber
-          else
-            gh release create "$TAG" dist/pluteus.exe --title "Pluteus $TAG" --notes-file release_notes.md
-          fi
+          mkdir upload
+          cp dist/pluteus.exe release_notes.md upload/
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-windows
+          path: upload/
+          if-no-files-found: error
+          retention-days: 7
 
   linux:
-    needs: windows
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
-      TAG: ${{ github.event.inputs.tag || github.ref_name }}
-      GH_TOKEN: ${{ github.token }}
+      # The oldest system the program is built for (the same image as tools/linux-build/Dockerfile) and a current one.
+      OLDEST: almalinux:8@sha256:2d0f2eb2a83cc09dbc2eb92fade4dbe8f709628149e81aa00aec70630406603b
+      CURRENT: debian:trixie-slim@sha256:a72b4433de1cf7d6bae0c4cee74d0547f58601a643b3375f070c51600d63b6b2
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.event.inputs.tag || github.ref }}
-      - name: Build in the old-glibc Docker toolchain
+      - name: Build in the old-glibc Docker toolchain (AlmaLinux 8, glibc 2.28)
         run: bash tools/linux-build/build.sh dist-linux
-      - name: Smoke test on a clean system without Python
+      - name: "Smoke test on clean systems without Python: its own first user, then serve with the admin page; health, pages, a thumbnail"
         run: |
-          docker run -d --name smoke -p 8600:8600 -v "$PWD/dist-linux:/app:ro" -v "$PWD/tests:/media/share:ro" debian:bullseye-slim /app/pluteus share /media/share --port 8600 --no-qr
-          sleep 8
-          curl -fsS http://127.0.0.1:8600/healthz
-          curl -fsS -o /dev/null http://127.0.0.1:8600/static/base.css
-          curl -fsS -o /dev/null http://127.0.0.1:8600/
-          docker run --rm -v "$PWD/dist-linux:/app:ro" debian:bullseye-slim /app/pluteus --version
+          docker run --rm -v "$PWD/dist-linux:/app:ro" "$OLDEST" /app/pluteus --version
+          docker run --rm -v "$PWD/dist-linux:/app:ro" "$CURRENT" /app/pluteus --version
+          docker run --rm -e PLUTEUS_BUILD_INFO=1 -v "$PWD/dist-linux:/app:ro" "$OLDEST" /app/pluteus
+          python3 tools/smoke.py prepare smoke --port 8600 --admin-port 8601 --host 0.0.0.0 --admin-host 0.0.0.0 --library /library --data /data --open-to-all
+          docker run --rm -i -v "$PWD/dist-linux:/app:ro" -v "$PWD/smoke/config:/config" "$OLDEST" /app/pluteus user add smoke --config /config/config.toml --admin --all-roots --password-stdin < smoke/password.txt
+          docker run -d --name smoke -p 8600:8600 -p 8601:8601 -v "$PWD/dist-linux:/app:ro" -v "$PWD/smoke/config:/config" -v "$PWD/smoke/library:/library:ro" -v "$PWD/smoke/data:/data" "$OLDEST" /app/pluteus serve --config /config/config.toml
+          status=0
+          python3 tools/smoke.py check smoke --base http://127.0.0.1:8600 --admin http://127.0.0.1:8601 || status=$?
+          docker logs smoke
           docker rm -f smoke
-      - name: Package and upload
+          exit "$status"
+      - name: Package
         run: |
           mkdir -p pkg/pluteus
           cp dist-linux/pluteus LICENSE README.md config.example.toml tools/pluteus.service pkg/pluteus/
           cp tools/PACKAGE-README.txt pkg/pluteus/README.txt
           tar -C pkg -czf pluteus-linux-x86_64.tar.gz pluteus
-          gh release upload "$TAG" pluteus-linux-x86_64.tar.gz --clobber
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-linux
+          path: pluteus-linux-x86_64.tar.gz
+          if-no-files-found: error
+          retention-days: 7
+
+  # Only this job may write to the repository, and it runs only when both builds above passed.
+  publish:
+    needs: [windows, linux]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: release-*
+          merge-multiple: true
+          path: release
+      - name: Publish the GitHub Release with both files
+        run: |
+          ls -la release
+          [ -s release/pluteus.exe ] && [ -s release/pluteus-linux-x86_64.tar.gz ] && [ -s release/release_notes.md ] || { echo "a file for the release is missing"; exit 1; }
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" release/pluteus.exe release/pluteus-linux-x86_64.tar.gz --clobber
+          else
+            gh release create "$TAG" release/pluteus.exe release/pluteus-linux-x86_64.tar.gz --verify-tag --title "Pluteus $TAG" --notes-file release/release_notes.md
+          fi
