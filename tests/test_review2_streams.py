@@ -149,6 +149,8 @@ def test_slow_logo_hosts_cost_the_logos_and_no_thread_outlives_its_fetch(monkeyp
     assert found == {} and time.monotonic() - began < 5.0
     started = [t for t in threading.enumerate() if t not in before]
     assert started and all(t.daemon for t in started)                    # none of them can hold up a shutdown
+    while time.monotonic() - began < 0.5:                                # a timed wait may end a few milliseconds early (Windows timers):
+        time.sleep(0.01)                                                 # let the budget be over for certain before the hosts answer
     release.set()
     for _ in range(250):
         if not any(t.is_alive() for t in started):
