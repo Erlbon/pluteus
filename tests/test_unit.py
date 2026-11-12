@@ -130,9 +130,13 @@ class CountingEntry:
     def is_file(self, **kw):
         return self._e.is_file(**kw)
 
-    def stat(self):
-        CountingEntry.calls += 1
-        return self._e.stat()
+    def is_symlink(self):                            # the listing asks every entry whether it is a link; the answer costs no stat
+        return self._e.is_symlink()
+
+    def stat(self, follow_symlinks=True):
+        if follow_symlinks:                          # (Windows' stat of the entry itself, follow_symlinks=False, comes with the listing: free)
+            CountingEntry.calls += 1
+        return self._e.stat(follow_symlinks=follow_symlinks)
 
 
 def counting_scandir(monkeypatch):
