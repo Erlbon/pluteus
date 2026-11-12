@@ -90,6 +90,9 @@ def _fetch_logos(entries: list) -> dict:
     return found
 
 
+_REPLACING = threading.Lock()
+
+
 def _write(folder: str, file_name: str, raw: bytes) -> None:
     """Write `raw` as folder/file_name through a hidden temporary file, so a reader never sees half of it. The temporary name is random:
     two saves of the same station file at once (two tabs, a double click) each write their own and the later one wins, where a shared
@@ -98,7 +101,8 @@ def _write(folder: str, file_name: str, raw: bytes) -> None:
     try:
         with open(longpath(temp), "xb") as f:
             f.write(raw)
-        uploads._replace(longpath(temp), longpath(os.path.join(folder, file_name)))
+        with _REPLACING:        # Windows refuses to replace a file that another replace is just putting in place: one at a time
+            uploads._replace(longpath(temp), longpath(os.path.join(folder, file_name)))
     except OSError:
         try:
             os.remove(longpath(temp))
