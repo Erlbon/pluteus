@@ -110,7 +110,13 @@
       body: JSON.stringify({ locator: lastCfi, percent: lastPercent == null ? 0 : lastPercent })
     }).catch(function () { /* offline: the next page turn tries again */ });
   }
-  function scheduleSave() { clearTimeout(saveTimer); saveTimer = setTimeout(sendProgress, 1500); }
+  /* The saved place could not be asked for (no connection, a server error): the book then opens at its start, and saving that would
+     wipe the real place. So nothing is saved until the reader moves through the book themselves (a page turn, a chapter from the list). */
+  var maySave = false, userMoved = false;
+  function scheduleSave() {
+    if (!maySave) return;
+    clearTimeout(saveTimer); saveTimer = setTimeout(sendProgress, 1500);
+  }
   function flush() { if (saveTimer) { clearTimeout(saveTimer); saveTimer = null; sendProgress(true); } }
   document.addEventListener("visibilitychange", function () { if (document.visibilityState === "hidden") flush(); });
   window.addEventListener("pagehide", flush);
@@ -122,6 +128,7 @@
   }
 
   rendition.on("relocated", function (loc) {
+    if (userMoved) maySave = true;                       // a place the reader went to themselves: theirs to save
     lastCfi = loc.start.cfi;
     if (book.locations.length()) lastPercent = book.locations.percentageFromCfi(lastCfi);
     showProgress();
@@ -130,14 +137,42 @@
 
   // Counting pages (for the percentage) parses the whole book and keeps the page busy, so it starts only once
   // the first page is on screen, and the result is remembered in this browser (keyed on the file's size + date).
-  var locKey = "pluteus-loc:" + cfg.key;
+  // The browser gives a site about 5 MB of this storage, and a long book's count is tens of kilobytes: so only the LOC_KEEP books opened
+  // last keep theirs. A small index (key -> when last used) tells which those are; every access is guarded, the cache is a convenience.
+  var locKey = "pluteus-loc:" + cfg.key, LOC_INDEX = "pluteus-loc-index", LOC_KEEP = 30;
+  function locTidy(keep) {                                 // marks this book as used now and drops all but the `keep` newest counts
+    try {
+      var index = null, i, k;
+      try { index = JSON.parse(localStorage.getItem(LOC_INDEX) || "{}"); } catch (e) { /* a damaged index: started again */ }
+      if (!index || typeof index !== "object" || Array.isArray(index)) index = {};
+      for (i = 0; i < localStorage.length; i++) {          // counts from before there was an index: the oldest of all
+        k = localStorage.key(i);
+        if (k && k.indexOf("pluteus-loc:") === 0 && typeof index[k] !== "number") index[k] = 0;
+      }
+      Object.keys(index).forEach(function (key) { if (localStorage.getItem(key) == null) delete index[key]; });
+      if (localStorage.getItem(locKey) != null) index[locKey] = Date.now();
+      Object.keys(index).sort(function (a, b) { return index[b] - index[a]; }).slice(keep)
+        .forEach(function (key) { localStorage.removeItem(key); delete index[key]; });
+      localStorage.setItem(LOC_INDEX, JSON.stringify(index));
+    } catch (e) { /* storage blocked or full */ }
+  }
+  function locStore(value) {
+    try { localStorage.setItem(locKey, value); }
+    catch (e) {                                            // full: make room once and try again
+      locTidy(Math.floor(LOC_KEEP / 3));
+      try { localStorage.setItem(locKey, value); } catch (e2) { return; }
+    }
+    locTidy(LOC_KEEP);
+  }
   function countPages() {
     book.ready.then(function () {
       var cached = null;
       try { cached = localStorage.getItem(locKey); } catch (e) { /* ignore */ }
-      if (cached) { book.locations.load(cached); return; }
+      if (cached) { book.locations.load(cached); locTidy(LOC_KEEP); return; }
       return book.locations.generate(1600).then(function () {
-        try { localStorage.setItem(locKey, book.locations.save()); } catch (e) { /* ignore */ }
+        var counted = null;
+        try { counted = book.locations.save(); } catch (e) { /* ignore */ }
+        if (counted) locStore(counted);
       });
     }).then(function () {
       if (lastCfi && book.locations.length()) { lastPercent = book.locations.percentageFromCfi(lastCfi); showProgress(); scheduleSave(); }
@@ -151,7 +186,7 @@
       var li = document.createElement("li"), a = document.createElement("a");
       a.textContent = (item.label || "").trim() || "(untitled)";
       a.href = "#";
-      a.addEventListener("click", function (e) { e.preventDefault(); closeMenus(); rendition.display(item.href); });
+      a.addEventListener("click", function (e) { e.preventDefault(); closeMenus(); userMoved = true; rendition.display(item.href); });
       li.appendChild(a);
       if (item.subitems && item.subitems.length) {
         var sub = document.createElement("ul"); sub.className = "pl-sub";
@@ -173,7 +208,9 @@
     closeMenus();
     if (turning) return;
     turning = true;
-    function done() { turning = false; clearTimeout(turnGuard); }
+    userMoved = true;
+    root.classList.add("pl-turning");                    // visible from outside (the browser tests wait for a turn to end)
+    function done() { turning = false; clearTimeout(turnGuard); root.classList.remove("pl-turning"); }
     turnGuard = setTimeout(done, 4000);                  // never stuck, should epub.js not answer
     Promise.resolve(forward !== rtl ? rendition.next() : rendition.prev()).then(done, done);
   }
@@ -196,6 +233,7 @@
   });
 
   function onKey(e) {
+    if (e.altKey || e.ctrlKey || e.metaKey) return;      // the browser's own: Alt+Left is Back
     if (e.target && /^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName)) return;
     var key = e.key;
     if (key === "ArrowRight" || key === "PageDown" || (key === " " && !e.shiftKey)) { e.preventDefault(); next(); }
@@ -239,14 +277,10 @@
     contents.document.addEventListener("wheel", onWheel, { passive: false });
   });
 
-  var touchX = null, touchY = null;
-  rendition.on("touchstart", function (e) { var t = e.changedTouches[0]; touchX = t.screenX; touchY = t.screenY; });
-  rendition.on("touchend", function (e) {
-    if (touchX == null) return;
-    var t = e.changedTouches[0], dx = t.screenX - touchX, dy = t.screenY - touchY;
-    touchX = touchY = null;
-    if (Math.abs(dx) > 50 && Math.abs(dx) > 1.5 * Math.abs(dy)) (dx < 0 ? next : prev)();
-  });
+  // a sideways swipe on the book's page (a frame of its own, so measured in screen pixels); a pinch is no swipe (tapzones.js)
+  var swipe = window.plSwipe({ forward: next, back: prev, min: 50, screen: true });
+  rendition.on("touchstart", swipe.start);
+  rendition.on("touchend", swipe.end);
 
   /* ---- the two menus and the toolbar ---- */
   $("toc-btn").addEventListener("click", function () { var open = $("toc").hidden; closeMenus(); $("toc").hidden = !open; });
@@ -287,8 +321,12 @@
 
   /* ---- start: ask the server where this user stopped, then open there ---- */
   fetch(cfg.progress, { credentials: "same-origin" })
-    .then(function (r) { return r.ok ? r.json() : {}; })
-    .catch(function () { return {}; })
+    .then(function (r) {                                 // 404: nothing saved yet, which is an answer; any other failure is not
+      if (r.ok) return r.json();
+      if (r.status === 404) return {};
+      throw new Error("status " + r.status);
+    })
+    .then(function (saved) { maySave = true; return saved; }, function () { return {}; })
     .then(function (saved) {
       if (saved && typeof saved.percent === "number") lastPercent = saved.percent;
       return rendition.display(saved && saved.locator ? saved.locator : undefined);

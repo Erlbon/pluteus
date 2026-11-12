@@ -45,7 +45,13 @@ function sendProgress(keepalive) {
     body: JSON.stringify({ locator: "page:" + current, percent: fraction() })
   }).catch(() => { /* offline: the next page turn tries again */ });
 }
-const scheduleSave = () => { clearTimeout(saveTimer); saveTimer = setTimeout(() => { saveTimer = null; sendProgress(false); }, 1200); };
+/* The saved place could not be asked for (no connection, a server error): the viewer then opens at the first page, and saving that
+   would wipe the real place. So nothing is saved until the reader turns a page themselves. */
+let maySave = false;
+const scheduleSave = () => {
+  if (!maySave) return;
+  clearTimeout(saveTimer); saveTimer = setTimeout(() => { saveTimer = null; sendProgress(false); }, 1200);
+};
 const flush = () => { if (saveTimer) { clearTimeout(saveTimer); saveTimer = null; sendProgress(true); } };
 document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") flush(); });
 window.addEventListener("pagehide", flush);
@@ -53,6 +59,7 @@ window.addEventListener("pagehide", flush);
 /* ---- drawing a page ---- */
 async function show(n) {
   if (!pdf) return;
+  if (clamp(n) !== current) maySave = true;           // another page than the one shown: the reader turned it, the place is theirs to save
   current = clamp(n);
   $("bar").style.width = Math.round(fraction() * 100) + "%";
   $("pct").textContent = (current + 1) + " / " + count;
@@ -96,6 +103,7 @@ $("prev").addEventListener("click", prev);
 window.plTapZones({ stage, back: prev, forward: next, enabled: () => zoom <= 1 });
 
 document.addEventListener("keydown", (e) => {
+  if (e.altKey || e.ctrlKey || e.metaKey) return;      // the browser's own: Alt+Left is Back, Ctrl+plus zooms the browser
   const k = e.key;
   if (k === "ArrowRight" || k === "PageDown") { e.preventDefault(); next(); }
   else if (k === "ArrowLeft" || k === "PageUp") { e.preventDefault(); prev(); }
@@ -105,14 +113,10 @@ document.addEventListener("keydown", (e) => {
   else if (k === "-") { e.preventDefault(); changeZoom(-0.25); }
 });
 
-let tx = null, ty = null;
-stage.addEventListener("touchstart", (e) => { const t = e.changedTouches[0]; tx = t.clientX; ty = t.clientY; }, { passive: true });
-stage.addEventListener("touchend", (e) => {
-  if (tx == null) return;
-  const t = e.changedTouches[0], dx = t.clientX - tx, dy = t.clientY - ty;
-  tx = ty = null;
-  if (zoom <= 1 && Math.abs(dx) > 60 && Math.abs(dx) > 1.5 * Math.abs(dy)) (dx < 0 ? next : prev)();
-}, { passive: true });
+// a sideways swipe turns the page, unless the page is zoomed in (the finger moves it); a pinch is no swipe (tapzones.js)
+const swipe = window.plSwipe({ forward: next, back: prev, enabled: () => zoom <= 1 });
+stage.addEventListener("touchstart", swipe.start, { passive: true });
+stage.addEventListener("touchend", swipe.end, { passive: true });
 
 $("seek").addEventListener("click", function (e) {
   const box = this.getBoundingClientRect();
@@ -154,9 +158,11 @@ new ResizeObserver(() => { clearTimeout(resizeTimer); resizeTimer = setTimeout((
   let start = 0;
   try {
     const r = await fetch(cfg.progress, { credentials: "same-origin" });
+    if (!r.ok && r.status !== 404) throw new Error("status " + r.status);      // 404: nothing saved yet, which is an answer
     const saved = r.ok ? await r.json() : {};
     const m = saved && typeof saved.locator === "string" && /^page:(\d+)$/.exec(saved.locator);
     if (m) start = parseInt(m[1], 10);
-  } catch (e) { /* start at the first page */ }
+    maySave = true;
+  } catch (e) { /* start at the first page, and do not save that (see maySave) */ }
   show(start);
 })();

@@ -1,13 +1,8 @@
-/* The upload folder page: confirm before delete, ask for the new name on rename, and upload with a progress bar.
+/* The upload folder page: ask for the new name on rename, and upload with a progress bar. (The question before a delete, data-confirm,
+   is asked by scheme.js, which every page loads.)
    Every form also works without this script (a plain POST), so nothing here is required. */
 (function () {
   "use strict";
-
-  document.querySelectorAll("form[data-confirm]").forEach(function (f) {
-    f.addEventListener("submit", function (e) {
-      if (!window.confirm(f.dataset.confirm)) e.preventDefault();
-    });
-  });
 
   document.querySelectorAll("form[data-rename]").forEach(function (f) {
     f.addEventListener("submit", function (e) {

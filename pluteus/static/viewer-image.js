@@ -37,17 +37,15 @@
   window.plTapZones({ stage: stage, back: function () { go(cfg.prev); }, forward: function () { go(cfg.next); },
                       enabled: function () { return fit !== "orig"; } });
   document.addEventListener("keydown", function (e) {
+    if (e.altKey || e.ctrlKey || e.metaKey) return;                      // the browser's own: Alt+Left is Back
     if (e.key === "ArrowRight" || e.key === "PageDown") { e.preventDefault(); go(cfg.next); }
     else if (e.key === "ArrowLeft" || e.key === "PageUp") { e.preventDefault(); go(cfg.prev); }
   });
-  var tx = null, ty = null;
-  stage.addEventListener("touchstart", function (e) { var t = e.changedTouches[0]; tx = t.clientX; ty = t.clientY; }, { passive: true });
-  stage.addEventListener("touchend", function (e) {
-    if (tx == null || fit === "orig") { tx = ty = null; return; }
-    var t = e.changedTouches[0], dx = t.clientX - tx, dy = t.clientY - ty;
-    tx = ty = null;
-    if (Math.abs(dx) > 60 && Math.abs(dx) > 1.5 * Math.abs(dy)) go(dx < 0 ? cfg.next : cfg.prev);
-  }, { passive: true });
+  // a sideways swipe: the next or previous picture (not at actual size, where the finger moves it; a pinch is no swipe: tapzones.js)
+  var swipe = window.plSwipe({ forward: function () { go(cfg.next); }, back: function () { go(cfg.prev); },
+                               enabled: function () { return fit !== "orig"; } });
+  stage.addEventListener("touchstart", swipe.start, { passive: true });
+  stage.addEventListener("touchend", swipe.end, { passive: true });
 
   if (cfg.nextRaw) new Image().src = cfg.nextRaw;          // the next image is already loading while you look at this one
 })();

@@ -58,7 +58,13 @@
       body: JSON.stringify({ locator: "page:" + current, percent: percent() })
     }).catch(function () { /* offline: the next page turn tries again */ });
   }
-  function scheduleSave() { clearTimeout(saveTimer); saveTimer = setTimeout(function () { saveTimer = null; sendProgress(); }, 1200); }
+  /* The saved place could not be asked for (no connection, a server error): the reader then opens at the first page, and saving that
+     would wipe the real place. So nothing is saved until the reader turns a page themselves. */
+  var maySave = false;
+  function scheduleSave() {
+    if (!maySave) return;
+    clearTimeout(saveTimer); saveTimer = setTimeout(function () { saveTimer = null; sendProgress(); }, 1200);
+  }
   function flush() { if (saveTimer) { clearTimeout(saveTimer); saveTimer = null; sendProgress(true); } }
   document.addEventListener("visibilitychange", function () { if (document.visibilityState === "hidden") flush(); });
   window.addEventListener("pagehide", flush);
@@ -70,7 +76,8 @@
     preloaded[n] = true;
     new Image().src = pageUrl(n);
   }
-  function show(n) {
+  function show(n, opening) {
+    if (!opening) maySave = true;                          // a page the reader chose: from here on the place is theirs to save
     current = clamp(n);
     say("Loading…");
     img.src = pageUrl(current);
@@ -102,6 +109,7 @@
   function backward() { if (scrollable() && !atTop()) stage.scrollBy({ top: -stage.clientHeight * 0.9 }); else { landBottom = true; prev(); } }
 
   document.addEventListener("keydown", function (e) {
+    if (e.altKey || e.ctrlKey || e.metaKey) return;                      // the browser's own: Alt+Left is Back, Ctrl+plus zooms the browser
     var k = e.key;
     if (k === "ArrowRight") { e.preventDefault(); next(); }
     else if (k === "ArrowLeft") { e.preventDefault(); prev(); }
@@ -149,15 +157,10 @@
   stage.addEventListener("click", function (e) { if (moved) { e.stopPropagation(); e.preventDefault(); moved = false; } }, true);
 
   /* swipe left/right on a touch screen (only when the page is not being scrolled sideways) */
-  var tx = null, ty = null;
-  stage.addEventListener("touchstart", function (e) { var t = e.changedTouches[0]; tx = t.clientX; ty = t.clientY; }, { passive: true });
-  stage.addEventListener("touchend", function (e) {
-    if (tx == null) return;
-    if (stage.classList.contains("pl-fit-zoom")) { tx = ty = null; return; }          // zoomed: a swipe pans, it does not turn the page
-    var t = e.changedTouches[0], dx = t.clientX - tx, dy = t.clientY - ty;
-    tx = ty = null;
-    if (Math.abs(dx) > 60 && Math.abs(dx) > 1.5 * Math.abs(dy)) (dx < 0 ? next : prev)();
-  }, { passive: true });
+  // zoomed: a swipe pans, it does not turn the page; a pinch, or a finger on a page the browser has zoomed, is no swipe (tapzones.js)
+  var swipe = window.plSwipe({ forward: next, back: prev, enabled: function () { return !stage.classList.contains("pl-fit-zoom"); } });
+  stage.addEventListener("touchstart", swipe.start, { passive: true });
+  stage.addEventListener("touchend", swipe.end, { passive: true });
 
   /* click the progress bar to jump to that part of the book */
   $("seek").addEventListener("click", function (e) {
@@ -174,10 +177,14 @@
   /* ---- start where this user stopped ---- */
   applyFit();
   fetch(cfg.progress, { credentials: "same-origin" })
-    .then(function (r) { return r.ok ? r.json() : {}; })
-    .catch(function () { return {}; })
+    .then(function (r) {                                   // 404: nothing saved yet, which is an answer; any other failure is not
+      if (r.ok) return r.json();
+      if (r.status === 404) return {};
+      throw new Error("status " + r.status);
+    })
+    .then(function (saved) { maySave = true; return saved; }, function () { return {}; })
     .then(function (saved) {
       var m = saved && typeof saved.locator === "string" && /^page:(\d+)$/.exec(saved.locator);
-      show(m ? parseInt(m[1], 10) : 0);
+      show(m ? parseInt(m[1], 10) : 0, true);
     });
 })();

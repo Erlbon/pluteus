@@ -59,12 +59,16 @@
   /* in the shell: a song playing here carries on in the shell's player when this page is left (the folder becomes the queue, so
      next and previous go on through the album). The folder's list is fetched in advance; the hand-over happens as the page unloads. */
   var shell = null, folder = null;
+  /* true once this page itself opens the next or previous file (the song buttons, the footer arrows, the end of the file): the page is
+     then left on purpose for another song, and the one playing here must not be handed to the shell's player on the way out */
+  var leaving = false;
+  function leaveFor(url) { leaving = true; location.replace(url); }
   try { shell = window.parent !== window ? window.parent.plShell : null; } catch (e) { shell = null; }
   if (shell && data.queue && data.kind === "audio") {
     fetch(data.queue, { credentials: "same-origin" }).then(function (r) { return r.ok ? r.json() : null; })
       .then(function (d) { folder = d && d.items ? d.items : null; }).catch(function () { /* the hand-over then has the one song */ });
     window.addEventListener("pagehide", function () {
-      if (media.paused || media.ended || !media.currentSrc) return;
+      if (leaving || media.paused || media.ended || !media.currentSrc) return;
       var here = new URL(media.currentSrc, location.href).pathname, items = folder || [], index = -1;
       for (var i = 0; i < items.length; i++) { if (new URL(items[i].url, location.href).pathname === here) { index = i; break; } }
       if (index < 0) { items = [{ title: data.title || "", url: media.currentSrc, folder: data.album || "" }]; index = 0; }
@@ -333,7 +337,7 @@
   function bindFoot() {
     ["prev", "next"].forEach(function (id) {                         // the footer arrows
       var link = document.getElementById(id);
-      if (link && link.tagName === "A") link.addEventListener("click", function (e) { e.preventDefault(); location.replace(link.href); });
+      if (link && link.tagName === "A") link.addEventListener("click", function (e) { e.preventDefault(); leaveFor(link.href); });
     });
   }
   bindFoot();
@@ -376,12 +380,13 @@
       Array.prototype.forEach.call(theirMedia.querySelectorAll("track"), function (t) { media.appendChild(document.importNode(t, true)); });
       document.title = doc.title;
       try { history.replaceState(null, "", url); } catch (e) { /* ignore */ }
+      try { if (shell && shell.pageChanged) shell.pageChanged(); } catch (e) { /* the shell is gone */ }      // the shell's address follows
       setMetadata();
       var started = media.play();
       if (started && started.catch) started.catch(function () { say("Tap play to continue", 6000); });
-    }).catch(function () { if (mine === swapCount) location.replace(withAutoplay(url)); });
+    }).catch(function () { if (mine === swapCount) leaveFor(withAutoplay(url)); });
   }
-  function go(url) { if (data.kind === "video" && window.DOMParser && window.fetch) swapTo(url); else location.replace(withAutoplay(url)); }
+  function go(url) { if (data.kind === "video" && window.DOMParser && window.fetch) swapTo(url); else leaveFor(withAutoplay(url)); }
 
   /* the song buttons in the transport row: previous restarts a song that has played for a few seconds, else goes to the one before */
   var songPrev = document.getElementById("prev-song"), songNext = document.getElementById("next-song");

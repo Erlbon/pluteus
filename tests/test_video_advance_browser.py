@@ -106,6 +106,7 @@ def test_one_press_plays_the_whole_folder_of_videos(frame_of):
         st = playing(frame, name)
         assert st and st["src"].endswith(name) and not st["paused"], "%s did not play on by itself: %r" % (name, st)
         assert frame.url.endswith("/view/lib/videos/" + name)                         # the address follows, so a reload opens this file
+        page.wait_for_function("n => decodeURIComponent(location.search).endsWith('/view/lib/videos/' + n)", arg=name, timeout=5000)   # the shell's too
         assert frame.inner_text(".pl-track-title") == name[0] and at in frame.inner_text(".pl-reader-foot")
         assert name[0] in frame.evaluate("() => document.title")
         assert page.evaluate("() => !!document.fullscreenElement"), "full screen ended at " + name
