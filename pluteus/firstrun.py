@@ -13,10 +13,21 @@ import re
 import sys
 
 from .auth import MIN_PASSWORD, hash_password
+from .config import upload_name_ok
 from .libedit import _toml_string
-from .useredit import _q
+from .useredit import EditError, _q, validate
 
 NAME_OK = re.compile(r"^[^:\s][^:]*$")
+
+
+class SetupError(ValueError):
+    """The first configuration would not load; nothing was written. The message says why."""
+
+
+def name_ok(name: str) -> bool:
+    """The administrator gets an upload folder named after them (uploads_dir is set in the first configuration), so the
+    name must already follow the upload-folder rule here: otherwise the configuration written would not load."""
+    return bool(NAME_OK.match(name)) and upload_name_ok(name)
 
 
 def config_dir() -> str:
@@ -65,8 +76,9 @@ def ask_setup(read=input, read_password=getpass.getpass, say=print) -> tuple:
     name = ""
     while not name:
         name = (read("Name of the administrator [admin]: ").strip() or "admin")
-        if not NAME_OK.match(name):
-            say("  A name cannot contain a colon or start with a space.")
+        if not name_ok(name):
+            say("  Use letters (a to z), digits, space, - _ . only, not starting or ending with a space or a dot "
+                "(the name also becomes the name of your upload folder).")
             name = ""
     while True:
         password = read_password("Password (at least %d characters; you type it, it is not shown): " % MIN_PASSWORD)
@@ -84,19 +96,31 @@ def ask_setup(read=input, read_password=getpass.getpass, say=print) -> tuple:
 
 def create_config(path: str, name: str, password: str, folder: str, *, port: int = 8080, admin_port: int = 8101) -> str:
     """Write the first configuration to `path`; returns the library folder used. The placeholder library (when no folder was given)
-    is an empty folder next to the configuration, so Pluteus always has one library to start with."""
+    is an empty folder next to the configuration, so Pluteus always has one library to start with.
+
+    The text is checked exactly as the next start will check it (useredit.validate with the path: parse_config plus the
+    overlap rules, such as a library folder that holds this settings folder) BEFORE anything is written; ValueError with
+    the reason when it would not load, so the caller can ask again instead of leaving a configuration that never starts."""
     home = os.path.dirname(os.path.abspath(path))
-    os.makedirs(home, exist_ok=True)
-    folder = os.path.abspath(os.path.expanduser(folder)) if folder else os.path.join(home, "library")
-    if not os.path.isdir(folder):
-        if folder == os.path.join(home, "library"):
-            os.makedirs(folder, exist_ok=True)
-        else:
-            raise ValueError("%s is not a folder" % folder)
+    placeholder = os.path.join(home, "library")
+    folder = os.path.abspath(os.path.expanduser(folder)) if folder else placeholder
+    if folder != placeholder and not os.path.isdir(folder):
+        raise ValueError("%s is not a folder" % folder)
     text = build_config_text(admin=name, password_hash=hash_password(password), library_folder=folder, home=home,
                              port=port, admin_port=admin_port)
-    with open(path, "w", encoding="utf-8", newline="\n") as f:
+    try:
+        validate(text, os.path.abspath(path))
+    except EditError as e:
+        raise SetupError(str(e)) from None
+    os.makedirs(home, exist_ok=True)
+    if folder == placeholder:
+        os.makedirs(folder, exist_ok=True)
+    # Owner-only from the first byte (it holds the password hash); the mode is ignored where the system has no such thing.
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as f:
         f.write(text)
+        f.flush()
+        os.fsync(f.fileno())
     return folder
 
 
@@ -127,15 +151,21 @@ def start(config_path: str | None, run_server, read=input, read_password=getpass
     except ConfigError as err:
         print("Error: %s (%s)" % (err, path), file=sys.stderr)
         return 2
-    if first and open_browser and cfg.admin_port:
-        import threading
-        import webbrowser
-        say("Your browser opens the admin page in a moment. Sign in with the name and password you just chose, then add your")
-        say("libraries on the Libraries tab.")
-        threading.Timer(2.5, lambda: webbrowser.open("http://127.0.0.1:%d/libraries" % cfg.admin_port)).start()
     from .share import lan_ip
     say("")
     say("Pluteus is starting. Open it from a phone or computer on this network at  http://%s:%d/" % (lan_ip(), cfg.port))
     say("Press Ctrl+C to stop. Settings: %s" % path)
     say("")
+    if first and open_browser and cfg.admin_port:
+        def admin_is_up() -> None:
+            """Called by the server once the admin page really listens; never when it could not start (a taken port), so
+            the browser is not opened on a dead address."""
+            import threading
+            import webbrowser
+            say("Your browser opens the admin page now. Sign in with the name and password you just chose, then add your")
+            say("libraries on the Libraries tab.")
+            # In a thread of its own: a console browser would otherwise hold up the start of the site itself.
+            threading.Thread(target=webbrowser.open, args=("http://127.0.0.1:%d/libraries" % cfg.admin_port,),
+                             name="pluteus-open-browser", daemon=True).start()
+        return run_server(cfg, path, on_admin=admin_is_up)
     return run_server(cfg, path)

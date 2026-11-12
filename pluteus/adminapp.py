@@ -27,7 +27,7 @@ from starlette.middleware import Middleware
 from starlette.responses import HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse
 from starlette.routing import Route
 
-from . import __version__, adminweb, cbz, folderpick, uploads
+from . import __version__, adminweb, cbz, folderpick, uploads, useredit
 from .admin import AdminModel
 from .bodies import read_limited
 from .app import _PLAIN_HOST as PLAIN_HOST
@@ -70,6 +70,9 @@ def create_admin_app(main_app) -> Starlette:
     async def sign_in(request):
         """(user or None, seconds to wait). Same rules as the main site; no per-address limit here (a LAN page, and Docker
         hides the real addresses anyway)."""
+        reloader = getattr(st, "reloader", None)      # a hand edit of config.toml (or `pluteus user ...`) counts here too, at once
+        if reloader:
+            reloader.maybe_reload()
         header = request.headers.get("authorization")
         if not header:
             return None, 0
@@ -173,7 +176,7 @@ def create_admin_app(main_app) -> Starlette:
 
     def collect_status() -> dict:
         backups = os.path.join(cfg.data_dir, "backups") if cfg.data_dir else ""
-        names = [n for n in os.listdir(backups) if n.startswith("state-")] if backups and os.path.isdir(backups) else []
+        names = [n for n in os.listdir(backups) if n.startswith("state-") and n.endswith(".sqlite3")] if backups and os.path.isdir(backups) else []
         try:
             newest = max(os.path.getmtime(os.path.join(backups, n)) for n in names) if names else None
             size = os.path.getsize(state.path) if state.persistent else 0
@@ -286,12 +289,14 @@ def create_admin_app(main_app) -> Starlette:
         except OSError as e:
             return await run_in_threadpool(libraries_html, can, "", "The configuration file cannot be written: %s" % e, 500)
         st.library.set_roots(new_cfg.roots, new_cfg.subsonic_uploads)              # in use at once; a hand edit of the file is picked up by the reloader
+        auth.set_users(new_cfg.users)                                               # the same file, the same moment: the login table follows every edit
         log.info("admin %s: libraries %s", user.name, code)
         return done("/libraries", code)
 
     @guarded
     async def library_add(request, user):
-        return await library_change(request, user, lambda m, f: m.add_library(_first(f, "name"), _first(f, "path")), "libadded")
+        # A typed path is confined like the folder picker: inside library_bases when those are set (libedit.check_folder).
+        return await library_change(request, user, lambda m, f: m.add_library(_first(f, "name"), _first(f, "path"), cfg.library_bases), "libadded")
 
     @guarded
     async def library_remove(request, user):
@@ -342,16 +347,24 @@ def create_admin_app(main_app) -> Starlette:
         return count
 
     async def change(request, user, action):
-        """Run one users-page action in a worker thread; show a refused one on the page itself (status 400)."""
+        """Run one users-page action in a worker thread; show a refused one on the page itself (status 400). The action
+        returns (code for the page, the Config as saved); the new users are put in force at once, here, instead of waiting
+        for the next request on the main site to notice the changed file."""
         if not config_path:
             return PlainTextResponse("No configuration file: users cannot be changed here.", 400)
         form = await form_of(request)
+
+        def locked():
+            with useredit.EDIT_LOCK:            # the "at least one admin" checks and the edit are one step
+                return action(AdminModel(config_path), form)
+
         try:
-            code = await run_in_threadpool(action, AdminModel(config_path), form)
+            code, new_cfg = await run_in_threadpool(locked)
         except (EditError, ConfigError) as e:
             return await run_in_threadpool(users_html, user.name, "", str(e), 400)
         except OSError as e:
             return await run_in_threadpool(users_html, user.name, "", "The configuration file cannot be written: %s" % e, 500)
+        auth.set_users(new_cfg.users)           # also drops every remembered login, so a removed or changed user stops at once
         log.info("admin %s: users %s", user.name, code)
         return done("/users", code)
 
@@ -366,16 +379,17 @@ def create_admin_app(main_app) -> Starlette:
     async def add_user(request, user):
         def action(model, form):
             adult, upload, admin = flags_of(form)
-            model.add_user(_first(form, "name"), _first(form, "password"), _first(form, "again"), roots_of(form),
-                           adult, upload, admin, "notes" in form)
-            return "added"
+            return "added", model.add_user(_first(form, "name"), _first(form, "password"), _first(form, "again"), roots_of(form),
+                                           adult, upload, admin, "notes" in form)
         return await change(request, user, action)
 
     @guarded
     async def change_password(request, user):
         def action(model, form):
-            model.change_password(_first(form, "name"), _first(form, "password"), _first(form, "again"))
-            return "password"
+            name = _first(form, "name")
+            new_cfg = model.change_password(name, _first(form, "password"), _first(form, "again"))
+            auth.forget_user(name)                        # logins remembered for the old password stop now
+            return "password", new_cfg
         return await change(request, user, action)
 
     @guarded
@@ -385,8 +399,7 @@ def create_admin_app(main_app) -> Starlette:
             adult, upload, admin = flags_of(form)
             if admins_after(model, name, admin) < 1:
                 raise EditError("there must be at least one admin: this change would leave none")
-            model.set_access(name, roots_of(form), adult, upload, admin, "notes" in form)
-            return "access"
+            return "access", model.set_access(name, roots_of(form), adult, upload, admin, "notes" in form)
         return await change(request, user, action)
 
     @guarded
@@ -397,12 +410,10 @@ def create_admin_app(main_app) -> Starlette:
                 raise EditError("you cannot remove yourself")
             if admins_after(model, name, None) < 1:
                 raise EditError("the last admin cannot be removed")
-            model.remove_user(name)
-            state.delete_appkey(name)                     # a new user with the same name must not inherit the key
-            state.streams_delete_user(name)               # ... nor the stored logins and headers for protected streams
-            state.playqueue_delete(name)                  # ... nor the play queue a music app saved
-            auth.forget_user(name)
-            return "removed"
+            new_cfg = model.remove_user(name)
+            state.purge_user(name)                        # a new user with the same name must not inherit anything: the key, stored stream
+            auth.forget_user(name)                        # logins, the play queue, sessions, progress, settings, shelves, bookmarks, sync rows
+            return "removed", new_cfg
         return await change(request, user, action)
 
     @guarded
@@ -507,21 +518,48 @@ def create_admin_app(main_app) -> Starlette:
     return Starlette(routes=routes, middleware=[Middleware(SecurityHeaders)])
 
 
+START_WAIT = 15.0          # seconds to wait for the admin server to say it is listening
+
+
 class AdminServer:
-    def __init__(self, server, thread: threading.Thread):
+    """started: the admin page is listening. When it is not, `problem` says why in one sentence (with the port)."""
+
+    def __init__(self, server, thread: threading.Thread, started: bool = True, problem: str = ""):
         self.server, self.thread = server, thread
+        self.started, self.problem = started, problem
 
     def stop(self) -> None:
         self.server.should_exit = True
         self.thread.join(5)
 
 
-def start_admin_server(main_app) -> AdminServer:
-    """Run the admin page in a background thread next to the main server (which keeps the main thread)."""
+def start_admin_server(main_app, wait: float = START_WAIT) -> AdminServer:
+    """Run the admin page in a background thread next to the main server (which keeps the main thread). Waits (briefly) until
+    the server listens or its thread has died: uvicorn exits inside the thread when the port is taken, and nobody would
+    notice. The caller looks at .started and prints .problem instead of announcing an admin page that is not there."""
     import uvicorn
     cfg = main_app.state.cfg
     server = uvicorn.Server(uvicorn.Config(create_admin_app(main_app), host=cfg.admin_host, port=cfg.admin_port,
                                            log_level="info"))
-    thread = threading.Thread(target=server.run, name="pluteus-admin", daemon=True)
+
+    def serve() -> None:
+        try:
+            server.run()
+        except SystemExit:                  # uvicorn's way of saying "could not start"; reported below
+            pass
+
+    thread = threading.Thread(target=serve, name="pluteus-admin", daemon=True)
     thread.start()
-    return AdminServer(server, thread)
+    deadline = time.monotonic() + wait
+    while not server.started and thread.is_alive() and time.monotonic() < deadline:
+        thread.join(0.02)                   # returns at once when the thread dies
+    if server.started:
+        return AdminServer(server, thread)
+    where = "%s port %d" % (cfg.admin_host, cfg.admin_port)
+    if thread.is_alive():
+        problem = "the admin page did not start on %s within %d seconds" % (where, wait)
+    else:
+        problem = ("the admin page could not start on %s (is the port in use by another program? Choose another admin_port, "
+                   "or stop the other program)" % where)
+    log.error("%s", problem)
+    return AdminServer(server, thread, False, problem)

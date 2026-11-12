@@ -182,22 +182,33 @@ def main(argv=None) -> int:
     return _run_server(cfg, a.config)
 
 
-def _run_server(cfg, config_path) -> int:
-    """Run the server (and the admin page when admin_port is set) until Ctrl+C."""
+def _run_server(cfg, config_path, on_admin=None) -> int:
+    """Run the server (and the admin page when admin_port is set) until Ctrl+C. `on_admin()` is called once the admin page
+    really listens (first run opens the browser on it then), and not at all when it could not start."""
     from .fs import longpath
     for root in cfg.roots.values():
         if not os.path.isdir(longpath(root.path)):
             print("Warning: root %r (%s) is not reachable right now" % (root.name, root.path), file=sys.stderr)
     import uvicorn
 
-    from .app import create_app
-    app = create_app(cfg, config_path=config_path)
+    from . import adminapp
+    from . import app as appmod
+    from .dbutil import DatabaseUnusable
+    try:
+        app = appmod.create_app(cfg, config_path=config_path)
+    except DatabaseUnusable as e:                       # locked, disk full ...: the file is intact and was left alone
+        print("Error: %s" % e, file=sys.stderr)
+        return 2
     admin = None
     if cfg.admin_port:                                  # the admin page: its own port, for the local network only
-        from .adminapp import start_admin_server
-        admin = start_admin_server(app)
-        print("Admin page on http://%s:%d/ (local network only: never route or forward this port)"
-              % (cfg.admin_host, cfg.admin_port), file=sys.stderr)
+        admin = adminapp.start_admin_server(app)
+        if admin.started:
+            print("Admin page on http://%s:%d/ (local network only: never route or forward this port)"
+                  % (cfg.admin_host, cfg.admin_port), file=sys.stderr)
+            if on_admin:
+                on_admin()
+        else:                                           # the main site still starts: it does not depend on the admin page
+            print("Error: %s. The site itself starts; there is no admin page until this is solved." % admin.problem, file=sys.stderr)
     try:
         import logging
         handler = logging.StreamHandler()

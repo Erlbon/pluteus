@@ -8,7 +8,7 @@ import os
 import re
 
 from .config import Config
-from .useredit import EditError, _join, _NAME_LINE, _parse, _q, _set_key, _TABLE, apply_edit, read_config_text, validate
+from .useredit import EDIT_LOCK, EditError, _cut_block, _is_filler, _join, _NAME_LINE, _parse, _q, _set_key, _TABLE, apply_edit, read_config_text
 
 NAME_RE = re.compile(r"^[A-Za-z0-9_-]+$")
 
@@ -32,10 +32,6 @@ def _root_blocks(lines: list) -> list:
                 break
         blocks.append({"start": start, "end": end, "name": name})
     return blocks
-
-
-def _is_filler(line: str) -> bool:
-    return not line.strip() or line.lstrip().startswith("#")
 
 
 def _toml_string(value: str) -> str:
@@ -77,13 +73,7 @@ def remove_root_text(text: str, name: str) -> str:
     lines, nl, trailing = _parse(text)
     for b in _root_blocks(lines):
         if b["name"] == name:
-            end = b["end"]
-            while end > b["start"] + 1 and _is_filler(lines[end - 1]):   # a comment above the next block stays with it
-                end -= 1
-            start = b["start"]
-            while start > 0 and not lines[start - 1].strip():             # and the blank line above this block goes with it
-                start -= 1
-            del lines[start:end]
+            _cut_block(lines, b["start"], b["end"])       # a comment above the next block stays with it; the blank line above this one goes
             return _join(lines, nl, trailing)
     raise EditError("no library named %r" % name)
 
@@ -116,15 +106,29 @@ def set_subsonic_text(text: str, shown, uploads: bool) -> str:
 
 def set_subsonic(path: str, shown, uploads: bool) -> Config:
     shown = set(shown)
-    new = set_subsonic_text(read_config_text(path), shown, uploads)
-    return apply_edit(path, new, lambda c: {n for n, r in c.roots.items() if r.subsonic} == shown and c.subsonic_uploads == uploads)
+    with EDIT_LOCK:
+        new = set_subsonic_text(read_config_text(path), shown, uploads)
+        return apply_edit(path, new, lambda c: {n for n, r in c.roots.items() if r.subsonic} == shown and c.subsonic_uploads == uploads)
 
 
-def check_folder(folder: str) -> str:
-    """The folder must exist and be listable by this program (in Docker: as the container sees it)."""
+def _inside(real: str, base: str) -> bool:
+    real, base = os.path.normcase(real), os.path.normcase(os.path.realpath(base))
+    return real == base or real.startswith(base.rstrip(os.sep) + os.sep)
+
+
+def check_folder(folder: str, bases: tuple = ()) -> str:
+    """The folder must exist and be listable by this program (in Docker: as the container sees it). A typed path is confined
+    the same way the folder picker is: with `library_bases` set, its real path (links followed) must be inside one of them;
+    without, anything but the top of a file system (/ or a whole drive), which would publish the whole computer."""
     folder = (folder or "").strip()
     if not folder:
         raise EditError("give the folder of the library")
+    real = os.path.realpath(folder)
+    if bases:
+        if not any(_inside(real, b) for b in bases):
+            raise EditError("%s is outside the folders libraries may be in (library_bases: %s)" % (folder, ", ".join(bases)))
+    elif os.path.dirname(real) == real:
+        raise EditError("%s is a whole drive or file system, not a folder: pick a folder inside it" % folder)
     if not os.path.isdir(folder):
         raise EditError("%s is not a folder this program can see (in Docker, use the path inside the container, such as /library/music)" % folder)
     try:
@@ -135,17 +139,19 @@ def check_folder(folder: str) -> str:
     return folder
 
 
-def add_root(path: str, name: str, folder: str) -> Config:
-    name, folder = check_name(name), check_folder(folder)
-    new = add_root_text(read_config_text(path), name, folder)
-    return apply_edit(path, new, lambda c: name in c.roots and c.roots[name].path == folder)
+def add_root(path: str, name: str, folder: str, bases: tuple = ()) -> Config:
+    name, folder = check_name(name), check_folder(folder, bases)
+    with EDIT_LOCK:
+        new = add_root_text(read_config_text(path), name, folder)
+        return apply_edit(path, new, lambda c: name in c.roots and c.roots[name].path == folder)
 
 
 def remove_root(path: str, name: str) -> Config:
-    new = remove_root_text(read_config_text(path), name)
-    try:
-        return apply_edit(path, new, lambda c: name not in c.roots)
-    except EditError as e:
-        if "unknown root" in str(e):
-            raise EditError("some users are limited to this library. Change their folders on the Users tab first (%s)" % e)
-        raise
+    with EDIT_LOCK:
+        new = remove_root_text(read_config_text(path), name)
+        try:
+            return apply_edit(path, new, lambda c: name not in c.roots)
+        except EditError as e:
+            if "unknown root" in str(e):
+                raise EditError("some users are limited to this library. Change their folders on the Users tab first (%s)" % e)
+            raise

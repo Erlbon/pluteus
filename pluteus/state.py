@@ -69,6 +69,10 @@ class StateDB:
         self.persistent = bool(data_dir)
         self.path = os.path.join(data_dir, "state.sqlite3") if data_dir else ":memory:"
         self._lock = threading.Lock()
+        # Counts every write that removes login sessions (logout, expiry, "sign out everywhere", a removed user). The session
+        # look-up cache in sessions.py compares it and drops what it remembers when it has moved, so such a write is in force
+        # at once whichever code path made it.
+        self.session_epoch = 0
         self._db = open_database(self.path, SCHEMA, quick_check=True, log=log)
         if not self.persistent:
             log.warning("no data_dir configured: sessions and reading progress are kept in memory "
@@ -108,15 +112,20 @@ class StateDB:
         now = time.time() if now is None else now
         self._write("UPDATE sessions SET last_seen=?, expires=? WHERE token_hash=?", (now, now + ttl, token_hash))
 
+    def _drop_sessions(self, where: str, args: tuple) -> int:
+        with self._lock, self._db:
+            self.session_epoch += 1
+            return self._db.execute("DELETE FROM sessions WHERE " + where, args).rowcount
+
     def delete_session(self, token_hash: str) -> None:
-        self._write("DELETE FROM sessions WHERE token_hash=?", (token_hash,))
+        self._drop_sessions("token_hash=?", (token_hash,))
 
     def delete_user_sessions(self, username: str) -> int:
-        return self._write("DELETE FROM sessions WHERE username=?", (username,))
+        return self._drop_sessions("username=?", (username,))
 
     def purge_expired(self, now=None) -> int:
         now = time.time() if now is None else now
-        return self._write("DELETE FROM sessions WHERE expires<=?", (now,))
+        return self._drop_sessions("expires<=?", (now,))
 
     # ---- known devices: browsers that have logged in successfully before ----------------------------------------
     def remember_device(self, token_hash: str, username: str, pwfp: str, ip: str, now=None) -> None:
@@ -246,6 +255,24 @@ class StateDB:
     def streams_delete_user(self, username: str) -> int:
         return self._write("DELETE FROM streams WHERE username=?", (username,))
 
+    # Every table that holds rows per user name. A name that leaves the configuration takes all of them with it, so a new
+    # user who is later given the same name starts empty (purge_user). A new per-user table must be added here.
+    USER_TABLES = ("sessions", "devices", "appkeys", "streams", "playqueue", "progress", "dismissed", "prefs", "shelves",
+                   "bookmarks", "kosync")
+
+    def purge_user(self, username: str) -> int:
+        """Delete everything kept for one user name: sessions and known devices, the app key, stored stream logins, the
+        saved play queue, reading progress and dismissed rows, preferences, shelves, bookmarks and KOReader sync. Called
+        when the name disappears from the configuration (reload.py, the admin page). Returns the number of rows removed."""
+        removed = 0
+        with self._lock, self._db:
+            self.session_epoch += 1
+            for table in self.USER_TABLES:
+                removed += self._db.execute("DELETE FROM %s WHERE username=?" % table, (username,)).rowcount
+        if removed:
+            log.info("user %r is gone from the configuration: %d stored row(s) removed", username[:40], removed)
+        return removed
+
     def purge_appkeys(self, existing) -> int:
         """Delete the keys of users that are no longer in the configuration (a new user with the same name must not inherit one)."""
         gone = [name for name in self.appkeys() if name not in existing]
@@ -369,27 +396,73 @@ class StateDB:
     def set_prefs(self, username: str, data: dict) -> None:
         self._write("INSERT OR REPLACE INTO prefs VALUES (?,?)", (username, json.dumps(data, ensure_ascii=False)))
 
+    def update_prefs(self, username: str, fn) -> dict:
+        """Read, change and write one user's preferences as ONE step under the state lock, so two requests at once (two
+        tabs: a theme change and a view switch) cannot drop each other's change. `fn(prefs)` gets the stored dict and
+        returns the dict to store; a function that changes it in place and returns nothing is fine too. It must be quick
+        and must not call back into this object (the lock is held). Returns what was stored."""
+        with self._lock, self._db:
+            row = self._db.execute("SELECT data FROM prefs WHERE username=?", (username,)).fetchone()
+            try:
+                prefs = json.loads(row[0]) if row else {}
+            except ValueError:
+                prefs = {}
+            if not isinstance(prefs, dict):
+                prefs = {}
+            changed = fn(prefs)
+            if changed is None:
+                changed = prefs
+            self._db.execute("INSERT OR REPLACE INTO prefs VALUES (?,?)", (username, json.dumps(changed, ensure_ascii=False)))
+            return changed
+
     # ---- backups ----------------------------------------------------------------
+    @staticmethod
+    def _is_backup(name: str) -> bool:
+        return name.startswith("state-") and name.endswith(".sqlite3")
+
+    def _copy_to(self, target: str) -> None:
+        """Copy the database into the file `target` with SQLite's online backup API, from a connection of its own: the
+        shared connection and its lock are not held, so requests keep reading and writing while the copy runs (WAL)."""
+        src = sqlite3.connect(self.path, timeout=30)
+        try:
+            dst = sqlite3.connect(target)
+            try:
+                src.backup(dst)
+            finally:
+                dst.close()
+        finally:
+            src.close()
+
     def backup(self, directory: str, keep: int = 7, now=None):
-        """Dated copy of the state file made with SQLite's online backup API; older ones pruned."""
+        """Dated copy of the state file made with SQLite's online backup API; older ones pruned. The copy is written under a
+        .tmp name and renamed when it is complete, so a copy that failed midway never counts as a backup."""
         if not self.persistent:
             return None
         os.makedirs(directory, exist_ok=True)
         stamp = time.strftime("%Y%m%d-%H%M%S", time.localtime(time.time() if now is None else now))
         target = os.path.join(directory, "state-%s.sqlite3" % stamp)
-        dst = sqlite3.connect(target)
+        partial = target + ".tmp"
+        for name in os.listdir(directory):                    # left by a server that was killed mid-backup
+            if name.startswith("state-") and name.endswith(".tmp"):
+                self._remove(os.path.join(directory, name))
         try:
-            with self._lock:
-                self._db.backup(dst)
-        finally:
-            dst.close()
-        old = sorted(n for n in os.listdir(directory) if n.startswith("state-") and n.endswith(".sqlite3"))
+            self._copy_to(partial)
+            os.replace(partial, target)
+        except BaseException:
+            self._remove(partial)
+            raise
+        old = sorted(n for n in os.listdir(directory) if self._is_backup(n))
         for name in old[:-keep] if keep > 0 else old:
+            self._remove(os.path.join(directory, name))
+        return target
+
+    @staticmethod
+    def _remove(path: str) -> None:
+        for suffix in ("", "-journal", "-wal", "-shm"):
             try:
-                os.remove(os.path.join(directory, name))
+                os.remove(path + suffix)
             except OSError:
                 pass
-        return target
 
     def housekeeping(self, backup_dir: str, now=None, every: float = 20 * 3600) -> None:
         """Purge expired sessions and, when the newest backup is older than `every` seconds, make a new one."""
@@ -399,7 +472,7 @@ class StateDB:
         if not self.persistent:
             return
         try:
-            names = sorted(n for n in os.listdir(backup_dir) if n.startswith("state-")) if os.path.isdir(backup_dir) else []
+            names = sorted(n for n in os.listdir(backup_dir) if self._is_backup(n)) if os.path.isdir(backup_dir) else []
             newest = os.path.getmtime(os.path.join(backup_dir, names[-1])) if names else 0
         except OSError:
             newest = 0

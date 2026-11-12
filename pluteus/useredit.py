@@ -12,14 +12,20 @@ import os
 import re
 import shutil
 import tempfile
+import threading
 import time
 import tomllib
 
-from .config import ConfigError, Config, parse_config
+from .config import ConfigError, Config, check_config_paths, parse_config
 
 
 class EditError(Exception):
     """The edit was refused; nothing was written."""
+
+
+# Every editor of the config file in this process (users, libraries, the admin text save) holds this from its read to its
+# save, so two admin POSTs at once cannot drop each other's change. Re-entrant: an editor may call another one.
+EDIT_LOCK = threading.RLock()
 
 
 _TABLE = re.compile(r"^\s*(\[\[?)\s*([A-Za-z0-9_.\"' -]+?)\s*\]\]?\s*(#.*)?$")
@@ -160,24 +166,41 @@ def set_user_text(text: str, name: str, *, password_hash=None, roots=UNSET, adul
     return _join(lines[:b["start"] + 1] + body + lines[b["end"]:], nl, trailing)
 
 
+def _is_filler(line: str) -> bool:
+    return not line.strip() or line.lstrip().startswith("#")
+
+
+def _cut_block(lines: list, start: int, end: int) -> None:
+    """Remove the table lines[start:end] in place (used for [[users]] and [[roots]] alike). A table runs to the next header,
+    so its last lines are often the blank line and the comments that belong to the NEXT table: those stay. The blank
+    lines above the removed table go with it."""
+    while end > start + 1 and _is_filler(lines[end - 1]):
+        end -= 1
+    while start > 0 and not lines[start - 1].strip():
+        start -= 1
+    del lines[start:end]
+
+
 def remove_user_text(text: str, name: str) -> str:
     lines, nl, trailing = _parse(text)
     b = _find(lines, name)
-    rest = lines[:b["start"]] + lines[b["end"]:]
-    i = b["start"]
-    if 0 < i <= len(rest) and not rest[i - 1].strip() and (i == len(rest) or not rest[i].strip()):
-        del rest[i - 1]
-    return _join(rest, nl, trailing)
+    _cut_block(lines, b["start"], b["end"])
+    return _join(lines, nl, trailing)
 
 
 # ---- validation and saving -----------------------------------------------------
-def validate(text: str) -> Config:
+def validate(text: str, path: str | None = None) -> Config:
+    """The Config this text would give, or EditError. With `path` (where the text is, or will be, saved) the overlap checks
+    of load_config run too: the config file inside a library or inside uploads_dir is refused before anything is written."""
     try:
         data = tomllib.loads(text)
     except tomllib.TOMLDecodeError as e:
         raise EditError("the edit would produce invalid TOML (%s); nothing written" % e)
     try:
-        return parse_config(data, check_roots=False)
+        cfg = parse_config(data, check_roots=False)
+        if path:
+            check_config_paths(cfg, path)
+        return cfg
     except ConfigError as e:
         raise EditError("%s; nothing written" % e)
 
@@ -194,10 +217,16 @@ def _save(path: str, text: str) -> None:
     # copyfile, not copy2: the backup needs the content only, and copying timestamps fails (EPERM) for a
     # non-root user on some bind mounts (found with Docker Desktop on Windows).
     shutil.copyfile(path, path + ".bak")
+    try:
+        shutil.copymode(path, path + ".bak")    # the backup holds the password hashes too: never more readable than the config
+    except OSError:
+        pass
     fd, tmp = tempfile.mkstemp(dir=os.path.dirname(os.path.abspath(path)), prefix=".config-", suffix=".tmp")
     try:
         with os.fdopen(fd, "w", encoding="utf-8", newline="") as f:
             f.write(text)
+            f.flush()
+            os.fsync(f.fileno())                # on disk before the replace: a power cut must not leave an empty config
         try:
             shutil.copymode(path, tmp)      # mkstemp makes the file owner-only; keep the original's permissions
         except OSError:
@@ -217,40 +246,45 @@ def _save(path: str, text: str) -> None:
 
 
 def apply_edit(path: str, new_text: str, check) -> Config:
-    """Validate new_text, confirm check(cfg) holds (the edit really did what was asked), then save."""
-    cfg = validate(new_text)
-    if not check(cfg):
-        raise EditError("internal check failed: the edit did not produce the expected user; nothing written")
-    _save(path, new_text)
-    return cfg
+    """Validate new_text (the overlap checks included), confirm check(cfg) holds (the edit really did what was asked), then
+    save. The caller holds EDIT_LOCK from its read of the file to this save."""
+    with EDIT_LOCK:
+        cfg = validate(new_text, path)
+        if not check(cfg):
+            raise EditError("internal check failed: the edit did not produce the expected user; nothing written")
+        _save(path, new_text)
+        return cfg
 
 
 def add_user(path: str, name: str, password_hash: str, roots=(), adult: bool = False, upload: bool = True,
              admin: bool = False, notes: bool = False) -> Config:
-    new = add_user_text(read_config_text(path), name, password_hash, tuple(roots), adult, upload, admin, notes)
-    return apply_edit(path, new, lambda c: name in c.users and c.users[name].roots == tuple(roots)
-                      and c.users[name].adult == adult and c.users[name].upload == upload
-                      and c.users[name].admin == admin and c.users[name].notes == notes and c.users[name].password_hash == password_hash)
+    with EDIT_LOCK:
+        new = add_user_text(read_config_text(path), name, password_hash, tuple(roots), adult, upload, admin, notes)
+        return apply_edit(path, new, lambda c: name in c.users and c.users[name].roots == tuple(roots)
+                          and c.users[name].adult == adult and c.users[name].upload == upload
+                          and c.users[name].admin == admin and c.users[name].notes == notes and c.users[name].password_hash == password_hash)
 
 
 def set_user(path: str, name: str, *, password_hash=None, roots=UNSET, adult=None, upload=None, admin=None, notes=None) -> Config:
-    text = read_config_text(path)
-    before = validate(text).users.get(name)
-    if before is None:
-        raise EditError("no user named %r" % name)
-    want_roots = before.roots if roots is UNSET else tuple(roots or ())
-    want_adult = before.adult if adult is None else adult
-    want_upload = before.upload if upload is None else upload
-    want_admin = before.admin if admin is None else admin
-    want_notes = before.notes if notes is None else notes
-    want_hash = before.password_hash if password_hash is None else password_hash
-    new = set_user_text(text, name, password_hash=password_hash, roots=roots, adult=adult, upload=upload, admin=admin, notes=notes)
-    return apply_edit(path, new, lambda c: name in c.users and c.users[name].roots == want_roots
-                      and c.users[name].adult == want_adult and c.users[name].upload == want_upload
-                      and c.users[name].admin == want_admin and c.users[name].notes == want_notes
-                      and c.users[name].password_hash == want_hash)
+    with EDIT_LOCK:
+        text = read_config_text(path)
+        before = validate(text).users.get(name)
+        if before is None:
+            raise EditError("no user named %r" % name)
+        want_roots = before.roots if roots is UNSET else tuple(roots or ())
+        want_adult = before.adult if adult is None else adult
+        want_upload = before.upload if upload is None else upload
+        want_admin = before.admin if admin is None else admin
+        want_notes = before.notes if notes is None else notes
+        want_hash = before.password_hash if password_hash is None else password_hash
+        new = set_user_text(text, name, password_hash=password_hash, roots=roots, adult=adult, upload=upload, admin=admin, notes=notes)
+        return apply_edit(path, new, lambda c: name in c.users and c.users[name].roots == want_roots
+                          and c.users[name].adult == want_adult and c.users[name].upload == want_upload
+                          and c.users[name].admin == want_admin and c.users[name].notes == want_notes
+                          and c.users[name].password_hash == want_hash)
 
 
 def remove_user(path: str, name: str) -> Config:
-    new = remove_user_text(read_config_text(path), name)
-    return apply_edit(path, new, lambda c: name not in c.users)
+    with EDIT_LOCK:
+        new = remove_user_text(read_config_text(path), name)
+        return apply_edit(path, new, lambda c: name not in c.users)
