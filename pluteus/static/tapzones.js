@@ -19,12 +19,15 @@
       if (y < QUIET || y > box.height) return "";
       return y / box.height < BACK ? "back" : "forward";
     }
-    function tap(clientY, target) {
-      if (target && target.closest && target.closest("a, button, input, select, textarea, label, .pl-menu")) return false;
-      if (hadSelection) { hadSelection = false; return false; }
-      if (opts.menuOpen && opts.menuOpen()) { opts.closeMenus(); return true; }
+    function note(what, detail) { if (opts.note) opts.note(what, detail); }     // the reader's tap log (optional): what became of each tap, and why
+    function tap(clientY, target, source) {
+      var from = (source || "page") + " y=" + Math.round(clientY);
+      if (target && target.closest && target.closest("a, button, input, select, textarea, label, .pl-menu")) { note("ignored: a link or control", from); return false; }
+      if (hadSelection) { hadSelection = false; note("ignored: it only cleared a text selection", from); return false; }
+      if (opts.menuOpen && opts.menuOpen()) { opts.closeMenus(); note("closed a menu", from); return true; }
       var where = zone(clientY);
-      if (!where || (opts.enabled && !opts.enabled())) return false;
+      if (!where || (opts.enabled && !opts.enabled())) { note("ignored: " + (where ? "this layout takes no taps" : "outside the page or in the quiet strip"), from); return false; }
+      note("page " + where, from);
       (where === "back" ? opts.back : opts.forward)();
       return true;
     }
@@ -37,7 +40,7 @@
     watch(document);
     opts.stage.addEventListener("click", function (e) {
       if (e.defaultPrevented || e.button) return;
-      if (tap(e.clientY, e.target)) e.preventDefault();
+      if (tap(e.clientY, e.target, "stage")) e.preventDefault();
     });
     return { tap: tap, watch: watch };
   };

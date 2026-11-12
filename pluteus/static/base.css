@@ -785,3 +785,20 @@ html.pl-tv .pl-shell-player .pl-vol-btn { width: 56px; height: 56px; }
 #stream-edit[aria-pressed="true"] { background: color-mix(in srgb, var(--pl-accent) 18%, transparent); border-color: var(--pl-accent); color: var(--pl-accent); }
 @media (max-width: 600px) { .pl-stream-tools input[type=search] { flex: 1 1 100%; } .pl-stream-tools .pl-btn { flex: 1 1 0; }
   .pl-list.pl-streams { grid-template-columns: repeat(3, minmax(0, 1fr)); } .pl-list.pl-streams.pl-streams-tv { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+/* the opt-in tap log of the ebook reader (turnlog.js): a small button over the page, and a panel with the text */
+.pl-field.pl-check span { display: inline; font-size: 14px; color: inherit; }
+.pl-field.pl-check input { width: auto; margin-right: 6px; }
+.pl-turnlog-btn {
+  position: fixed; left: 8px; bottom: 44px; z-index: 30; font: inherit; font-size: 12px; padding: 4px 9px; border-radius: 999px;
+  color: var(--pl-fg); background: var(--pl-card-bg); border: 1px solid var(--pl-line); opacity: .85;
+}
+.pl-turnlog {
+  position: fixed; left: 8px; right: 8px; bottom: 76px; z-index: 31; padding: 8px; border-radius: 10px;
+  color: var(--pl-fg); background: var(--pl-card-bg); border: 1px solid var(--pl-line);
+}
+.pl-turnlog[hidden] { display: none; }
+.pl-turnlog-head { display: flex; gap: 10px; align-items: baseline; margin-bottom: 6px; font-size: 13px; }
+.pl-turnlog-note { color: var(--pl-dim); font-size: 12px; }
+.pl-turnlog-text { box-sizing: border-box; width: 100%; font: 11px/1.35 Consolas, "Courier New", monospace; color: inherit; background: transparent; }
+.pl-turnlog-row { display: flex; gap: 8px; margin-top: 6px; }

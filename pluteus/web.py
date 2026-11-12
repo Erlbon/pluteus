@@ -498,7 +498,9 @@ def epub_reader_page(ctx: Ctx, title: str, subtitle: str, *, book_url: str, prog
         "<option value='scrolled-doc'>Scrolling</option></select></label>"
         "<label class='pl-field'><span>Page width</span><select id='spread'>"
         "<option value='single'>One page, centered</option><option value='double'>Two pages (wide screens)</option>"
-        "</select></label></aside>"
+        "</select></label>"
+        "<label class='pl-field pl-check' title='For a bug report: records taps and page turns in this browser only, and shows a Log button'>"
+        "<input type='checkbox' id='turnlog'> <span>Tap log (for a bug report)</span></label></aside>"
         "<div class='pl-toast' id='status'>Loading the book&hellip;</div></div>"
         "<footer class='pl-reader-foot'>%s<div class='pl-progress'><i id='bar'></i></div>"
         "<span id='pct'>&ndash;</span>%s</footer></div>"
@@ -511,7 +513,7 @@ def epub_reader_page(ctx: Ctx, title: str, subtitle: str, *, book_url: str, prog
            _icon_button("prev", "prev", "Previous page"), _icon_button("next", "next", "Next page")))
     return layout(title, body, ctx, bar=False, body_class="pl-reader-page",
                   scripts=(u.static("vendor/jszip.min.js"), u.static("vendor/epub.min.js"), u.static("tapzones.js"),
-                           u.static("reader-epub.js"), u.static("menus-back.js")))
+                           u.static("turnlog.js"), u.static("reader-epub.js"), u.static("menus-back.js")))
 
 
 def comic_reader_page(ctx: Ctx, title: str, *, pages_url: str, count: int, progress_url: str, back_url: str,

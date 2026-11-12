@@ -22,6 +22,9 @@
   }
 
   var cfg = root.dataset;
+  // the opt-in tap and turn log (turnlog.js; off unless switched on under Settings): every call below does nothing while it is off
+  var L = window.plTurnLog || { on: function () { return false; }, set: function () {}, add: function () {}, watch: function () {},
+                                env: function () {}, state: function () {}, since: function () { return {}; } };
   var SETTINGS_KEY = "pluteus-reader";
   // spread: "single" = one centered page (the default; pleasant to read and right for books with long tables of contents),
   //         "double" = two pages side by side on a wide screen.
@@ -127,7 +130,20 @@
     $("pct").textContent = pct == null ? "–" : Math.round(pct * 100) + "%";
   }
 
+  var lastLoc = {};
+  function where() {                                      // for the tap log: the section and page the reader is on, and how the page strip is scrolled
+    var out = {};
+    try { out = { sec: lastLoc.sec, page: lastLoc.page, scroll: scrollFacts() }; } catch (e) { /* the log only */ }
+    return out;
+  }
+  function scrollFacts() {                                // the numbers behind "is there another page here?": fractions show up on some screens
+    var m = rendition.manager, c = m && m.container;
+    return c ? c.scrollLeft + "/" + c.scrollWidth + " w=" + c.offsetWidth + " step=" + (m.layout && m.layout.delta) : "-";
+  }
+  L.state(where);
   rendition.on("relocated", function (loc) {
+    lastLoc = { sec: loc.start.index, page: loc.start.displayed.page + "/" + loc.start.displayed.total };
+    L.add("relocated", { sec: lastLoc.sec, page: lastLoc.page, scroll: scrollFacts() });
     if (userMoved) maySave = true;                       // a place the reader went to themselves: theirs to save
     lastCfi = loc.start.cfi;
     if (book.locations.length()) lastPercent = book.locations.percentageFromCfi(lastCfi);
@@ -206,13 +222,21 @@
   var turning = false, turnGuard = null;
   function turn(forward) {
     closeMenus();
-    if (turning) return;
+    if (turning) { L.add("turn DROPPED (one is running)", Object.assign({ fwd: forward ? 1 : 0 }, L.since())); return; }
     turning = true;
     userMoved = true;
+    var began = performance.now();
+    L.add("turn", Object.assign({ fwd: forward ? 1 : 0, rtl: rtl ? 1 : 0, at: lastLoc.sec + " " + lastLoc.page, scroll: scrollFacts() }, L.since()));
     root.classList.add("pl-turning");                    // visible from outside (the browser tests wait for a turn to end)
-    function done() { turning = false; clearTimeout(turnGuard); root.classList.remove("pl-turning"); }
-    turnGuard = setTimeout(done, 4000);                  // never stuck, should epub.js not answer
-    Promise.resolve(forward !== rtl ? rendition.next() : rendition.prev()).then(done, done);
+    var ended = false;
+    function done(how) {
+      if (ended) return;
+      ended = true;
+      L.add("turn done", { ms: Math.round(performance.now() - began), by: typeof how === "string" ? how : "epub.js" });
+      turning = false; clearTimeout(turnGuard); root.classList.remove("pl-turning");
+    }
+    turnGuard = setTimeout(function () { done("TIMEOUT 4 s"); }, 4000);                  // never stuck, should epub.js not answer
+    Promise.resolve(forward !== rtl ? rendition.next() : rendition.prev()).then(function () { done(); }, function () { done("error"); });
   }
   function next() { turn(true); }
   function prev() { turn(false); }
@@ -223,13 +247,14 @@
   var taps = window.plTapZones({
     stage: document.querySelector(".pl-reader-stage"), back: prev, forward: next,
     enabled: function () { return settings.flow === "paginated"; },
-    menuOpen: function () { return !$("toc").hidden || !$("settings").hidden; }, closeMenus: closeMenus
+    menuOpen: function () { return !$("toc").hidden || !$("settings").hidden; }, closeMenus: closeMenus,
+    note: function (what, detail) { L.add("tap decided", what + (detail ? "  " + detail : "")); }
   });
-  rendition.hooks.content.register(function (contents) { taps.watch(contents.document); });
+  rendition.hooks.content.register(function (contents) { taps.watch(contents.document); L.watch(contents.document, "book"); });
   rendition.on("click", function (e) {
     var frame = e.view && e.view.frameElement;
-    if (!frame || e.defaultPrevented || e.button) return;
-    taps.tap(frame.getBoundingClientRect().top + e.clientY, e.target);
+    if (!frame || e.defaultPrevented || e.button) { L.add("click from the book's page not used", { prevented: e.defaultPrevented ? 1 : 0, button: e.button }); return; }
+    taps.tap(frame.getBoundingClientRect().top + e.clientY, e.target, "book frame");
   });
 
   function onKey(e) {
@@ -278,7 +303,8 @@
   });
 
   // a sideways swipe on the book's page (a frame of its own, so measured in screen pixels); a pinch is no swipe (tapzones.js)
-  var swipe = window.plSwipe({ forward: next, back: prev, min: 50, screen: true });
+  var swipe = window.plSwipe({ forward: function () { L.add("swipe", "forward"); next(); }, back: function () { L.add("swipe", "back"); prev(); },
+                               min: 50, screen: true });
   rendition.on("touchstart", swipe.start);
   rendition.on("touchend", swipe.end);
 
@@ -294,6 +320,7 @@
     $("size-value").textContent = settings.size + "%";
     $("font").value = settings.font; $("line").value = settings.line; $("flow").value = settings.flow;
     $("spread").value = settings.spread;
+    $("turnlog").checked = L.on();
   }
   function changeSize(delta) {
     settings.size = Math.min(220, Math.max(60, settings.size + delta));
@@ -301,6 +328,11 @@
   }
   $("size-down").addEventListener("click", function () { changeSize(-10); });
   $("size-up").addEventListener("click", function () { changeSize(10); });
+  $("turnlog").addEventListener("change", function () {            // the opt-in tap log (turnlog.js): a bug report tool, off by default
+    L.set(this.checked);
+    L.env({ flow: settings.flow, spread: settings.spread, size: settings.size });
+  });
+  L.env({ flow: settings.flow, spread: settings.spread, size: settings.size });
   $("font").addEventListener("change", function () { settings.font = this.value; saveSettings(); reapplyAll(); });
   $("line").addEventListener("change", function () { settings.line = this.value; saveSettings(); reapplyAll(); });
   $("flow").addEventListener("change", function () {
