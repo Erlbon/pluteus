@@ -187,4 +187,12 @@ def run(folders: list, *, private: bool, upload: str | None, port: int, host: st
         print("Error:", err, file=sys.stderr)
         return 2
     finally:
+        close_databases(data_dir)
         shutil.rmtree(data_dir, ignore_errors=True)
+
+
+def close_databases(data_dir: str) -> int:
+    """Close the databases the share opened in its temp data folder (the state and the metadata cache). Windows does not
+    remove a folder that holds an open file, so without this the folder stayed behind after every share."""
+    from .dbutil import close_under
+    return close_under(data_dir)

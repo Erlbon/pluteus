@@ -166,7 +166,7 @@ def test_windows_line_endings_are_preserved(tmp_path):
 
 
 def test_the_original_file_survives_when_an_edit_is_refused(conf, monkeypatch):
-    monkeypatch.setattr(useredit, "validate", lambda t: (_ for _ in ()).throw(useredit.EditError("boom")))
+    monkeypatch.setattr(useredit, "validate", lambda t, path=None: (_ for _ in ()).throw(useredit.EditError("boom")))
     with pytest.raises(useredit.EditError):
         useredit.add_user(conf, "dave", "scrypt$1$2$3$4$5")
     assert text(conf) == SAMPLE

@@ -60,16 +60,18 @@ class AdminModel:
     def libraries(self) -> list:
         return list(self.config().roots.values())
 
-    def add_library(self, name: str, folder: str) -> Config:
-        return libedit.add_root(self.path, name, folder)
+    def add_library(self, name: str, folder: str, bases: tuple = ()) -> Config:
+        """bases: the server's library_bases; a typed folder must then be inside one of them (libedit.check_folder)."""
+        return libedit.add_root(self.path, name, folder, tuple(bases))
 
     def set_subsonic(self, shown, uploads: bool) -> Config:
         return libedit.set_subsonic(self.path, shown, uploads)
 
     def remove_library(self, name: str) -> Config:
-        if len(self.config().roots) <= 1:
-            raise EditError("the last library cannot be removed (there must be at least one)")
-        return libedit.remove_root(self.path, name)
+        with useredit.EDIT_LOCK:                  # the count and the removal are one step
+            if len(self.config().roots) <= 1:
+                raise EditError("the last library cannot be removed (there must be at least one)")
+            return libedit.remove_root(self.path, name)
 
     # ---- users --------------------------------------------------------------------------------------------------
     @staticmethod
@@ -79,26 +81,28 @@ class AdminModel:
         if len(password) < MIN_PASSWORD:
             raise EditError("the password must be at least %d characters" % MIN_PASSWORD)
 
+    # Each change returns the Config as saved, so a running server can put the new users in force at once (adminapp.py).
     def add_user(self, name: str, password: str, again: str, roots=(), adult: bool = False, upload: bool = True,
-                 admin: bool = False, notes: bool = False) -> None:
+                 admin: bool = False, notes: bool = False) -> Config:
         name = name.strip()
         if not name:
             raise EditError("the user needs a name")
         self._check_password(password, again)
-        useredit.add_user(self.path, name, hash_password(password), tuple(roots), adult, upload, admin, notes)
+        return useredit.add_user(self.path, name, hash_password(password), tuple(roots), adult, upload, admin, notes)
 
-    def change_password(self, name: str, password: str, again: str) -> None:
+    def change_password(self, name: str, password: str, again: str) -> Config:
         self._check_password(password, again)
-        useredit.set_user(self.path, name, password_hash=hash_password(password))
+        return useredit.set_user(self.path, name, password_hash=hash_password(password))
 
-    def set_access(self, name: str, roots=(), adult: bool = False, upload: bool = True, admin: bool = False, notes=None) -> None:
+    def set_access(self, name: str, roots=(), adult: bool = False, upload: bool = True, admin: bool = False, notes=None) -> Config:
         """roots: root names, or ("*",) for every root; empty = none. notes: None leaves the right as it is."""
-        useredit.set_user(self.path, name, roots=tuple(roots), adult=adult, upload=upload, admin=admin, notes=notes)
+        return useredit.set_user(self.path, name, roots=tuple(roots), adult=adult, upload=upload, admin=admin, notes=notes)
 
-    def remove_user(self, name: str) -> None:
-        if len(self.config().users) <= 1:
-            raise EditError("the last user cannot be removed (nobody could log in afterwards)")
-        useredit.remove_user(self.path, name)
+    def remove_user(self, name: str) -> Config:
+        with useredit.EDIT_LOCK:                  # the count and the removal are one step
+            if len(self.config().users) <= 1:
+                raise EditError("the last user cannot be removed (nobody could log in afterwards)")
+            return useredit.remove_user(self.path, name)
 
     # ---- the file as text -----------------------------------------------------------------------------------------
     def read_text(self) -> str:
@@ -113,12 +117,15 @@ class AdminModel:
             return True
 
     def check_text(self, text: str) -> Config:
-        """Raises EditError with a readable message when the text would not be a valid config."""
-        return useredit.validate(text)
+        """Raises EditError with a readable message when the text would not be a valid config (the overlap checks of
+        load_config included: the config file inside a library or inside uploads_dir)."""
+        return useredit.validate(text, self.path)
 
-    def save_text(self, text: str) -> None:
+    def save_text(self, text: str) -> Config:
         """Validate, keep the old file as .bak, replace the file. Nothing is written when validation fails."""
         text = text.replace("\r\n", "\n") if "\r\n" not in self.loaded_text else text.replace("\r\n", "\n").replace("\n", "\r\n")
-        useredit.validate(text)
-        useredit._save(self.path, text)
+        with useredit.EDIT_LOCK:
+            cfg = useredit.validate(text, self.path)
+            useredit._save(self.path, text)
         self.loaded_text = text
+        return cfg

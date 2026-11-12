@@ -148,6 +148,19 @@ def _is_inside(path: str, root: str) -> bool:
     return p == r or p.startswith(r.rstrip(os.sep) + os.sep)
 
 
+def _flag(table: dict, key: str, default: bool, where: str = "") -> bool:
+    """A true/false setting. Only a real TOML boolean counts: `admin = "false"` (a quoted word) used to mean true."""
+    value = table.get(key, default)
+    if not isinstance(value, bool):
+        raise ConfigError("%s%s must be true or false (without quotes), got %r" % (where + ": " if where else "", key, value))
+    return value
+
+
+def upload_name_ok(name: str) -> bool:
+    """May this user name be a folder name below uploads_dir (on Windows too)?"""
+    return bool(_FOLDER_NAME.match(name)) and name.split(".")[0].lower() not in _DEVICE_NAMES
+
+
 def _in_range(table: dict, key: str, default: int, low: int, high: int) -> int:
     try:
         value = int(table.get(key, default))
@@ -190,7 +203,7 @@ def _check_uploads(uploads_dir: str, roots: dict, users: dict, opts: dict) -> No
     for name, user in users.items():
         if not user.upload:
             continue
-        if not _FOLDER_NAME.match(name) or name.split(".")[0].lower() in _DEVICE_NAMES:
+        if not upload_name_ok(name):
             raise ConfigError("user name %r cannot be used with uploads_dir: it becomes a folder name, so use letters, "
                               "digits, space, - _ . only (no leading/trailing dot or space, no CON/NUL/COM1...). "
                               "Rename the user, or set upload = false for them" % name)
@@ -232,12 +245,11 @@ def parse_config(data: dict, check_roots: bool = True) -> Config:
         notes = str(r.get("notes", ""))
         if notes not in ("", "edit"):
             raise ConfigError("root %r: notes must be \"edit\" or left out" % name)
-        if not isinstance(r.get("subsonic", True), bool):
-            raise ConfigError("root %r: subsonic must be true or false" % name)
+        subsonic = _flag(r, "subsonic", True, "root %r" % name)
         level = r.get("artist_level", 1)
         if not isinstance(level, int) or isinstance(level, bool) or not 1 <= level <= MAX_ARTIST_LEVEL:
             raise ConfigError("root %r: artist_level must be a whole number from 1 to %d" % (name, MAX_ARTIST_LEVEL))
-        roots[name] = Root(name, path, notes, r.get("subsonic", True), level)
+        roots[name] = Root(name, path, notes, subsonic, level)
     if not roots:
         raise ConfigError("no [[roots]] defined")
 
@@ -257,8 +269,9 @@ def parse_config(data: dict, check_roots: bool = True) -> Config:
         for ar in allowed:
             if ar != ALL_ROOTS and ar not in roots:
                 raise ConfigError("user %r refers to unknown root %r" % (name, ar))
-        users[name] = User(name, u["password_hash"], allowed, bool(u.get("adult", False)), bool(u.get("upload", True)),
-                           bool(u.get("admin", False)), False, bool(u.get("notes", False)))
+        where = "user %r" % name
+        users[name] = User(name, u["password_hash"], allowed, _flag(u, "adult", False, where), _flag(u, "upload", True, where),
+                           _flag(u, "admin", False, where), False, _flag(u, "notes", False, where))
     if not users:
         raise ConfigError("no [[users]] defined")
 
@@ -299,7 +312,7 @@ def parse_config(data: dict, check_roots: bool = True) -> Config:
         re.compile(strip)
     except re.error as e:
         raise ConfigError("display_strip is not a valid regex: %s" % e)
-    if bool(server.get("show_all_files", True)):
+    if _flag(server, "show_all_files", True):
         # Every file under a root is listed and downloadable in this mode, so pluteus's own files (the sessions in
         # state.sqlite3!) must never sit inside one.
         for label in ("data_dir", "cache_dir", "themes_dir"):
@@ -331,18 +344,18 @@ def parse_config(data: dict, check_roots: bool = True) -> Config:
     return Config(
         roots=roots, users=users,
         data_dir=str(opts.get("data_dir", "")), themes_dir=str(opts.get("themes_dir", "")), theme=theme,
-        session_days=session_days, cookie_secure=secure, trust_proxy=bool(server.get("trust_proxy", False)),
+        session_days=session_days, cookie_secure=secure, trust_proxy=_flag(server, "trust_proxy", False),
         allowed_hosts=tuple(str(h).strip().lower() for h in server.get("allowed_hosts", ()) if str(h).strip()),
-        opds_pse=bool(server.get("opds_pse", True)),
-        show_all_files=bool(server.get("show_all_files", True)),
+        opds_pse=_flag(server, "opds_pse", True),
+        show_all_files=_flag(server, "show_all_files", True),
         text_view_kb=max(16, int(server.get("text_view_kb", 1024))),
         admin_port=admin_port, admin_host=str(server.get("admin_host", "127.0.0.1")),
         site_port=_in_range(server, "site_port", 0, 0, 65535),
-        cast=bool(server.get("cast", False)), cast_devices=tuple(cast_devices), cast_media_base=cast_media_base,
-        relay=bool(server.get("relay", False)), debug=bool(server.get("debug", False)), relay_streams_user=_in_range(server, "relay_streams_user", 2, 1, 50),
+        cast=_flag(server, "cast", False), cast_devices=tuple(cast_devices), cast_media_base=cast_media_base,
+        relay=_flag(server, "relay", False), debug=_flag(server, "debug", False), relay_streams_user=_in_range(server, "relay_streams_user", 2, 1, 50),
         relay_streams_total=_in_range(server, "relay_streams_total", 6, 1, 500), relay_key=str(server.get("relay_key", "")), relay_allow=_host_ports(server.get("relay_allow", ())),
         library_bases=tuple(str(b) for b in server.get("library_bases", ())), admin_url=_admin_url(server.get("admin_url", "")), join_token=str(server.get("join_token", "")), join_user=str(server.get("join_user", "")),
-        share_target=bool(server.get("share_target", True)), subsonic=bool(server.get("subsonic", False)), subsonic_uploads=bool(server.get("subsonic_uploads", True)), webdav=bool(server.get("webdav", False)), kosync=bool(server.get("kosync", False)), thumbnails=bool(server.get("thumbnails", False)), update_check=bool(server.get("update_check", False)), update_repo=_repo_name(server.get("update_repo", "Erlbon/pluteus")),
+        share_target=_flag(server, "share_target", True), subsonic=_flag(server, "subsonic", False), subsonic_uploads=_flag(server, "subsonic_uploads", True), webdav=_flag(server, "webdav", False), kosync=_flag(server, "kosync", False), thumbnails=_flag(server, "thumbnails", False), update_check=_flag(server, "update_check", False), update_repo=_repo_name(server.get("update_repo", "Erlbon/pluteus")),
         host=str(server.get("host", "127.0.0.1")), port=_in_range(server, "port", 8080, 1, 65535),
         page_size=_in_range(server, "page_size", 50, 1, 1000), base_path=base_path,
         display_strip=strip, extensions=extensions, excludes=excludes,
@@ -352,7 +365,7 @@ def parse_config(data: dict, check_roots: bool = True) -> Config:
         realm=str(server.get("realm", "pluteus")),
         auth_cache_seconds=int(server.get("auth_cache_seconds", 300)),
         anonymous_user=anonymous_user,
-        metadata=bool(opts.get("metadata", True)),
+        metadata=_flag(opts, "metadata", True),
         cache_dir=str(opts.get("cache_dir", "")),
         uploads_dir=uploads_dir,
         upload_max_mb=_in_range(opts, "upload_max_mb", 4096, 1, 10_000_000),
@@ -403,11 +416,20 @@ def load_config(path: str, check_roots: bool = True) -> Config:
     except tomllib.TOMLDecodeError as e:
         raise ConfigError("%s is not valid TOML: %s%s" % (path, e, _toml_hint(str(e), raw)))
     cfg = parse_config(data, check_roots)
-    if cfg.uploads_dir and _is_inside(path, cfg.uploads_dir):
-        raise ConfigError("the config file %r is inside uploads_dir: users could list it (it holds password hashes)" % path)
-    if cfg.show_all_files:
-        for r in cfg.roots.values():
-            if _is_inside(path, r.path):
-                raise ConfigError("the config file %r is inside root %r: with show_all_files it would be listed and "
-                                  "downloadable (it holds password hashes). Move it out of the library" % (path, r.name))
+    check_config_paths(cfg, path)
     return cfg
+
+
+def check_config_paths(cfg: Config, path: str) -> None:
+    """The config file (and the config.toml.bak the editors keep beside it) must not sit inside anything pluteus serves:
+    not in uploads_dir and not in a library, whether or not show_all_files is on. Both files hold the password hashes.
+    Called by load_config and by every editor before it writes (useredit.validate), so the admin page cannot save a
+    configuration that the next start would refuse."""
+    for own in (path, path + ".bak"):
+        if cfg.uploads_dir and _is_inside(own, cfg.uploads_dir):
+            raise ConfigError("the config file %r is inside uploads_dir: users could list it (it holds password hashes)" % path)
+        for r in cfg.roots.values():
+            if _is_inside(own, r.path):
+                raise ConfigError("the config file %r is inside root %r: it would be listed and downloadable there "
+                                  "(it holds password hashes). Move it out of the library, or pick another folder "
+                                  "for the library" % (path, r.name))

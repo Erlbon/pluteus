@@ -6,7 +6,9 @@ to. It is stored in the state database as an opaque encrypted blob, per user; on
 The encryption uses nothing but the Python standard library, built from standard parts: keys are derived from the master key with HMAC-SHA256
 (one for encryption, one for authentication), the data is encrypted by XOR with an HMAC-SHA256 keystream in counter mode (a fresh random
 nonce for every entry), and an HMAC-SHA256 tag over nonce and ciphertext is checked, in constant time, before anything is decrypted
-(encrypt-then-MAC). A wrong key or a changed blob is refused, never decrypted to garbage.
+(encrypt-then-MAC). A wrong key or a changed blob is refused, never decrypted to garbage. The tag also covers the owner (the user name) and
+the entry's name, so a blob copied into another user's row of the database does not open there; entries sealed before that was so are
+still accepted and are sealed again the first time they are opened (open_stored) or saved.
 
 The master key is `relay_key` from the config when there is one; otherwise a random key kept in `relay.key` in the data folder (made on first
 use, readable by the server only where the system allows); with no data folder (state kept in memory) a key that lives as long as the
@@ -44,6 +46,7 @@ class Vault:
         if len(master) < 16:
             raise VaultError("the key is too short")
         self._enc, self._mac = _derive(master, b"encrypt"), _derive(master, b"authenticate")
+        self._mac_bound = _derive(master, b"authenticate-owner-and-name")    # its own key: a tag of one form can never pass as the other
         self.key_id = _derive(master, b"fingerprint").hex()[:12]            # not the key: only to tell one key from another
 
     def _keystream(self, nonce: bytes, length: int) -> bytes:
@@ -53,23 +56,60 @@ class Vault:
             counter += 1
         return bytes(out[:length])
 
-    def seal(self, data: dict) -> bytes:
+    def _tag(self, nonce: bytes, cipher: bytes, owner, name) -> bytes:
+        """The tag over nonce and ciphertext. With an owner (the user) and the entry's name it also covers both, each with
+        its length in front so ("ab", "c") and ("a", "bc") differ: a blob copied to another user's row, or to another name,
+        no longer opens. Without them it is the tag every entry had before owner and name were covered (the "old form")."""
+        if owner is None:
+            return hmac.new(self._mac, nonce + cipher, hashlib.sha256).digest()
+        who, what = str(owner).encode("utf-8"), str(name or "").encode("utf-8")
+        bound = len(who).to_bytes(4, "big") + who + len(what).to_bytes(4, "big") + what
+        return hmac.new(self._mac_bound, bound + nonce + cipher, hashlib.sha256).digest()
+
+    def seal(self, data: dict, owner=None, name=None) -> bytes:
+        """Encrypt an entry. Give the owner (user name) and the entry's name: the result then opens only for that pair."""
         plain = json.dumps(data, separators=(",", ":"), sort_keys=True).encode("utf-8")
         nonce = secrets.token_bytes(NONCE)
         cipher = bytes(a ^ b for a, b in zip(plain, self._keystream(nonce, len(plain))))
-        return nonce + cipher + hmac.new(self._mac, nonce + cipher, hashlib.sha256).digest()
+        return nonce + cipher + self._tag(nonce, cipher, owner, name)
 
-    def open(self, blob: bytes) -> dict:
+    def is_bound(self, blob: bytes, owner, name) -> bool:
+        """True when this blob was sealed for exactly this owner and name (the new form). False for an entry of the old
+        form, which open() still accepts: seal it again with owner and name and store that."""
+        if len(blob) < NONCE + TAG or owner is None:
+            return False
+        nonce, cipher, tag = blob[:NONCE], blob[NONCE:-TAG], blob[-TAG:]
+        return hmac.compare_digest(tag, self._tag(nonce, cipher, owner, name))
+
+    def open(self, blob: bytes, owner=None, name=None) -> dict:
+        """Decrypt an entry. With owner and name: a blob sealed for that pair, or one of the old form (sealed before the tag
+        covered them; stored entries keep working and are bound by their next write, see open_stored). A blob sealed for
+        another owner or name is refused. Without owner and name only the old form opens."""
         if len(blob) < NONCE + TAG:
             raise VaultError("the entry is damaged")
         nonce, cipher, tag = blob[:NONCE], blob[NONCE:-TAG], blob[-TAG:]
-        if not hmac.compare_digest(tag, hmac.new(self._mac, nonce + cipher, hashlib.sha256).digest()):
+        bound = owner is not None and hmac.compare_digest(tag, self._tag(nonce, cipher, owner, name))
+        if not bound and not hmac.compare_digest(tag, self._tag(nonce, cipher, None, None)):
             raise VaultError("the entry was stored with another key, or was changed")
         plain = bytes(a ^ b for a, b in zip(cipher, self._keystream(nonce, len(cipher))))
         try:
             return json.loads(plain.decode("utf-8"))
         except (ValueError, UnicodeDecodeError):
             raise VaultError("the entry is damaged")
+
+
+def open_stored(vlt: Vault, state, owner: str, name: str):
+    """The stored entry `name` of user `owner`, opened, or None when there is none (VaultError when it cannot be opened).
+    An entry still in the old form is sealed again for its owner and name and written back, so after its first use it can
+    no longer be moved to another user's row. `state` is the StateDB (stream_get / stream_put)."""
+    found = state.stream_get(owner, name)
+    if found is None:
+        return None
+    blob = found[0]
+    entry = vlt.open(blob, owner, name)
+    if not vlt.is_bound(blob, owner, name):
+        state.stream_put(owner, name, vlt.seal(entry, owner, name), vlt.key_id)
+    return entry
 
 
 def load_master(configured: str, data_dir: str) -> tuple:
