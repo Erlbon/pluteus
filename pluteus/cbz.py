@@ -9,6 +9,7 @@ input; the files in the upload folder are only ever read when they are ZIPs (see
 """
 from __future__ import annotations
 
+import lzma
 import os
 import shutil
 import subprocess
@@ -16,8 +17,10 @@ import tarfile
 import tempfile
 import threading
 import zipfile
+import zlib
 
 from .fs import natural_key
+from .ziputil import open_zip
 
 IMAGE_TYPES = {
     ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png", ".webp": "image/webp",
@@ -30,7 +33,7 @@ MAX_LIST_BYTES = 8 * 1024 * 1024
 TOOL_SECONDS = 30
 _SKIP_NAMES = {"thumbs.db", "desktop.ini"}
 _ERRORS = (OSError, zipfile.BadZipFile, zipfile.LargeZipFile, NotImplementedError, RuntimeError, ValueError, KeyError,
-           tarfile.TarError, EOFError)
+           tarfile.TarError, EOFError, zlib.error, lzma.LZMAError)
 
 
 class CbzError(Exception):
@@ -161,7 +164,7 @@ def list_pages(path: str, external: bool = True) -> list:
     kind = _kind(path, external)
     try:
         if kind == "zip":
-            with zipfile.ZipFile(path) as zf:
+            with open_zip(path) as zf:                             # refuses an absurd file list before it is read (ziputil)
                 names = [i.filename for i in zf.infolist() if _is_page(i)]
         elif kind == "tar":
             with tarfile.open(path) as tf:
@@ -188,7 +191,7 @@ def read_page(path: str, name: str, limit: int = MAX_PAGE_BYTES, external: bool 
     too_big = CbzError("page is larger than %d MB" % (limit // (1024 * 1024)))
     try:
         if kind == "zip":
-            with zipfile.ZipFile(path) as zf:
+            with open_zip(path) as zf:
                 info = zf.getinfo(name)
                 if info.file_size > limit:
                     raise too_big

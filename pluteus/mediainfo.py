@@ -7,6 +7,7 @@ Without tinytag installed every function returns "nothing found" and the player 
 """
 from __future__ import annotations
 
+import math
 import os
 import re
 import struct
@@ -113,36 +114,45 @@ def _stamp(directory: str):
         return None
 
 
-def folder_cover(directory: str) -> str:
-    """The path of cover.jpg / folder.jpg / front.jpg ... in `directory` ('' if none).
+# lower-case file name -> its place in the order of preference (cover.jpg, cover.jpeg ... albumart.webp)
+_COVER_RANK = {name + ext: rank for rank, (name, ext) in enumerate((n, e) for n in FOLDER_COVER_NAMES for e in FOLDER_COVER_EXT)}
+_FOLDER_SECONDS = 600
 
-    Remembered per folder, but only while the folder itself has not changed: adding or removing a file changes the folder's
-    modified time, so a folder.jpg you put there is seen on the next refresh, not minutes later. (Some file systems keep the
-    time only to the second, so "nothing found" is also looked at again after ten seconds, and a hit after ten minutes.)"""
+
+def folder_cover(directory: str) -> str:
+    """The path of cover.jpg / folder.jpg / front.jpg ... in `directory` ('' if none), in any letter case (Cover.JPG, FOLDER.jpg).
+
+    One listing of the folder answers it (not one probe per possible name: that was 40 round trips on a network share for a
+    folder without a picture). Remembered per folder for ten minutes, a miss as long as a hit, but only while the folder itself
+    has not changed: adding or removing a file changes the folder's modified time, so a folder.jpg you put there is seen on the
+    next refresh, not minutes later. (Some file systems keep that time only to the second, so nothing is remembered about a
+    folder that changed in the last two seconds.)"""
     now = time.monotonic()
     stamp = _stamp(directory)
     with _folder_lock:
         hit = _folder_cache.get(directory)
         if hit and hit[1] > now and hit[2] == stamp:
             return hit[0]
-    found = ""
-    for name in FOLDER_COVER_NAMES:
-        for variant in (name, name.capitalize()):
-            for ext in FOLDER_COVER_EXT:
-                candidate = os.path.join(directory, variant + ext)
-                if os.path.isfile(candidate):
-                    found = candidate
-                    break
-            if found:
-                break
-        if found:
-            break
+    found, best = "", len(_COVER_RANK)
+    try:
+        with os.scandir(directory) as it:
+            for entry in it:
+                rank = _COVER_RANK.get(entry.name.lower())
+                if rank is None or rank >= best:
+                    continue
+                try:
+                    if entry.is_file():
+                        found, best = entry.path, rank
+                except OSError:
+                    continue
+    except OSError:
+        return ""                         # the folder cannot be listed right now: no picture, and nothing remembered
     if stamp is None or time.time_ns() - stamp < 2_000_000_000:
         return found                      # changed in the last two seconds: the time stamp is too coarse to trust yet, look again next time
     with _folder_lock:
         if len(_folder_cache) > 2000:
             _folder_cache.clear()
-        _folder_cache[directory] = (found, now + (600 if found else 10), stamp)
+        _folder_cache[directory] = (found, now + _FOLDER_SECONDS, stamp)
     return found
 
 
@@ -192,7 +202,10 @@ _INFO, _SCALE, _DURATION, _TITLE, _CLUSTER = 0x1549A966, 0x2AD7B1, 0x4489, 0x7BA
 _TAGS, _TAG, _TARGETS, _TARGET_TYPE, _SIMPLE, _TAG_NAME, _TAG_STRING = 0x1254C367, 0x7373, 0x63C0, 0x68CA, 0x67C8, 0x45A3, 0x4487
 _TARGET_UIDS = {0x63C5, 0x63C9, 0x63C4, 0x63C6}                 # a tag aimed at a track, edition, chapter or attachment
 _ATTACHMENTS, _ATTACHED, _FILE_NAME, _FILE_DATA = 0x1941A469, 0x61A7, 0x466E, 0x465C
-_MAX_INFO, _MAX_TAGS, _MAX_WALK = 64 * 1024, 4 * 1024 * 1024, 5000
+_MAX_INFO, _MAX_TAGS = 64 * 1024, 4 * 1024 * 1024
+_MAX_WALK = 300                       # top-level elements looked at in a file without an index (each one is a seek: a round trip on a share)
+_MAX_ATTACHMENTS = 200                # attachments looked at for a cover
+_MAX_ATTACHED_PARTS = 64              # elements looked at inside one attachment (a real one has four or five)
 
 
 def _ebml_head(buf: bytes, pos: int):
@@ -329,14 +342,16 @@ def read_matroska(path: str, cover: bool = False) -> dict:
                 buf = f.read(min(e - s, _MAX_INFO))
                 scale, length = 1_000_000, None
                 for kind, s2, e2 in _ebml_children(buf, 0, len(buf)):
-                    if kind == _SCALE:
+                    if kind == _SCALE and e2 - s2 <= 8:                 # an unsigned integer of at most eight bytes; anything longer is not one
                         scale = int.from_bytes(buf[s2:e2], "big") or scale
                     elif kind == _DURATION and e2 - s2 in (4, 8):
                         length = struct.unpack(">f" if e2 - s2 == 4 else ">d", buf[s2:e2])[0]
                     elif kind == _TITLE:
                         out["title"] = _ebml_text(buf[s2:e2])
-                if length and length > 0:
-                    out["duration"] = round(length * scale / 1e9, 3)
+                if length and math.isfinite(length) and length > 0:
+                    seconds = length * scale / 1e9
+                    if math.isfinite(seconds):                          # "infinity" is not a duration (and not valid JSON either)
+                        out["duration"] = round(seconds, 3)
             if _TAGS in places:
                 s, e = places[_TAGS]
                 f.seek(s)
@@ -344,13 +359,16 @@ def read_matroska(path: str, cover: bool = False) -> dict:
             if _ATTACHMENTS in places:
                 s, e = places[_ATTACHMENTS]
                 best = None
-                for _ in range(200):                                    # each attachment: its name and where its data is
+                for _ in range(_MAX_ATTACHMENTS):                       # each attachment: its name and where its data is
                     el = _file_element(f, s, e)
                     if not el:
                         break
                     if el[0] == _ATTACHED:
                         name, data_at, pos = "", None, el[1]
-                        while (child := _file_element(f, pos, el[2])) is not None:
+                        for _part in range(_MAX_ATTACHED_PARTS):        # every element is a seek, so a stuffed attachment is given up on
+                            child = _file_element(f, pos, el[2])
+                            if child is None:
+                                break
                             if child[0] == _FILE_NAME:
                                 f.seek(child[1])
                                 name = _ebml_text(f.read(min(child[2] - child[1], 300)))
@@ -366,7 +384,7 @@ def read_matroska(path: str, cover: bool = False) -> dict:
                     if cover:
                         f.seek(best[0])
                         out["cover"] = f.read(best[1] - best[0])
-    except (OSError, IndexError, ValueError, struct.error):
+    except (OSError, IndexError, ValueError, struct.error, ArithmeticError):
         pass                                                            # what was read before the damage is still good
     return out
 
@@ -453,12 +471,15 @@ def facts(info: dict) -> list:
 
 # ---- chapters of an audiobook (MP4 / m4b: the Nero "chpl" atom, which ffmpeg, mp4v2 and most audiobook tools write) -------------
 MAX_CHAPTERS = 500
+MAX_ATOMS = 2000                      # atoms looked at on one level (a fragmented MP4 has one pair per fragment: thousands)
 
 
-def _atoms(f, start: int, end: int):
-    """(type, start of the content, end) of each atom between start and end; only headers are read."""
+def _atoms(f, start: int, end: int, limit: int = MAX_ATOMS):
+    """(type, start of the content, end) of each atom between start and end, at most `limit` of them; only headers are read."""
     pos = start
-    while pos + 8 <= end:
+    for _ in range(limit):
+        if pos + 8 > end:
+            return
         f.seek(pos)
         head = f.read(8)
         if len(head) < 8:
@@ -497,6 +518,7 @@ def read_chapters(path: str) -> list:
                         if k3 == b"chpl":
                             f.seek(s3)
                             return _parse_chpl(f.read(min(e3 - s3, 1024 * 1024)))
+                break                                                # a file has one moov: nothing after it is looked at
     except (OSError, struct.error, ValueError, IndexError):
         pass
     return []

@@ -2,8 +2,8 @@
 `artist.nfo` and `album.nfo` (Kodi, Plex, Jellyfin, Lidarr and MusicBrainz Picard), and Calibre's `metadata.opf` (the book's description).
 
 Only the text is taken (a biography, a review, a description), as plain paragraphs: nothing in these files is ever run, linked or fetched. The XML
-is read with the standard library after a check that refuses documents that declare entities (so an "entity bomb" is never expanded), and
-the file size is capped.
+is read with the standard library after a check that refuses documents that declare a document type or entities (so an "entity bomb" is never
+expanded; see safe_xml, which the EPUB readers use too), and the file size is capped.
 """
 from __future__ import annotations
 
@@ -17,12 +17,51 @@ _TAG = re.compile(r"<[^>]+>")
 _BREAK = re.compile(r"(?i)<\s*(?:br\s*/?|/p|/div|/li|/h[1-6])\s*>")
 
 
-def _safe_root(raw: bytes):
-    if len(raw) > MAX_BYTES or b"<!ENTITY" in raw or b"<!entity" in raw.lower():
-        return None
+_DECLARED = re.compile(rb"""\s*<\?xml[^>]{0,200}?encoding\s*=\s*["']([A-Za-z0-9._-]{1,40})["']""")
+_ONE_BYTE = {"us-ascii": "ascii", "ascii": "ascii", "iso-8859-1": "latin-1", "latin-1": "latin-1", "latin1": "latin-1",
+             "iso-8859-15": "iso-8859-15", "windows-1252": "cp1252", "cp1252": "cp1252"}
+
+
+def xml_text(raw: bytes) -> str:
+    """The bytes of an XML file as text, decoded here and not by the parser: UTF-8 (the default), UTF-16 (by its byte order mark, or by
+    the zero bytes around the first '<') or one of a few Western one-byte encodings when the file declares it. Raises ValueError for any
+    other encoding and for bytes that are not what they claim, so nothing can hide from safe_xml's check behind an encoding."""
+    if raw[:3] == b"\xef\xbb\xbf":
+        return raw[3:].decode("utf-8")
+    if raw[:2] in (b"\xff\xfe", b"\xfe\xff"):
+        return raw.decode("utf-16")
+    if raw[:2] == b"<\x00":
+        return raw.decode("utf-16-le")
+    if raw[:2] == b"\x00<":
+        return raw.decode("utf-16-be")
+    declared = _DECLARED.match(raw[:300])
+    name = declared.group(1).decode("ascii").lower() if declared else "utf-8"
+    if name in ("utf-8", "utf8"):
+        return raw.decode("utf-8")
+    if name not in _ONE_BYTE:
+        raise ValueError("an encoding that is not read here")
+    return raw.decode(_ONE_BYTE[name], "replace")
+
+
+def safe_xml(raw: bytes, limit: int = MAX_BYTES):
+    """The root element of an XML document from an untrusted file. Raises ValueError when it is larger than `limit`, declares a document
+    type or entities (checked on the decoded text, so UTF-16 hides nothing; an "entity bomb" is never expanded) or does not parse."""
+    if len(raw) > limit:
+        raise ValueError("too large")
+    text = xml_text(raw)
+    lower = text.lower()
+    if "<!doctype" in lower or "<!entity" in lower:
+        raise ValueError("declares a document type or entities")
     try:
-        return ET.fromstring(raw)
-    except (ET.ParseError, ValueError):
+        return ET.fromstring(text)                         # text, not bytes: the parser then ignores the declared encoding
+    except ET.ParseError as e:
+        raise ValueError("not well-formed XML: %s" % e)
+
+
+def _safe_root(raw: bytes):
+    try:
+        return safe_xml(raw)
+    except ValueError:
         return None
 
 
@@ -91,12 +130,13 @@ def _member(zf, wanted: str):
 
 def from_book(path: str, name: str) -> str:
     """The description or summary written inside an .epub (dc:description) or .cbz (ComicInfo.xml Summary) as plain paragraphs, or ''."""
-    import zipfile
     from posixpath import normpath
     from urllib.parse import unquote
+
+    from . import ziputil
     lower = name.lower()
     try:
-        with zipfile.ZipFile(path) as zf:
+        with ziputil.open_zip(path) as zf:
             if lower.endswith(".epub"):
                 container = _safe_root(_member(zf, "META-INF/container.xml") or b"")
                 if container is None:
@@ -113,6 +153,6 @@ def from_book(path: str, name: str) -> str:
                     return ""
                 found = [t for tag, t in _children(root, "summary")]
                 return clean_text(found[0]) if found else ""
-    except (OSError, zipfile.BadZipFile, ValueError, KeyError, RuntimeError):
+    except Exception:                                      # noqa: BLE001  a damaged book simply has no description
         return ""
     return ""
