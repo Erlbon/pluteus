@@ -376,14 +376,13 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
             log.warning("login for %r is locked for %d s after repeated wrong passwords (lock number %d)",
                         (name or "")[:40], seconds, number)
 
-    def refusal_reason(creds, hints: bool = True) -> str:
-        """Why a Basic login was refused, with hints about the usual reader-app slips (never the password itself). The hints (how long
-        the password was, spaces around it) are for the debug log only: the normal log says no more than "wrong password"."""
+    def refusal_reason(creds, length: bool = True) -> str:
+        """Why a Basic login was refused, with hints about the usual reader-app slips (never the password itself). How LONG the password
+        was is for the debug log only (length=True): the normal log keeps the slips (a space around it, an empty one) but never a count,
+        which would tell a reader of the log roughly how long the real password is when the owner mistypes it."""
         if creds is None:
             return "the Authorization header could not be read"
         name, password = creds
-        if not hints:
-            return "wrong password" if auth.canonical_name(name) in auth.users else "no such user"
         if auth.canonical_name(name) not in auth.users:
             near = [n for n in auth.users if n.lower() == name.strip().lower()]
             return "no such user" + (" (a name that differs only in letter case matches more than one user)" if len(near) > 1 else "")
@@ -394,7 +393,9 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
             hints.append("the name has a space around it")
         if not password:
             hints.append("the password is empty")
-        return "wrong password (%d characters%s)" % (len(password), "; " + "; ".join(hints) if hints else "")
+        if length:
+            hints.insert(0, "%d characters" % len(password))
+        return "wrong password" + (" (%s)" % "; ".join(hints) if hints else "")
 
     def mark(request: Request, text: str, key: str = "login") -> None:
         """Tell the debug log (when it is on) what happened to this request's login."""
@@ -463,7 +464,7 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
                     return user, 0
                 note_failure(name, ip, device_id, known)
             mark(request, "Refused: " + refusal_reason(creds) + ".")          # the debug log (off unless asked for) gets the hints
-            log.warning("login refused for %r from %s: %s", (name or "")[:40], ip, refusal_reason(creds, hints=False))
+            log.warning("login refused for %r from %s: %s", (name or "")[:40], ip, refusal_reason(creds, length=False))
             return None, 0
         if cfg.anonymous_user:
             return auth.users.get(cfg.anonymous_user), 0
@@ -898,10 +899,11 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
             shared = notes.read_shared(lib, user, root, parts, name) if share_ok else None
             return {"own": mine[1] if mine else "", "library": shared[1] if shared else ""}
 
-        def page(name, text, vers, where, from_library=False, preview="", error="", status=200):
+        def page(name, text, vers, where, from_library=False, preview="", error="", status=200, too_large=False):
             return HTMLResponse(web.note_editor_page(ctx_for(user), root, parts, name=name, names=notes.NOTE_NAMES, text=text, versions=vers,
                                                      in_place=in_place, exists=bool(vers.get(where)), from_library=from_library,
-                                                     preview_html=preview, error=error, back_url=here, where_kind=where, choices=choices), status)
+                                                     preview_html=preview, error=error, back_url=here, where_kind=where, choices=choices,
+                                                     too_large=too_large), status)
 
         default_where = choices[0][0] if choices else "own"
         if request.method == "GET":
@@ -913,6 +915,8 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
             if notes.target(root, parts, name) is None:
                 raise NotFound("not a note name")
             vers = await run_in_threadpool(versions, name)
+            if await run_in_threadpool(notes.too_large, lib, user, root, parts, name, where):
+                return page(name, "", vers, where, too_large=True)      # say so: an empty box for a note that has text would be a lie
             if where == "library":
                 got = await run_in_threadpool(notes.read_shared, lib, user, root, parts, name)
                 return page(name, got[0] if got else "", vers, where)

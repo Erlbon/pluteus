@@ -77,8 +77,9 @@ def test_the_log_hints_at_the_usual_reader_app_slips(tmp_path, caplog):
     with caplog.at_level(logging.WARNING):
         c.get("/opds", headers=header("erlend", PASSWORD + " ", "utf-8"))
         c.get("/opds", headers=header("Erlend ", "", "utf-8"))
-    assert "wrong password (%d characters; the password has a space" % (len(PASSWORD) + 1) in caplog.text
+    assert "wrong password (the password has a space" in caplog.text
     assert "the password is empty" in caplog.text and PASSWORD not in caplog.text
+    assert "characters" not in caplog.text                 # how long a wrong password was is for the debug log only (review 2026-11-12, card 68)
 
 
 def test_an_opds_401_carries_an_authentication_document_and_the_basic_challenge(tmp_path):

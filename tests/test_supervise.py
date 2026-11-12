@@ -42,8 +42,8 @@ def test_the_default_command_is_pluteus_serve_with_the_config(tmp_path, monkeypa
 
 
 def _alive(pid: int) -> bool:
-    out = subprocess.run(["tasklist", "/FI", "PID eq %d" % pid, "/NH"], capture_output=True, text=True).stdout
-    return str(pid) in out
+    out = subprocess.run(["tasklist", "/FI", "PID eq %d" % pid, "/NH"], capture_output=True).stdout
+    return str(pid).encode("ascii") in out          # bytes: the console's code page is not UTF-8 on every Windows
 
 
 @pytest.mark.skipif(sys.platform != "win32", reason="job objects are a Windows feature")
