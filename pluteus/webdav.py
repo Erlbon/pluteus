@@ -14,6 +14,8 @@ from xml.sax.saxutils import escape
 from starlette.responses import FileResponse, PlainTextResponse, RedirectResponse, Response
 
 from .fs import NotFound, clamp_time
+from .opds import linkable
+from .safetext import clean
 
 ALLOW = "OPTIONS, HEAD, GET, PROPFIND"
 HEADERS = {"DAV": "1", "MS-Author-Via": "DAV", "Allow": ALLOW}
@@ -26,7 +28,7 @@ def _iso(ts: float) -> str:
 
 def _prop(name: str, mtime: float, size: int, mime: str, folder: bool) -> str:
     when = clamp_time(mtime)
-    props = "<D:displayname>%s</D:displayname>" % escape(name)
+    props = "<D:displayname>%s</D:displayname>" % escape(clean(name))        # a control character in a name would make the answer unreadable
     props += "<D:resourcetype><D:collection/></D:resourcetype>" if folder else "<D:resourcetype/>"
     props += "<D:creationdate>%s</D:creationdate><D:getlastmodified>%s</D:getlastmodified>" % (
         _iso(when), email.utils.formatdate(when, usegmt=True))
@@ -68,10 +70,10 @@ class Dav:
         return self.get(user, parts)
 
     def _folder(self, user, parts):
-        """The listing of a folder (None for a file)."""
+        """The listing of a folder, names only (NotFound for a file): sizes and dates are read for the entries that are answered."""
         if not parts:
             return None
-        return self.lib.list_dir(user, parts[0], parts[1:], self.cfg.show_all_files, True)
+        return self.lib.list_dir(user, parts[0], parts[1:], self.cfg.show_all_files, False)
 
     def propfind(self, user, parts, depth: int) -> Response:
         now = time.time()
@@ -93,7 +95,9 @@ class Dav:
             return _multistatus([_response(self.href(parts, False), _prop(info.name, info.mtime, info.size, info.mime, False))])
         items = [_response(self.href(parts, True), _prop(parts[-1], now, 0, "", True))]
         if depth:
-            for e in entries[:MAX_ENTRIES]:
+            # A name that is not valid Unicode (a Latin-1 name on a Linux disk) is left out: no address written for it would lead back
+            # to the file, and one such name must not cost the whole listing.
+            for e in self.lib.with_stats(linkable(entries)[:MAX_ENTRIES]):
                 child = parts + (e.name,)
                 if e.is_dir:
                     items.append(_response(self.href(child, True), _prop(e.name, e.mtime, 0, "", True)))

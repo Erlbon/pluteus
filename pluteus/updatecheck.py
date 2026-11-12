@@ -1,7 +1,7 @@
 """Optional update and security check for the admin page (config: update_check = true; off by default).
 
 Once a day, in a background thread, it asks GitHub two questions about the project's repository (update_repo):
-  * its tags: is there a newer release than the running version?
+  * its latest release (its tags, when it has no release): is there a newer version than the running one?
   * its published security advisories: does one of them name the running version as vulnerable?
 Nothing about the library, the users or this server is sent (it is a plain HTTPS GET, so GitHub sees the server's address).
 A failure of any kind only means "unknown"; it never slows or breaks a page. pluteus cannot update itself: the page only says
@@ -25,6 +25,7 @@ REPO_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]*/[A-Za-z0-9][A-Za-z0-9_.-]*")  
 MAX_BYTES = 1_000_000
 INTERVAL = 24 * 3600
 RETRY = 3600                      # after a failed check, try again in an hour
+MAX_TAG_PAGES = 10                # pages of a hundred tags read at most when the repository has no release to ask for
 _VERSION = re.compile(r"v?(\d+(?:\.\d+){0,3})")
 
 
@@ -77,11 +78,32 @@ class UpdateChecker:
         self._result = {"state": "checking", "latest": "", "advisories": [], "checked": 0.0}
 
     # ---- the check itself (runs in a thread) ---------------------------------------------------------------------------
+    def _latest(self, base: str) -> tuple | None:
+        """The newest version. GitHub is asked for the latest release by name: one small answer, and right however many tags there are
+        (the list of tags comes a hundred at a time and not newest first, so its first page alone misses a new version once the
+        project has more tags than that). A repository without a release, or whose latest release is not named like a version, is
+        read by its tags instead, page after page up to MAX_TAG_PAGES."""
+        try:
+            release = self._fetch(base + "/releases/latest")
+            newest = parse_version(release.get("tag_name")) if isinstance(release, dict) else None
+        except Exception as err:            # no release yet (404): the tags decide
+            log.info("latest release not read: %s", err)
+            newest = None
+        if newest:
+            return newest
+        versions = []
+        for page in range(1, MAX_TAG_PAGES + 1):
+            tags = self._fetch(base + "/tags?per_page=100&page=%d" % page)
+            if not isinstance(tags, list):
+                break
+            versions += [v for v in (parse_version(t.get("name")) for t in tags if isinstance(t, dict)) if v]
+            if len(tags) < 100:
+                break
+        return max(versions, key=_pad) if versions else None
+
     def _check(self) -> dict:
         base = "https://api.github.com/repos/%s" % self.repo
-        tags = self._fetch(base + "/tags?per_page=100")
-        versions = [v for v in (parse_version(t.get("name")) for t in tags if isinstance(t, dict)) if v]
-        latest = max(versions, key=_pad) if versions else None
+        latest = self._latest(base)
         advisories = []
         try:
             items = self._fetch(base + "/security-advisories?state=published&per_page=100")

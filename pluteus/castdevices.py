@@ -9,6 +9,7 @@ in the background, retrying until it answers, answers the page's questions witho
 Every call that can block (connecting, playing) runs in a worker thread, never on the event loop."""
 from __future__ import annotations
 
+import socket
 import threading
 
 from .cast import CastError
@@ -73,12 +74,46 @@ class CastBackend(Backend):
         except ImportError:
             raise ConnectionError("the pychromecast library is not installed (pip install pychromecast)")
         casts, browser = pychromecast.get_chromecasts(known_hosts=[device.address], timeout=10)
+        keep = False
+        try:
+            # The answer holds every Chromecast that was found on the network, plus the one asked for: only the one at the configured
+            # address is this device. Taking the first would play "Kids TV" in the living room.
+            cast = self._at_address(casts, device.address)
+            if cast is None:
+                raise ConnectionError("no Chromecast answered at %s" % device.address)
+            cast.wait(timeout=15)                         # starts its connection and waits for the first status
+            self._browsers.append(browser)
+            self._casts[device.name] = cast
+            keep = True
+        finally:
+            if not keep:                                  # whatever went wrong: the manager tries again, and each try starts a new browser
+                try:
+                    browser.stop_discovery()
+                except Exception:                         # noqa: BLE001
+                    pass
+
+    @staticmethod
+    def _host(cast) -> str:
+        """The address a found Chromecast is at (pychromecast 13 and later: cast_info.host; `host` before that)."""
+        return str(getattr(getattr(cast, "cast_info", None), "host", None) or getattr(cast, "host", None) or "")
+
+    @classmethod
+    def _at_address(cls, casts, address: str):
+        """The cast whose host is the configured address, or None. A device listed by name is matched by the addresses the name stands for."""
+        wanted = address.strip().lower()
         if not casts:
-            browser.stop_discovery()
-            raise ConnectionError("no Chromecast answered at %s" % device.address)
-        casts[0].wait(timeout=15)                         # starts its connection and waits for the first status
-        self._browsers.append(browser)
-        self._casts[device.name] = casts[0]
+            return None
+        for cast in casts:
+            if cls._host(cast).lower() == wanted:
+                return cast
+        try:
+            resolved = {info[4][0] for info in socket.getaddrinfo(address, None)}
+        except (OSError, UnicodeError):
+            return None
+        for cast in casts:
+            if cls._host(cast) in resolved:
+                return cast
+        return None
 
     def connected(self, name: str) -> bool:
         return name in self._casts

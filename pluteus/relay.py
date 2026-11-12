@@ -14,9 +14,11 @@ import base64
 import hashlib
 import hmac
 import http.client
+import io
 import json
 import re
 import secrets
+import socket
 import threading
 import time
 from urllib.parse import urljoin, urlsplit
@@ -184,21 +186,90 @@ def _split(url: str):
     return parts.scheme, parts.hostname, port, (parts.path or "/") + ("?" + parts.query if parts.query else "")
 
 
-def open_stream(url: str, extra: dict | None = None, accept=AUDIO, entry: dict | None = None, fallback: str = FALLBACK_TYPE):
+class _IcyResponse(http.client.HTTPResponse):
+    """A reply whose status line may be Shoutcast's `ICY 200 OK` (old servers still send it): read as HTTP/1.0, which is what it is in
+    all but name. http.client alone refuses the line, so such a station could not be relayed at all."""
+
+    def _read_status(self):
+        line = self.fp.readline(65537)
+        if line[:4] == b"ICY ":
+            line = b"HTTP/1.0 " + line[4:]
+        real, self.fp = self.fp, io.BytesIO(line)                      # the library's own check of the line, on the line as rewritten
+        try:
+            return super()._read_status()
+        finally:
+            self.fp = real
+
+
+class _Watch:
+    """The limit for a whole fetch. The time to connect and the wait for each read are limits per step: a source that sends one byte
+    every few seconds passes each of them for ever. When the deadline passes, the connection in use is shut, which ends whatever read
+    is waiting on it. cancel() when the fetch is over."""
+
+    def __init__(self, seconds: float):
+        self.deadline = time.monotonic() + seconds
+        self.fired = False
+        self._sock = None
+        self._lock = threading.Lock()
+        self._timer = threading.Timer(max(0.0, seconds), self._fire)
+        self._timer.name = "pluteus-relay-deadline"
+        self._timer.daemon = True
+        self._timer.start()
+
+    def left(self) -> float:
+        return self.deadline - time.monotonic()
+
+    def attach(self, sock) -> None:
+        with self._lock:
+            self._sock = sock
+            fired = self.fired
+        if fired:
+            self._shut(sock)
+
+    def _fire(self) -> None:
+        with self._lock:
+            self.fired = True
+            sock = self._sock
+        self._shut(sock)
+
+    @staticmethod
+    def _shut(sock) -> None:
+        if sock is not None:
+            try:
+                sock.shutdown(socket.SHUT_RDWR)
+            except (OSError, ValueError):
+                pass
+
+    def cancel(self) -> None:
+        self._timer.cancel()
+        with self._lock:
+            self._sock = None
+
+
+def open_stream(url: str, extra: dict | None = None, accept=AUDIO, entry: dict | None = None, fallback: str = FALLBACK_TYPE, watch=None):
     """(connection, response, content type) for the stream, after the checks. The caller closes the connection. Raises Refused.
     `extra`: more request headers (the now-playing look-up asks for Icy-MetaData). `accept`: the content types allowed (audio by default;
     None for the pieces of an HLS stream, which are checked by what they contain). `entry`: a stored stream (vault.py): its login and headers are
     sent only to the hosts it names, decided again for every hop, so a redirect to another host never carries them.
-    `connection.final_url` is the address after redirects."""
+    `connection.final_url` is the address after redirects. `watch`: the limit for a whole fetch (fetch_body), which covers every hop."""
     for _ in range(4):
         scheme, host, port, path = _split(url)
         try:
             family, sockaddr = fetchimage._public_addresses(host, port)[0]
         except fetchimage.Refused:
             raise Refused("The stream's server is not a public address.", 502)
+        timeout = TIMEOUT                                               # one limit for connecting and for every read: a stalled stream ends
+        if watch is not None:
+            if watch.left() <= 0:
+                raise Refused("The stream's server took too long to answer.", 504)
+            timeout = min(TIMEOUT, max(0.05, watch.left()))
         cls = fetchimage._SecureConnection if scheme == "https" else fetchimage._Connection
-        connection = cls(host, port, sockaddr, family, TIMEOUT)         # one limit for connecting and for every read: a stalled stream ends
+        connection = cls(host, port, sockaddr, family, timeout)
+        connection.response_class = _IcyResponse
         try:
+            connection.connect()
+            if watch is not None:
+                watch.attach(connection.sock)
             connection.request("GET", path, headers={"Host": host if port in (80, 443) else "%s:%d" % (host, port),
                                                      "User-Agent": "pluteus-relay/1", "Accept": "*/*", "Connection": "close",
                                                      **(vault.request_headers(entry, host) if entry else {}), **(extra or {})})
@@ -225,8 +296,12 @@ def open_stream(url: str, extra: dict | None = None, accept=AUDIO, entry: dict |
             return connection, response, kind
         except Refused:
             raise
-        except (OSError, http.client.HTTPException) as e:
+        except (OSError, http.client.HTTPException, ValueError) as e:      # ValueError: a TLS connection that the deadline shut
             connection.close()
+            if watch is not None and (watch.fired or watch.left() <= 0):
+                raise Refused("The stream's server took too long to answer.", 504)
+            if isinstance(e, ValueError):
+                raise
             raise Refused("Could not reach the stream's server (%s)." % e.__class__.__name__)
     raise Refused("The stream's server redirected too many times.")
 
@@ -330,6 +405,8 @@ _KEY = secrets.token_bytes(32)          # signs the tokens below; new at every s
 TOKEN_SECONDS = 3600
 MAX_PLAYLIST = 1_000_000
 MAX_PIECE = 30_000_000
+PLAYLIST_SECONDS = 10.0        # the longest a whole playlist fetch may take, however slowly its bytes come
+PIECE_SECONDS = 30.0           # the same for one piece of a stream (or a station list being imported)
 _URI_ATTRIBUTE = re.compile(r'URI="([^"]*)"')
 
 
@@ -383,22 +460,38 @@ def rewrite_playlist(text: str, base_url: str, point) -> str:
     return "\n".join(out)
 
 
-def fetch_body(url: str, cap: int, entry: dict | None = None):
+def deadline_for(cap: int) -> float:
+    """The seconds a whole fetch of at most `cap` bytes may take: a playlist is small text, anything larger is a download."""
+    return PLAYLIST_SECONDS if cap <= MAX_PLAYLIST else PIECE_SECONDS
+
+
+def fetch_body(url: str, cap: int, entry: dict | None = None, deadline: float | None = None):
     """(bytes, content type, final address) of a small reply (a playlist or one piece of a stream), after the checks; Refused if it is
-    larger than `cap` bytes."""
-    connection, response, kind = open_stream(url, accept=None, entry=entry)
+    larger than `cap` bytes, or if the whole fetch (connecting, redirects, header and body together) takes longer than `deadline`
+    seconds. Without one the size decides: deadline_for(cap)."""
+    watch = _Watch(deadline if deadline is not None else deadline_for(cap))
+    connection = None
     try:
+        connection, response, kind = open_stream(url, accept=None, entry=entry, watch=watch)
         data = bytearray()
         while len(data) <= cap:
             chunk = response.read1(CHUNK)
+            if watch.fired or watch.left() <= 0:                        # a read that the deadline ended looks like the end of the reply
+                raise Refused("The stream's server took too long to answer.", 504)
             if not chunk:
                 return bytes(data), kind, connection.final_url
             data += chunk
         raise Refused("A piece of the stream is too large.")
-    except (OSError, http.client.HTTPException):
+    except (OSError, http.client.HTTPException, ValueError) as e:
+        if watch.fired or watch.left() <= 0:
+            raise Refused("The stream's server took too long to answer.", 504)
+        if isinstance(e, ValueError):
+            raise
         raise Refused("The stream's server stopped answering.")
     finally:
-        connection.close()
+        watch.cancel()
+        if connection is not None:
+            connection.close()
 
 
 def is_playlist(data: bytes) -> bool:

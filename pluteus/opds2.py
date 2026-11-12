@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 import time
 
+from .safetext import clean
+
 TYPE = "application/opds+json"
 ACQUISITION_REL = "http://opds-spec.org/acquisition"
 PSE_STREAM_REL = "http://vaemendis.net/opds-pse/stream"
@@ -20,22 +22,23 @@ def _iso(ts: float) -> str:
 
 
 def nav_link(title: str, href: str) -> dict:
-    return {"title": title, "href": href, "type": TYPE, "rel": "subsection"}
+    return {"title": clean(title), "href": href, "type": TYPE, "rel": "subsection"}
 
 
 def publication(title: str, identifier: str, href: str, mime: str, updated: float, meta: dict | None = None,
                 stream: dict | None = None, cover: tuple | None = None) -> dict:
     meta = meta or {}
-    info = {"@type": "http://schema.org/Book", "identifier": identifier, "title": meta.get("title") or title,
+    # names and tags from disk: a lone surrogate (a file name that is not valid Unicode) cannot be written as UTF-8 at all
+    info = {"@type": "http://schema.org/Book", "identifier": clean(identifier), "title": clean(meta.get("title") or title),
             "modified": _iso(updated)}
     if meta.get("authors"):
-        info["author"] = [{"name": n} for n in meta["authors"]]
+        info["author"] = [{"name": clean(n)} for n in meta["authors"]]
     if meta.get("language"):
-        info["language"] = meta["language"]
+        info["language"] = clean(meta["language"])
     if meta.get("year"):
-        info["published"] = meta["year"]
+        info["published"] = clean(meta["year"])
     if meta.get("series"):
-        series = {"name": meta["series"]}
+        series = {"name": clean(meta["series"])}
         try:
             series["position"] = float(meta["series_index"]) if meta.get("series_index") else None
         except ValueError:
@@ -62,7 +65,7 @@ def feed(*, title: str, self_href: str, start_href: str, navigation: list, publi
     for rel, href in (("up", up_href), ("previous", prev_href), ("next", next_href)):
         if href:
             links.append({"rel": rel, "href": href, "type": TYPE})
-    metadata = {"title": title}
+    metadata = {"title": clean(title)}
     if total:
         metadata.update({"numberOfItems": total, "itemsPerPage": per_page, "currentPage": page})
     body = {"metadata": metadata, "links": links}
@@ -70,4 +73,4 @@ def feed(*, title: str, self_href: str, start_href: str, navigation: list, publi
         body["navigation"] = navigation
     if publications:
         body["publications"] = publications
-    return json.dumps(body, ensure_ascii=False).encode("utf-8")
+    return json.dumps(body, ensure_ascii=False).encode("utf-8", "replace")      # "replace": whatever slipped through costs a letter, not the feed
