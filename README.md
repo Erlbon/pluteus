@@ -376,6 +376,16 @@ roots, natural order and paging, sorting, display names, exclusions, the adult m
 Windows short names), Range downloads, the readers, the viewers, and a folder whose name ends in a dot. A
 read-only smoke test against the real libraries over SMB showed feed times of 10-40 ms, including a 476-file folder.
 
+The tests that drive a real browser (`tests/*_browser.py`: the readers, the player) skip themselves unless Playwright and
+Google Chrome are there: `.\.venv\Scripts\python -m pip install -e ".[dev,browser]"`. On GitHub a separate job runs them
+and fails if one is skipped.
+
+**Pinned builds.** The downloads and the Docker image are built from exact files: the Python packages from
+`requirements.lock` (the image) and `requirements-build.lock` (the release jobs: the same versions plus pytest and
+PyInstaller), installed with `pip --require-hashes`; the Docker base images by digest; the GitHub actions by commit. To
+move to newer packages: `py -3.12 tools/make_lock.py --work <an empty scratch folder>`, run the tests, commit both files.
+The comments in `Dockerfile`, `tools/linux-build/Dockerfile` and `.github/workflows/` say how to move the other pins.
+
 **Speed on the server (Docker Desktop, libraries bind-mounted, 2026-10-12):** the library roots and a big genre folder
 list in 40-55 ms; a comic folder of 918 files lists in about 40 ms (it took 0.6 s before listings read the size and date of
 only the 50 entries on the page: one system call per file costs about 0.7 ms across a Docker bind mount, where reading the

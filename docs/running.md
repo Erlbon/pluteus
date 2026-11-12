@@ -62,10 +62,14 @@ Notes:
 - Keep `/uploads` a separate folder from the libraries (pluteus refuses to start if they overlap).
 - Speed through Docker Desktop's Windows drive layer, measured: about 40 to 50 ms per folder feed, and about 40 ms warm
   for a folder of 900 comic archives. If a folder opens slowly anyway, compare against a native run first.
-- Upgrade: pull or copy the new source, then `docker compose build --pull` and `docker compose up -d`. The `--pull` makes
-  Docker fetch the newest `python:3.12-slim` base image (Python and Debian security fixes); without it a rebuild reuses the
-  copy it already has. Do this at least monthly, even when pluteus itself has not changed. State lives in the `/data` volume,
-  so logins and reading progress survive.
+- Upgrade: pull or copy the new source, then `docker compose build` and `docker compose up -d`. State lives in the `/data`
+  volume, so logins and reading progress survive.
+- The image is built from pinned files: the `python:3.12-slim` base by its digest (first line of the `Dockerfile`) and the
+  Python packages from `requirements.lock`, checked against their hashes. A rebuild therefore gives the same image every
+  time, and it no longer picks up Python and Debian security fixes on its own (`--pull` has nothing newer to fetch for a
+  digest). Those arrive with a new pluteus version that moves the digest; to take them earlier, put the current digest in
+  the `Dockerfile` yourself (`docker buildx imagetools inspect python:3.12-slim` prints it) and rebuild. Do one or the other
+  at least monthly.
 
 ## Native
 
@@ -89,10 +93,19 @@ Starting at boot:
 - **Windows: `tools\install-task.ps1`** (Task Scheduler, nothing to download):
 
   ```powershell
-  .\tools\install-task.ps1 -Config C:\pluteus\config.toml -Start           # at boot, as SYSTEM (elevated PowerShell)
-  .\tools\install-task.ps1 -Config C:\pluteus\config.toml -AtLogon -Start  # at your logon, as you, no admin needed
-  .\tools\install-task.ps1 -Remove                                          # stop and remove the task
+  .\tools\install-task.ps1 -Config C:\ProgramData\pluteus\config.toml -Start   # at boot, as LOCAL SERVICE (elevated PowerShell)
+  .\tools\install-task.ps1 -Config C:\pluteus\config.toml -AtLogon -Start      # at your logon, as you, no admin needed
+  .\tools\install-task.ps1 -Remove                                              # stop and remove the task
   ```
+
+  At boot the server runs as the low-privilege Windows account LOCAL SERVICE, not as SYSTEM: it reads untrusted archives,
+  images and media, and should not own the machine while doing so. The script gives that account what the server needs with
+  `icacls` and lists each grant: modify on the config's folder (the admin page and `pluteus user` save beside `config.toml`),
+  `data_dir`, `cache_dir`, `uploads_dir` and the log; read-only on the libraries and `themes_dir`. `-NoGrant` changes no
+  folder rights. Keep the config in a folder of its own (not in the pluteus folder: the script then makes only the file
+  writable and says so). It warns when Python or the pluteus folder can be changed by accounts that are not administrators,
+  because whoever can change those files decides what runs at the next boot. `-AsSystem` is the old behaviour (SYSTEM), with
+  a warning; it is only for libraries that nothing else can reach.
 
   It checks the config first (and refuses a broken one), then registers a task that runs `python -m pluteus supervise`: the
   supervisor starts the server, appends its output to `pluteus-service.log` next to the config (`-Log` to change), and starts
@@ -102,14 +115,21 @@ Starting at boot:
   - **Tested** (on Windows 11, `-AtLogon`): install and start, health check, killing the server (back in about 13 s, logged),
     stopping the task (nothing left running, port free, nothing comes back), removing it while it runs, refusing a broken
     config, refusing politely without administrator rights.
-  - **Not tested:** the default start-at-boot mode as SYSTEM (needs an elevated session), an actual reboot, and a real service
-    account reading a network share.
-  - SYSTEM does not see mapped drive letters (`Z:`): use a local path or `\\server\share` in `config.toml` (the script warns).
+  - **Not tested:** the two start-at-boot modes (LOCAL SERVICE, the default, and `-AsSystem`; both need an elevated
+    session), the `icacls` grants, an actual reboot, and a real service account reading a network share. The LOCAL SERVICE
+    mode was written on 2026-11-12 and has only been checked to parse.
+  - No task account sees mapped drive letters (`Z:`): use a local path or `\\server\share` in `config.toml`. LOCAL SERVICE
+    has no identity on the network, so it cannot read `\\server\share` libraries either: use `-AtLogon` for those (the
+    script warns about both).
   - Logs grow without limit; delete or rotate `pluteus-service.log` now and then.
   - When a library folder is not reachable yet at boot, `serve` prints a warning and starts anyway (its pages answer 503
     until the folder is back); `check-config` is the strict one and reports it as an error.
 - **Linux**: a systemd unit with `ExecStart=/opt/pluteus/.venv/bin/python -m pluteus serve --config /etc/pluteus/config.toml`,
-  `User=pluteus`, `Restart=on-failure`.
+  `User=pluteus`, `Restart=on-failure`. `tools/pluteus.service` is that unit for the downloaded program, hardened
+  (`ProtectSystem=strict`): the server may write only in `/var/lib/pluteus` (state, set `data_dir` to it) and in
+  `/etc/pluteus` (the config folder, so the admin page's Users and Libraries tabs and `pluteus user ...` can save; they write
+  a temporary file and `config.toml.bak` beside the config). Both folders must exist and belong to the `pluteus` account;
+  the commands are at the top of the unit file. Not run under systemd here.
 
 ## Moving between the two
 

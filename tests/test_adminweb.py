@@ -1,12 +1,11 @@
 """The admin page: who may use it, what it shows and every action, plus the second server on its own port."""
 import base64
-import socket
 import time
 import urllib.error
 import urllib.request
 
 import pytest
-from conftest import FAST, basic
+from conftest import FAST, basic, wait_until
 from starlette.testclient import TestClient
 
 from pluteus import auth as authmod
@@ -273,31 +272,28 @@ def test_a_server_started_without_a_config_file_cannot_edit_users(tmp_path):
 
 
 # ---- the second server -------------------------------------------------------------------------------------------------------------
-def free_port():
-    with socket.socket() as s:
-        s.bind(("127.0.0.1", 0))
-        return s.getsockname()[1]
+def bound_port(server):
+    """The port the admin server really listens on, read back from its own socket once it has started (None before that)."""
+    running = server.server
+    if not running.started or not running.servers:
+        return None
+    return running.servers[0].sockets[0].getsockname()[1]
 
 
 def test_the_admin_page_runs_on_its_own_port_next_to_the_main_server(tmp_path):
     import dataclasses
     path = make_config(tmp_path)
-    port = free_port()
-    cfg = dataclasses.replace(load_config(str(path)), admin_port=port, admin_host="127.0.0.1")
+    # port 0: the system hands the server a free port as it binds, so no other process can take a port between a probe and the start
+    cfg = dataclasses.replace(load_config(str(path)), admin_port=0, admin_host="127.0.0.1")
     app = create_app(cfg, config_path=str(path))
     server = start_admin_server(app)
     try:
+        port = wait_until(lambda: bound_port(server), timeout=20)
+        assert port, "the admin server did not start"
         url = "http://127.0.0.1:%d/" % port
-        for _ in range(100):
-            try:
-                urllib.request.urlopen(url, timeout=1)
-            except urllib.error.HTTPError as e:
-                assert e.code == 401 and "pluteus admin" in e.headers["WWW-Authenticate"]
-                break
-            except OSError:
-                time.sleep(0.1)
-        else:
-            pytest.fail("the admin server did not start")
+        with pytest.raises(urllib.error.HTTPError) as refused:
+            urllib.request.urlopen(url, timeout=5)
+        assert refused.value.code == 401 and "pluteus admin" in refused.value.headers["WWW-Authenticate"]
         token = base64.b64encode(b"boss:boss-password-1").decode()
         page = urllib.request.urlopen(urllib.request.Request(url, headers={"Authorization": "Basic " + token}), timeout=5)
         assert page.status == 200 and b"<h1>Status</h1>" in page.read()

@@ -61,7 +61,7 @@ def _base(**extra):
     return d
 
 
-def test_config_rejects_bad_input():
+def test_config_rejects_bad_input(tmp_path):
     with pytest.raises(ConfigError):
         parse_config({"users": _base()["users"]})                                  # no roots
     with pytest.raises(ConfigError):
@@ -75,7 +75,7 @@ def test_config_rejects_bad_input():
     with pytest.raises(ConfigError):
         parse_config(_base(display_strip="(unclosed"))
     with pytest.raises(ConfigError):
-        parse_config(_base(roots=[{"name": "r", "path": "/no/such/folder/anywhere"}]))
+        parse_config(_base(roots=[{"name": "r", "path": str(tmp_path / "missing")}]))
 
 
 def test_misplaced_settings_are_errors_not_silently_ignored():

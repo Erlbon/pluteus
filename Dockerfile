@@ -1,4 +1,8 @@
-FROM python:3.12-slim
+# The base image is pinned by digest (python:3.12-slim as it was on 2026-11-12), so a build always starts from the same
+# files. It does NOT follow the tag any more: to take newer Python and Debian security fixes, look up the current digest
+#   docker buildx imagetools inspect python:3.12-slim        (the "Digest:" line; it covers amd64 and arm64)
+# and replace it here. The Python version must stay the one the lock files were made for (tools/make_lock.py).
+FROM python:3.12-slim@sha256:5e2bdb1b0d542d5039cffb8181c65930093949194a65c365dfb1b0fe13a4fa5b
 
 ENV PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1
 
@@ -7,9 +11,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends libarchive-tool
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
-COPY pyproject.toml ./
+# The dependencies come from the hashed lock file and from nowhere else: pip refuses any file whose SHA-256 is not listed.
+COPY requirements.lock ./
+RUN pip install --no-cache-dir --require-hashes -r requirements.lock
+# pluteus itself is not built or installed (that would fetch an unpinned build tool): the package is copied and put on
+# Python's path, so `python -m pluteus` works from any folder in the container.
 COPY pluteus ./pluteus
-RUN pip install --no-cache-dir .
+ENV PYTHONPATH=/app
 
 # A fixed user id keeps bind-mount permissions predictable on Linux hosts.
 RUN useradd --no-create-home --uid 10001 pluteus && mkdir /data /config && chown pluteus /data /config

@@ -3,6 +3,7 @@ import threading
 import time
 
 import pytest
+from conftest import wait_until
 from test_adminweb import BOSS, admin, make_config  # noqa: F401  (the admin fixture)
 
 from pluteus import adminweb
@@ -89,20 +90,17 @@ def test_it_checks_once_a_day_retries_after_a_failure_and_never_blocks():
     first = len(fetch.calls)
     now[0] += 3600
     checker.status()
-    time.sleep(0.1)
-    assert len(fetch.calls) == first                                                       # not due yet
+    assert not checker._running and len(fetch.calls) == first                              # not due yet: no check was started
     now[0] += 86400
-    settle(checker)
     checker.status()
-    time.sleep(0.2)
-    assert len(fetch.calls) > first                                                        # a day later: asked again
+    assert wait_until(lambda: len(fetch.calls) > first)                                    # a day later: asked again
     failing = UpdateChecker("o/r", "0.3.1", faker([], tags_fail=True), clock=lambda: now[0])
     settle(failing)
+    assert wait_until(lambda: not failing._running)                                        # the failed check has put itself away
     n = len(failing._fetch.calls)
     now[0] += 4000
     failing.status()
-    time.sleep(0.2)
-    assert len(failing._fetch.calls) > n                                                   # a failure is retried after an hour
+    assert wait_until(lambda: len(failing._fetch.calls) > n)                               # a failure is retried after an hour
 
 
 def test_the_repository_name_is_checked():

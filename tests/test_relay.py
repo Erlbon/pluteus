@@ -5,6 +5,7 @@ import threading
 import time
 
 import pytest
+from conftest import wait_until
 from starlette.testclient import TestClient
 from test_login_web import HTML, make
 from test_uploads import ORIGIN
@@ -185,7 +186,7 @@ def test_streams_at_once_are_limited_and_the_slot_comes_back(cfg, tmp_path, stat
     first = {}
     worker = threading.Thread(target=lambda: first.update(r=me.get("/relay/uploads/Radio/a.m3u?i=0")))
     worker.start()
-    time.sleep(0.5)                                                                            # the first stream is open now
+    assert wait_until(lambda: me.app.state.relay_limits.snapshot().get("alice") == 1)          # the first stream is open now (it holds alice's slot)
     second = me.get("/relay/uploads/Radio/a.m3u?i=1")                                          # one stream per user: this one has to wait
     assert second.status_code == 429 and "Too many" in second.text and second.headers["retry-after"] == "10"
     worker.join(10)
@@ -347,8 +348,7 @@ def test_an_hls_channel_holds_a_lease_that_counts_against_the_stream_limit(cfg, 
 def test_leases_lapse_and_pieces_are_limited():
     lim = relay.Limiter(per_user=1, total=2)
     assert lim.lease("a", "k1", ttl=0.05) and lim.lease("a", "k1", ttl=0.05) and not lim.lease("a", "k2")      # renewing is not a second stream
-    time.sleep(0.12)
-    assert lim.lease("a", "k2")                                                                                 # the first one lapsed
+    assert wait_until(lambda: lim.lease("a", "k2"), timeout=5)                                                  # the first one lapsed
     assert lim.lease("b", "k3") and not lim.lease("c", "k4")                                                    # two in all
     for _ in range(8):
         assert lim.acquire_piece("a")
@@ -386,7 +386,7 @@ def test_admin_stop_ends_a_running_stream_and_frees_its_slot(cfg, tmp_path, stat
     got = {}
     worker = threading.Thread(target=lambda: got.update(r=me.get("/relay/uploads/Radio/a.m3u?i=0")))
     worker.start()
-    time.sleep(0.4)
+    assert wait_until(lambda: limits.streams() and limits.streams()[0]["bytes"] > 0)          # the stream is open and has sent something
     running = limits.streams()
     assert len(running) == 1 and running[0]["user"] == "alice" and running[0]["label"] == "uploads/Radio/a.m3u#0"
     assert limits.stop(running[0]["id"])
@@ -402,8 +402,7 @@ def test_stopping_an_hls_channel_refuses_its_playlist_and_pieces_for_a_while():
     assert lim.stopped("a", "uploads/tv.m3u#0") and lim.lease_list() == [] and not lim.lease("a", "uploads/tv.m3u#0")
     assert lim.lease("a", "other#0") and not lim.stopped("b", "uploads/tv.m3u#0")                            # only that user's channel
     assert lim.stop_lease("a", "gone#0", hold=0.05) is False                                                  # already gone: still refused briefly
-    time.sleep(0.1)
-    assert not lim.stopped("a", "gone#0") and lim.lease("a", "gone#0")
+    assert wait_until(lambda: not lim.stopped("a", "gone#0"), timeout=5) and lim.lease("a", "gone#0")
 
 
 def test_an_admin_stop_ends_a_channel_for_the_player(cfg, tmp_path, station):
