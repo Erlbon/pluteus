@@ -183,8 +183,10 @@ def test_search(lib):
     everything = body(call(c, "search3", query=""))["searchResult3"]                   # an empty query lists the library (app sync)
     assert [a["name"] for a in everything["artist"]] == ["Kaizers", "Solo"]
     assert [a["name"] for a in everything["album"]] == ["Ompa", "Solo"] and not everything.get("song")
+    page = body(call(c, "search3", query="", albumCount="1", artistCount="0"))["searchResult3"]
+    assert [a["name"] for a in page["album"]] == ["Ompa"] and not page.get("artist")
     page = body(call(c, "search3", query="", albumCount="1", albumOffset="1", artistCount="0"))["searchResult3"]
-    assert [a["name"] for a in page["album"]] == ["Solo"] and not page.get("artist")                   # counts and offsets are honoured
+    assert [a["name"] for a in page["album"]] == ["Solo"] and not page.get("artist")                   # counts and offsets are honoured, page after page
 
 
 def test_stream_download_and_range(lib):
