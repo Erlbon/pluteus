@@ -21,6 +21,9 @@ def open_book(page):
 
 def settle(page, before):
     page.wait_for_function("b => JSON.stringify((%s)()) !== JSON.stringify(b)" % AT, arg=before, timeout=15000)
+    # The reader drops a key pressed while a turn is running (that is what these tests are about). The position can change before the
+    # turn is over, and on a busy machine a fixed pause is not enough: wait for the turn itself to end, then the pause.
+    page.wait_for_function("() => !document.querySelector('#reader.pl-turning')", timeout=15000)
     page.wait_for_timeout(1200)
 
 
