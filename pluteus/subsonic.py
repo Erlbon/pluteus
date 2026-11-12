@@ -38,8 +38,9 @@ from starlette.responses import FileResponse, PlainTextResponse, Response
 from . import __version__, aboutfiles, kinds, markdown, mediainfo, notes, radio, textview, thumbs
 from .auth import verify_password
 from .bodies import read_limited
-from .config import UPLOADS_ROOT
-from .fs import NotFound, PathError, clamp_time, longpath
+from .config import MAX_ARTIST_LEVEL, UPLOADS_ROOT
+from .fs import NotFound, PathError, check_segment, clamp_time, longpath, natural_key
+from .safetext import clean
 from .state import passing_by
 
 API_VERSION = "1.16.1"
@@ -48,9 +49,34 @@ LAYOUT_NOTE = "about.md"        # its front matter may say how the folders below
 ALBUM_NOTES = ("album.md", "album.nfo")      # a folder with one of these is an album, also when its songs sit two folders down (a box set)
 _LAYOUT_SECONDS = 60
 RADIO_FOLDER = "radio"          # a top-level folder of station files (.m3u): not an artist, left out of the music lists
-_XML_BAD = re.compile("[\x00-\x08\x0b\x0c\x0e-\x1f]")
 _ALBUM_CACHE_SECONDS = 120
+MAX_RUNS = 64                   # paging places kept at once (one per user, library, app and list); the oldest goes first
+MAX_ID = 8192                   # characters of an id: far more than the longest path gives
 UNKNOWN_LISTS = {"highest", "frequent", "byYear", "byGenre", "newest"}      # each would need every folder opened
+_DUMMY_SECRET = "no app key: this text only makes a wrong name cost as much as a wrong token"
+
+
+def _layout_names(windows: bool) -> tuple:
+    """The spellings of about.md that are tried. Windows file systems ignore letter case, so one open finds any of them there."""
+    return (LAYOUT_NOTE,) if windows else (LAYOUT_NOTE, LAYOUT_NOTE.capitalize(), LAYOUT_NOTE.upper())
+
+
+_LAYOUT_NAMES = _layout_names(os.name == "nt")
+
+
+def is_number(value: str) -> bool:
+    """A plain number as an app sends it (a music folder, a size, a station of a file). str.isdigit() alone also says yes to characters
+    such as a superscript two, which int() refuses, and int() refuses thousands of digits."""
+    return value.isascii() and value.isdigit() and len(value) <= 9
+
+
+def _storable(text: str) -> bool:
+    """Whether the text can be written as UTF-8 (the state database and the tag cache refuse a name that is not valid Unicode)."""
+    try:
+        text.encode("utf-8")
+    except UnicodeEncodeError:
+        return False
+    return True
 
 
 class ApiError(Exception):
@@ -61,17 +87,19 @@ class ApiError(Exception):
 
 # ---- ids: a file or folder is named by its root and path, never by a number we would have to keep ---------------------------
 def make_id(root: str, parts=()) -> str:
-    raw = SEP.join((root, *parts)).encode("utf-8")
+    # surrogatepass: a file name that is not valid Unicode (Python hands its odd bytes over as lone surrogates) still gets an id that
+    # leads back to exactly that file. The id itself is plain ASCII.
+    raw = SEP.join((root, *parts)).encode("utf-8", "surrogatepass")
     return "p" + base64.urlsafe_b64encode(raw).decode("ascii").rstrip("=")      # the letter: never mistaken for a music folder number
 
 
 def read_id(value: str):
-    if not value.startswith("p"):
+    if not value.startswith("p") or len(value) > MAX_ID:
         raise ApiError(70, "The requested data was not found.")
     value = value[1:]
     try:
-        raw = base64.urlsafe_b64decode(value + "=" * (-len(value) % 4)).decode("utf-8")
-    except (ValueError, UnicodeDecodeError):
+        raw = base64.urlsafe_b64decode(value + "=" * (-len(value) % 4)).decode("utf-8", "surrogatepass")
+    except ValueError:                                # also what a text that is not UTF-8 raises
         raise ApiError(70, "The requested data was not found.")
     root, *parts = raw.split(SEP)
     return root, tuple(parts)
@@ -82,31 +110,44 @@ KEEP_EMPTY = {"ignoredArticles"}                 # required by the API even when
 
 
 def prune(value):
-    """Leave out empty values (None and empty strings) so the answer holds only what is known."""
+    """Leave out empty values (None and empty strings) so the answer holds only what is known. Every text is made safe to send on the
+    way (safetext.clean): a file name or a tag with a control character, or one that is not valid Unicode, must not break a whole list."""
     if isinstance(value, dict):
         return {k: prune(v) for k, v in value.items() if v is not None and (v != "" or k in KEEP_EMPTY)}
     if isinstance(value, list):
         return [prune(v) for v in value]
+    if isinstance(value, str):
+        return clean(value)
     return value
 
 
 def _text(value) -> str:
     if isinstance(value, bool):
         return "true" if value else "false"
-    return _XML_BAD.sub("", str(value))
+    return clean(str(value))
+
+
+XML_ELEMENTS = {"biography", "notes"}            # long texts the XML schema wants as child elements, not attributes
+XML_TEXT = {"line": "value"}                     # a lyric line's words are the text of its element
 
 
 def _node(name: str, value: dict) -> str:
-    attrs, kids = [], []
+    attrs, kids, text = [], [], ""
     for key, item in value.items():
         if isinstance(item, dict):
             kids.append(_node(key, item))
         elif isinstance(item, list):
             for one in item:
                 kids.append(_node(key, one) if isinstance(one, dict) else "<%s>%s</%s>" % (key, escape(_text(one)), key))
-        elif item is not None:
+        elif item is None:
+            continue
+        elif XML_TEXT.get(name) == key:
+            text = escape(_text(item))
+        elif key in XML_ELEMENTS:
+            kids.append("<%s>%s</%s>" % (key, escape(_text(item)), key))
+        else:
             attrs.append(" %s=%s" % (key, quoteattr(_text(item))))
-    return "<%s%s>%s</%s>" % (name, "".join(attrs), "".join(kids), name)
+    return "<%s%s>%s%s</%s>" % (name, "".join(attrs), text, "".join(kids), name)
 
 
 def envelope(payload=None, error=None) -> dict:
@@ -155,7 +196,7 @@ def layout_depth(value) -> int | None:
     levels = [w.strip().lower().rstrip("s") for w in value.split("/") if w.strip()]
     for word in ("artist", "album"):
         if word in levels:
-            return levels.index(word) + 1
+            return min(levels.index(word) + 1, MAX_ARTIST_LEVEL)      # no deeper than artist_level may be set in the config
     return None
 
 
@@ -170,7 +211,7 @@ class Subsonic:
         self.cfg, self.lib, self.state, self.auth, self.meta, self.throttle = cfg, lib, state, auth, meta, throttle
         self._pw_ok: dict = {}
         self._layouts: dict = {}              # (library, folder) -> (artist depth from its about.md or None, until): a minute at most
-        self._runs: dict = {}                 # (user, library) -> (next offset, album stream, until): where a paging app stopped
+        self._runs: dict = {}                 # (user, library, app, list) -> where a paging app stopped: see _album_run
         self._runs_lock = threading.Lock()
         self._radio: dict = {}
         self.relay_station = None             # set by the app when the relay is on: async (user, root, parts, number) -> Response
@@ -186,7 +227,7 @@ class Subsonic:
             "startscan": self.scan_status, "star": self.star, "unstar": self.unstar, "getstarred": self.starred,
             "getstarred2": self.starred2, "getlyricsbysongid": self.lyrics_by_id, "getinternetradiostations": self.radio_stations,
             "getartistinfo2": self.artist_info2, "getartistinfo": self.artist_info,
-            "getplayqueue": self.get_play_queue, "saveplayqueue": self.save_play_queue,
+            "getplayqueue": self.get_play_queue, "saveplayqueue": self.save_play_queue, "tokeninfo": self.token_info,
         }
         self.empty = {
             "getplaylists": "playlists", "getlyrics": "lyrics", "getgenres": "genres",
@@ -196,7 +237,7 @@ class Subsonic:
             "getbookmarks": "bookmarks", "getshares": "shares",
             "getsongsbygenre": "songsByGenre", "getvideos": "videos",
         }
-        self.nothing = {"scrobble", "setrating", "updatenowplaying", "savebookmark", "deletebookmark"}
+        self.nothing = {"scrobble", "setrating", "updatenowplaying", "createbookmark", "deletebookmark"}
 
     # ---- entry point ---------------------------------------------------------------------------------------------------
     async def handle(self, request) -> Response:
@@ -218,6 +259,8 @@ class Subsonic:
         fmt = "json" if params.get("f") == "json" else "xml"
         name = request.path_params["name"].lower()
         name = name[:-5] if name.endswith(".view") else name
+        if name == "getopensubsonicextensions":                       # public by the OpenSubsonic rules: an app asks before it logs in
+            return render(envelope(self.extensions(None, params)), fmt)
         try:
             user = await self.authenticate(request, params)
             await run_in_threadpool(self._check_ids, user, name, params)
@@ -235,7 +278,7 @@ class Subsonic:
             raise ApiError(0, "This server does not support %s." % name)
         except ApiError as e:
             return render(envelope(error=e), fmt)
-        except (PathError, NotFound):
+        except (PathError, NotFound, ValueError):                     # ValueError: a number or a name in the request that nothing can use
             return render(envelope(error=ApiError(70, "The requested data was not found.")), fmt)
         except OSError:
             return render(envelope(error=ApiError(0, "The library storage is not available right now.")), fmt)
@@ -244,7 +287,9 @@ class Subsonic:
     async def authenticate(self, request, params):
         """Three kinds of login. A KEY (apiKey, or the salted token made from it) is a long random secret, so a wrong one counts
         against the address only and never locks a user name. A `p` password may be the key or the real password: the key is
-        tried first (cheap), and only a wrong real-password attempt counts against the user name, like the web login."""
+        tried first (cheap), and only a wrong real-password attempt counts against the user name, like the web login. Only a
+        verified real password clears the failures counted against a name: a key login never does, or a playing music app
+        would keep unlocking its user for password guesses."""
         key, name = params.get("apiKey", ""), params.get("u", "")
         token, salt, password = params.get("t", ""), params.get("s", ""), params.get("p", "")
         if key and (name or token or password):
@@ -262,11 +307,9 @@ class Subsonic:
             if user is None:
                 self.throttle.fail_key(request)
                 raise ApiError(44 if key else 40, "Invalid API key." if key else "Wrong username or password.")
-            self.throttle.ok(request, user.name)
             return user
         user = await run_in_threadpool(self._check_key_password, name, password)
         if user is not None:
-            self.throttle.ok(request, user.name)
             return user
         wait = self.throttle.wait(request, name)
         if wait:
@@ -290,14 +333,15 @@ class Subsonic:
         return found
 
     def _check_token(self, name: str, token: str, salt: str):
-        """The salted-token login: t = md5(key + salt). An unknown name or a user without a key costs as much as a wrong token."""
+        """The salted-token login: t = md5(key + salt). An unknown name and a user without a key do the same work as a wrong token
+        (one look-up, one md5 of a fixed dummy secret, one comparison), so the answer time does not tell which users have a key, and
+        no password hashing can be set off from outside."""
         user = self.auth.users.get(name)
-        secret = self.state.get_appkey(name) if user else None
-        if user is None or secret is None:
-            verify_password("x", self.auth._dummy)
-            return None
-        expected = hashlib.md5((secret + salt).encode("utf-8"), usedforsecurity=False).hexdigest()
-        return user if self._same(expected, token.lower()) else None
+        secret = self.state.get_appkey(name)
+        real = user is not None and secret is not None
+        expected = hashlib.md5(((secret if real else _DUMMY_SECRET) + salt).encode("utf-8", "replace"), usedforsecurity=False).hexdigest()
+        same = self._same(expected, token.lower())
+        return user if (same and real) else None
 
     @staticmethod
     def _plain(password: str):
@@ -320,14 +364,15 @@ class Subsonic:
         if user is None or password is None:
             verify_password("x", self.auth._dummy)       # an unknown name costs as much as a wrong password
             return None
-        cache_key = hashlib.sha256((name + SEP + password).encode("utf-8")).hexdigest()
+        cache_key = hashlib.sha256((name + SEP + password).encode("utf-8", "replace")).hexdigest()
         now = time.monotonic()
-        if self._pw_ok.get(cache_key, 0) > now:
-            return user
+        until, proved = self._pw_ok.get(cache_key, (0, ""))
+        if until > now and hmac.compare_digest(proved, user.password_hash):      # proved against the hash the user has NOW: a changed
+            return user                                                          # password stops working at once
         if verify_password(password, user.password_hash):
             if len(self._pw_ok) > 500:
-                self._pw_ok = {k: v for k, v in self._pw_ok.items() if v > now}
-            self._pw_ok[cache_key] = now + self.cfg.auth_cache_seconds
+                self._pw_ok = {k: v for k, v in self._pw_ok.items() if v[0] > now}
+            self._pw_ok[cache_key] = (now + self.cfg.auth_cache_seconds, user.password_hash)
             return user
         return None
 
@@ -358,15 +403,23 @@ class Subsonic:
             if not self._has_root(user, root):
                 raise ApiError(70, "The requested data was not found.")
 
-    def _folder(self, user, root: str, parts):
-        """(folders, songs, names of the other files in lower case) of one folder."""
-        entries = self.lib.list_dir(user, root, parts, True, True)
+    def _folder(self, user, root: str, parts, stat: bool):
+        """(folders, songs, names of the other files in lower case) of one folder. `stat`: the songs come with their size and date (one
+        more system call per song: say False wherever only names or a count are used). The folders never do: where an album's date is
+        shown, _dated reads it for the few folders that are."""
+        entries = self.lib.list_dir(user, root, parts, True, False)
         dirs = [e for e in entries if e.is_dir and not (not parts and e.name.lower() == RADIO_FOLDER)]       # no station files among the artists
         songs = [e for e in entries if not e.is_dir and kinds.kind_of(e.name) == "audio"]
+        if stat and songs:
+            songs = self.lib.with_stats(songs)
         return dirs, songs, {e.name.lower() for e in entries if not e.is_dir}
 
-    def _list(self, user, root: str, parts):
-        return self._folder(user, root, parts)[:2]
+    def _list(self, user, root: str, parts, stat: bool):
+        return self._folder(user, root, parts, stat)[:2]
+
+    def _dated(self, entries: list) -> list:
+        """The same folder entries with their dates read (an album's `created`); one that vanished meanwhile drops out."""
+        return self.lib.with_stats(entries) if entries else []
 
     def _name(self, root: str, parts) -> str:
         return self.lib.display_name(parts[-1]) if parts else root
@@ -381,17 +434,36 @@ class Subsonic:
             "id": make_id(root, parts), "parent": make_id(root, parts[:-1]), "isDir": False,
             "title": tags.get("title") or os.path.splitext(entry.name)[0], "album": tags.get("album") or folder,
             "artist": tags.get("artist") or tags.get("albumartist") or (self._name(root, artist) if artist else ""),
-            "track": tags.get("track"), "discNumber": tags.get("disc"), "year": int(tags["year"]) if str(tags.get("year", "")).isdigit() else None,
+            "track": tags.get("track"), "discNumber": tags.get("disc"), "year": int(tags["year"]) if is_number(str(tags.get("year", ""))) else None,
             "genre": tags.get("genre"), "coverArt": make_id(root, parts), "size": entry.size,
             "contentType": kinds.AUDIO.get(ext, "audio/mpeg"), "suffix": ext[1:], "duration": duration,
             "bitRate": tags.get("bitrate"), "path": "/".join(parts), "type": "music", "isVideo": False,
             "albumId": make_id(root, parts[:-1]), "artistId": make_id(root, artist) if artist else None,
         }
 
+    def _tags(self, entry) -> dict:
+        """The tags of one song. A path that is not valid Unicode cannot be a key of the tag cache, so such a file is read each time."""
+        return self.meta.song_tags(entry) if _storable(entry.path) else mediainfo.song_info(entry.path)
+
+    def _tags_many(self, entries) -> list:
+        entries = list(entries)
+        if all(_storable(e.path) for e in entries):
+            return self.meta.song_tags_many(entries)
+        return [self._tags(e) for e in entries]
+
+    @staticmethod
+    def _play_order(pair) -> tuple:
+        """Disc, then the folder the song is in (CD1 before CD2 before CD10), then the track: a box set whose songs carry track numbers but
+        no disc numbers plays disc by disc, not every first track and then every second."""
+        entry, song = pair
+        return (song.get("discNumber") or 0, [natural_key(part) for part in entry.parts[:-1]], song.get("track") or 9999)
+
     def _songs(self, root: str, entries, user=None) -> list:
-        tags = self.meta.song_tags_many(entries)
-        out = [self._song(root, e, t) for e, t in zip(entries, tags)]
-        out.sort(key=lambda s: (s.get("discNumber") or 0, s.get("track") or 9999))
+        entries = list(entries)
+        tags = self._tags_many(entries)
+        pairs = [(e, self._song(root, e, t)) for e, t in zip(entries, tags)]
+        pairs.sort(key=self._play_order)
+        out = [song for _entry, song in pairs]
         if user is not None:
             self._mark_stars(user, out)
         return out
@@ -405,7 +477,7 @@ class Subsonic:
                 root, parts = read_id(item.get("id", ""))
             except ApiError:
                 continue
-            if parts:
+            if parts and _storable("/".join(parts)):                  # a name the shelf cannot hold was never starred
                 by_root.setdefault(root, []).append(("/".join(parts), item))
         for root, pairs in by_root.items():
             times = self.state.shelf_times(user.name, "favourite", root, [path for path, _ in pairs])
@@ -446,7 +518,11 @@ class Subsonic:
         return r.artist_level if r is not None else 1          # the upload folders: the top folders are the artists
 
     def _layout(self, root: str, folder) -> int | None:
-        """The artist depth from the `layout:` line of a folder's about.md, None without one. Read at most once a minute per folder."""
+        """The artist depth from the `layout:` line of a folder's about.md, None without one. Read at most once a minute per folder.
+        This opens a file by itself, without the library's checks, so every part is checked here (PathError) and every caller hands
+        over only folders the library has listed or checked for this user (folder_path, file_info, list_dir)."""
+        for part in folder:
+            check_segment(part)
         r = self.lib.cfg.roots.get(root)
         if r is None:
             return None                                         # the upload folders carry no layout notes
@@ -456,7 +532,7 @@ class Subsonic:
             return hit[0]
         depth = None
         base = os.path.join(longpath(r.path), *folder)
-        for name in (LAYOUT_NOTE, LAYOUT_NOTE.capitalize(), LAYOUT_NOTE.upper()):
+        for name in _LAYOUT_NAMES:
             try:
                 with open(os.path.join(base, name), "rb") as f:
                     raw = f.read(16384)
@@ -493,7 +569,7 @@ class Subsonic:
 
         def down(parts, target, decided):
             try:
-                dirs, _songs, files = self._folder(user, root, parts)
+                dirs, _songs, files = self._folder(user, root, parts, False)
             except (NotFound, OSError):
                 return
             if LAYOUT_NOTE in files:
@@ -513,11 +589,11 @@ class Subsonic:
         down((), self._default_level(root), False)
         return found
 
-    def _album_files(self, user, root: str, parts, limit: int = 20) -> list:
+    def _album_files(self, user, root: str, parts, stat: bool, limit: int = 20) -> list:
         """The song entries of an album folder: its own, else those in the folders right inside it (CD1, CD2), and with album.md also one
-        folder further down (a box set: Box/Disc 1/Album/songs). At most `limit` folders per level are opened."""
+        folder further down (a box set: Box/Disc 1/Album/songs). At most `limit` folders per level are opened. `stat`: see _folder."""
         try:
-            dirs, songs, files = self._folder(user, root, parts)
+            dirs, songs, files = self._folder(user, root, parts, stat)
         except (NotFound, OSError):
             return []
         if songs:
@@ -528,7 +604,7 @@ class Subsonic:
             deeper = []
             for d in layer:
                 try:
-                    sub, inside, _files = self._folder(user, root, d.parts)
+                    sub, inside, _files = self._folder(user, root, d.parts, stat)
                 except (NotFound, OSError):
                     continue
                 found += inside
@@ -537,24 +613,22 @@ class Subsonic:
         return found
 
     def _songs_in(self, user, root: str, parts) -> int:
-        """How many songs an album folder holds (see _album_files). 0 = not an album."""
-        return len(self._album_files(user, root, parts))
+        """How many songs an album folder holds (see _album_files). 0 = not an album. A count: no sizes or dates are read."""
+        return len(self._album_files(user, root, parts, False))
 
     def _albums_of(self, user, root: str, artist) -> list:
         """[(entry, songs)] of one artist folder: its loose songs first (as an album named after the artist), then each folder inside it
-        that holds songs."""
+        that holds songs. The songs are only counted; the date is read of each album folder, and of the loose songs."""
         try:
-            dirs, loose = self._list(user, root, artist)
+            dirs, loose = self._list(user, root, artist, True)
         except (NotFound, OSError):
             return []
         out = []
         if loose:
             out.append((SimpleNamespace(parts=tuple(artist), name=artist[-1], mtime=max(e.mtime for e in loose)), len(loose)))
-        for d in dirs:
-            songs = self._songs_in(user, root, d.parts)
-            if songs:
-                out.append((d, songs))
-        return out
+        counted = [(d, self._songs_in(user, root, d.parts)) for d in dirs]
+        counts = {d.name: songs for d, songs in counted if songs}
+        return out + [(d, counts[d.name]) for d in self._dated([d for d, songs in counted if songs])]
 
     def _album_stream(self, user, wanted: str = ""):
         """(root, entry, songs) of every album, artist by artist in folder order, read only as far as it is used."""
@@ -563,24 +637,29 @@ class Subsonic:
                 for entry, songs in self._albums_of(user, r.name, artist.parts):
                     yield r.name, entry, songs
 
-    def _album_run(self, user, wanted: str, offset: int, size: int) -> list:
+    def _album_run(self, user, wanted: str, offset: int, size: int, client: str = "", what: str = "list") -> list:
         """albums[offset:offset+size] in artist order. An app that pages through (offset 0, 500, 1000 ...) continues where its last page
-        stopped, so paging costs one pass in all; another offset starts from the beginning. The place is kept a few minutes, in memory."""
-        key = (user.name, wanted)
+        stopped, so paging costs one pass in all. Offset 0 starts a run; any other offset is answered only when it continues the run kept
+        for this user, library, app (`c`) and list, or asks for that run's last page again (a retry). Every other offset answers EMPTY:
+        skipping to it would mean listing every album before it, and nothing walks the library for one request. The place is kept a few
+        minutes, in memory: (next offset, album stream, until, offset of the last page, the last page)."""
+        key = (user.name, wanted, client, what)
         with self._runs_lock:
             now = time.monotonic()
             self._runs = {k: v for k, v in self._runs.items() if v[2] > now}
-            kept = self._runs.pop(key, None)
-        if kept and kept[0] == offset:
-            stream = kept[1]
-        else:
-            stream = self._album_stream(user, wanted)
-            for _ in itertools.islice(stream, offset):
-                pass
+            kept = self._runs.get(key)
+            if offset and kept and kept[3] == offset and len(kept[4]) == size:
+                return list(kept[4])                                  # the same page again
+            if offset and not (kept and kept[0] == offset):
+                return []                                             # continues nothing; a kept run stays as it is
+            self._runs.pop(key, None)                                 # taken out while it is read: two requests never share a stream
+        stream = kept[1] if offset else self._album_stream(user, wanted)
         page = list(itertools.islice(stream, size))
         if len(page) == size:
             with self._runs_lock:
-                self._runs[key] = (offset + size, stream, time.monotonic() + _ALBUM_CACHE_SECONDS)
+                while len(self._runs) >= MAX_RUNS:
+                    del self._runs[min(self._runs, key=lambda k: self._runs[k][2])]
+                self._runs[key] = (offset + size, stream, time.monotonic() + _ALBUM_CACHE_SECONDS, offset, page)
         return page
 
     def _random_albums(self, user, wanted: str, count: int) -> list:
@@ -596,7 +675,7 @@ class Subsonic:
             parts = ()
             while len(parts) < self._target(r.name, parts):
                 try:
-                    dirs = self._list(user, r.name, parts)[0]
+                    dirs = self._list(user, r.name, parts, False)[0]
                 except (NotFound, OSError):
                     dirs = []
                 if not dirs:
@@ -604,7 +683,7 @@ class Subsonic:
                 parts = random.choice(dirs).parts
             else:
                 try:
-                    dirs, loose = self._list(user, r.name, parts)
+                    dirs, loose = self._list(user, r.name, parts, False)
                 except (NotFound, OSError):
                     continue
                 choices = [(d.parts, d) for d in dirs] + ([(parts, SimpleNamespace(parts=parts, name=parts[-1], mtime=0))] if loose else [])
@@ -614,6 +693,8 @@ class Subsonic:
                 songs = len(loose) if album == parts else self._songs_in(user, r.name, album)
                 if songs and (r.name, album) not in seen:
                     seen.add((r.name, album))
+                    if album != parts:
+                        entry = (self._dated([entry]) or [entry])[0]      # the date of the one album that is shown
                     out.append((r.name, entry, songs))
                     misses = 0
         return out
@@ -630,8 +711,8 @@ class Subsonic:
     def _album_songs(self, user, root: str, parts) -> list:
         """The song entries of an album folder (see _album_files); for the artist folder itself, only its loose songs."""
         if tuple(parts) == self._artist_of(root, parts):
-            return list(self._list(user, root, parts)[1])
-        return self._album_files(user, root, parts)
+            return list(self._list(user, root, parts, True)[1])
+        return self._album_files(user, root, parts, True)
 
     # ---- endpoints -------------------------------------------------------------------------------------------------------
     def ping(self, user, p):
@@ -641,7 +722,12 @@ class Subsonic:
         return {"license": {"valid": True, "email": "", "licenseExpires": "2099-01-01T00:00:00.000Z"}}
 
     def extensions(self, user, p):
+        """Answered without a login (see handle): `user` is None here."""
         return {"openSubsonicExtensions": [{"name": "apiKeyAuthentication", "versions": [1]}, {"name": "songLyrics", "versions": [1]}]}
+
+    def token_info(self, user, p):
+        """Part of apiKeyAuthentication: who an API key belongs to."""
+        return {"tokenInfo": {"username": user.name}}
 
     # ---- internet radio: the station files (.m3u, .pls, .url) of a top-level Radio folder, in it and one folder down ---------
     def _stations(self, user) -> list:
@@ -651,20 +737,21 @@ class Subsonic:
         found = []
         for r in self._roots(user):
             try:
-                top = self.lib.list_dir(user, r.name, (), True, True)
+                top = self.lib.list_dir(user, r.name, (), True, False)
             except (NotFound, OSError):
                 continue
             for folder in (e for e in top if e.is_dir and e.name.lower() == RADIO_FOLDER):
                 try:
-                    inside = self.lib.list_dir(user, r.name, folder.parts, True, True)
+                    inside = self.lib.list_dir(user, r.name, folder.parts, True, False)
                     files = [e for e in inside if not e.is_dir]
                     for sub in (e for e in inside if e.is_dir):
-                        files += [e for e in self.lib.list_dir(user, r.name, sub.parts, True, True) if not e.is_dir]
+                        files += [e for e in self.lib.list_dir(user, r.name, sub.parts, True, False) if not e.is_dir]
                 except (NotFound, OSError):
                     continue
+                files = [e for e in files if radio.is_radio_file(e.name)]         # first the station files, then the cut: logos do not count
                 for entry in sorted(files, key=lambda e: e.parts)[:300]:
-                    if not radio.is_radio_file(entry.name) or len(found) >= radio.MAX_STATIONS:
-                        continue
+                    if len(found) >= radio.MAX_STATIONS:
+                        break
                     try:
                         path = self.lib.file_info(user, r.name, entry.parts, True).path
                     except (NotFound, PathError, OSError):
@@ -696,7 +783,7 @@ class Subsonic:
         """(root, parts, number) when `value` is the id of a station (a station file, with .N for the Nth station of a file), else None."""
         base, _, tail = value.rpartition(".")
         number = 0
-        if base and tail.isdigit():
+        if base and is_number(tail):
             value, number = base, int(tail)
         try:
             root, parts = read_id(value)
@@ -711,6 +798,7 @@ class Subsonic:
         root, parts = read_id(p.get("id", ""))
         if not parts:
             return ""
+        self.lib.folder_path(user, root, parts)                              # the library's checks before anything is read for this id
         if root != UPLOADS_ROOT and self.lib.uploads_enabled(user):          # a note the user wrote themselves comes first
             for wanted in self._BIOGRAPHY_FILES:
                 mine = notes.read(self.lib, user, root, parts, wanted)
@@ -764,7 +852,7 @@ class Subsonic:
                 root, parts = read_id(ident)
             except ApiError:
                 continue                                              # a music folder number or junk
-            if not parts or not self._has_root(user, root):
+            if not parts or not self._has_root(user, root) or not _storable("/".join(parts)):      # the shelf cannot hold such a name
                 continue
             path = "/".join(parts)
             if not on:
@@ -817,7 +905,7 @@ class Subsonic:
                 except (NotFound, PathError, OSError):
                     continue
                 entry = SimpleNamespace(parts=parts, name=info.name, path=info.path, size=info.size, mtime=info.mtime)
-                songs.append({**self._song(root, entry, self.meta.song_tags(entry)), "starred": _iso(added)})
+                songs.append({**self._song(root, entry, self._tags(entry)), "starred": _iso(added)})
         return {"artist": artists, "album": albums, "song": songs}
 
     def starred(self, user, p):
@@ -855,7 +943,7 @@ class Subsonic:
 
     def _folder_root(self, user, value: str) -> str:
         """The library a music folder id (1, 2, ... in the order of getMusicFolders) or a folder id belongs to."""
-        if value.isdigit():
+        if is_number(value):
             roots = self._roots(user)
             if 1 <= int(value) <= len(roots):
                 return roots[int(value) - 1].name
@@ -868,31 +956,25 @@ class Subsonic:
 
     def indexes(self, user, p):
         wanted = self._wanted(user, p)
-        tops = []
-        for r in self._roots(user, wanted):                          # folder browsing: the top folders as they are
+        tops, files = [], []
+        for r in self._roots(user, wanted):                          # folder browsing: the top folders as they are, each library listed once
             try:
-                tops += [{"id": make_id(r.name, d.parts), "name": self.lib.display_name(d.name), "coverArt": make_id(r.name, d.parts)}
-                         for d in self._list(user, r.name, ())[0]]
+                dirs, songs = self._list(user, r.name, (), True)
             except (NotFound, OSError):
                 continue
-        artists = self._mark_stars(user, tops)
-        files = []
-        for r in self._roots(user, wanted):
-            try:
-                _, songs = self._list(user, r.name, ())
-            except (NotFound, OSError):
-                continue
+            tops += [{"id": make_id(r.name, d.parts), "name": self.lib.display_name(d.name), "coverArt": make_id(r.name, d.parts)} for d in dirs]
             files += self._songs(r.name, songs)
+        artists = self._mark_stars(user, tops)
         return {"indexes": {"ignoredArticles": "", "lastModified": int(time.time() * 1000),
                             "index": self._grouped(artists), "child": files}}
 
     def music_directory(self, user, p):
         if not p.get("id"):
             raise ApiError(10, "Required parameter is missing.")
-        root, parts = (self._folder_root(user, p["id"]), ()) if p["id"].isdigit() else read_id(p["id"])
+        root, parts = (self._folder_root(user, p["id"]), ()) if is_number(p["id"]) else read_id(p["id"])
         if not self._has_root(user, root):
             raise ApiError(70, "The requested data was not found.")
-        dirs, songs = self._list(user, root, parts)
+        dirs, songs = self._list(user, root, parts, True)
         children = self._mark_stars(user, [self._dir_item(root, d) for d in dirs]) + self._songs(root, songs, user)
         return {"directory": {"id": p["id"], "parent": make_id(root, parts[:-1]) if parts else None,
                               "name": self._name(root, parts), "child": children}}
@@ -911,6 +993,7 @@ class Subsonic:
 
     def album(self, user, p):
         root, parts = read_id(p.get("id", ""))
+        self.lib.folder_path(user, root, parts)                       # before anything else: the layout notes are opened at paths made from the id
         songs = self._album_songs(user, root, parts)
         listed = self._songs(root, songs, user)
         artist = self._artist_of(root, parts)
@@ -929,24 +1012,32 @@ class Subsonic:
         if kinds.kind_of(info.name) != "audio":
             raise ApiError(70, "The requested data was not found.")
         entry = SimpleNamespace(parts=parts, name=info.name, path=info.path, size=info.size, mtime=info.mtime)
-        item = self._song(root, entry, self.meta.song_tags(entry))
+        item = self._song(root, entry, self._tags(entry))
         self._mark_stars(user, [item])
         return {"song": item}
 
-    def _recent_albums(self, user) -> list:
-        """[(root, folder entry)]: the folders of the audio files this user has a saved position in (the web player keeps one), newest first.
-        Nothing is logged for this: it is the same list as "continue" on the home page."""
+    def _recent_albums(self, user, wanted: str, offset: int, size: int) -> list:
+        """[(root, folder entry)]: one page of the folders of the audio files this user has a saved position in (the web player keeps
+        one), newest first. Nothing is logged for this: it is the same list as "continue" on the home page. A saved path is only a text
+        from the database: each folder is checked by the library (still there, still open to this user) before it is shown, and the
+        checking stops when the page is full."""
         out, seen = [], set()
-        for row in self.state.recent_progress(user.name, 300):
+        for row in self.state.recent_progress(user.name, 300) if offset < 300 else ():
+            if len(out) >= offset + size:
+                break
             parts = tuple(row["path"].split("/"))
-            if len(parts) < 2 or kinds.kind_of(parts[-1]) != "audio" or not self._has_root(user, row["root"]):
+            if len(parts) < 2 or kinds.kind_of(parts[-1]) != "audio" or (wanted and row["root"] != wanted) or not self._has_root(user, row["root"]):
                 continue
             key = (row["root"], parts[:-1])
             if key in seen:
                 continue
             seen.add(key)
+            try:
+                self.lib.folder_path(user, row["root"], parts[:-1])
+            except (NotFound, PathError, OSError):
+                continue
             out.append((row["root"], SimpleNamespace(parts=parts[:-1], name=parts[-2], mtime=row["updated"])))
-        return out
+        return out[offset:offset + size]
 
     # ---- the play queue (resume on another device): one saved queue per user, replaced by every savePlayQueue ------------------------
     def save_play_queue(self, user, p):
@@ -967,7 +1058,7 @@ class Subsonic:
             self.state.playqueue_delete(user.name)                    # an empty save clears it
             return {}
         self.state.playqueue_put(user.name, {"ids": ids, "current": current if current in ids else ids[0], "position": position,
-                                             "by": re.sub(r"[^\w .-]", "", p.get("c", ""))[:40]})
+                                             "by": self._client(p)})
         return {}
 
     def _resume_from_progress(self, user, newer_than: float):
@@ -981,7 +1072,7 @@ class Subsonic:
                 continue
             match = re.fullmatch(r"t:(\d+(?:[.]\d+)?)", row["locator"] or "")
             try:
-                _, songs = self._list(user, row["root"], parts[:-1])
+                _, songs = self._list(user, row["root"], parts[:-1], True)
             except (NotFound, PathError, OSError):
                 continue
             items = self._songs(row["root"], songs, user)
@@ -1008,7 +1099,7 @@ class Subsonic:
             except (ApiError, NotFound, PathError, OSError):
                 continue                                              # a file that is gone or no longer visible drops out
             entry = SimpleNamespace(parts=parts, name=info.name, path=info.path, size=info.size, mtime=info.mtime)
-            item = self._song(root, entry, self.meta.song_tags(entry))
+            item = self._song(root, entry, self._tags(entry))
             self._mark_stars(user, [item])
             entries.append(item)
         if not entries:
@@ -1018,7 +1109,12 @@ class Subsonic:
                               "changed": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(clamp_time(saved["updated"]))),
                               "changedBy": saved.get("by", "")}}
 
-    def _list_albums(self, user, kind: str, wanted: str, offset: int, size: int) -> list:
+    @staticmethod
+    def _client(p) -> str:
+        """The app's own name (`c`), as part of the key its paging place is kept under."""
+        return re.sub(r"[^\w .-]", "", p.get("c", ""))[:40]
+
+    def _list_albums(self, user, kind: str, wanted: str, offset: int, size: int, client: str = "") -> list:
         """[(root, entry, songs or None)] of one page of an album list type. Recent and starred come from what is saved for the user, random
         from a few random folders, the alphabetical lists artist by artist in folder order (alphabeticalByName too: sorting every album by
         name would mean opening every folder). Lists that need every folder opened (newest, frequent ...) are honestly empty."""
@@ -1029,10 +1125,10 @@ class Subsonic:
                      for root, parts, is_dir, added in self._favourites(user, wanted) if is_dir and len(parts) != self._target(root, parts)]
             return found[offset:offset + size]
         if kind == "recent":
-            return [(r, e, None) for r, e in self._recent_albums(user) if not wanted or r == wanted][offset:offset + size]
+            return [(r, e, None) for r, e in self._recent_albums(user, wanted, offset, size)]
         if kind == "random":
             return self._random_albums(user, wanted, min(size, 100))
-        return self._album_run(user, wanted, offset, size)
+        return self._album_run(user, wanted, offset, size, client, "list")
 
     def _window(self, p) -> tuple:
         try:
@@ -1044,7 +1140,7 @@ class Subsonic:
 
     def _album_page(self, user, p) -> list:
         size, offset = self._window(p)
-        albums = self._list_albums(user, p.get("type", "alphabeticalByName"), self._wanted(user, p), offset, size)
+        albums = self._list_albums(user, p.get("type", "alphabeticalByName"), self._wanted(user, p), offset, size, self._client(p))
         return self._mark_stars(user, [self._album_item(r, e, songs) for r, e, songs in albums])
 
     def album_list2(self, user, p):
@@ -1088,10 +1184,11 @@ class Subsonic:
         An EMPTY query lists the library, artists and albums, paged, as apps that load everything ask for it."""
         query = re.sub(r"[\"*]", "", p.get("query", "")).strip().lower()
         wanted = self._wanted(user, p)
-        artists = sorted((a for a in self._artists(user, wanted) if query in a["name"].lower()), key=lambda a: a["name"].lower())
+        asked = query or self._paged_window(p, "artist")[0]           # an app that pages through the albums asks for no artists: none are listed
+        artists = sorted((a for a in (self._artists(user, wanted) if asked else []) if query in a["name"].lower()), key=lambda a: a["name"].lower())
         if not query:
             count, offset = self._paged_window(p, "album")
-            albums = self._album_run(user, wanted, offset, count) if count else []
+            albums = self._album_run(user, wanted, offset, count, self._client(p), "search") if count else []
             return {"artist": self._mark_stars(user, self._paged(p, "artist", artists)),
                     "album": self._mark_stars(user, [self._album_item(r, e, songs) for r, e, songs in albums]), "song": []}
         albums = []
@@ -1127,7 +1224,7 @@ class Subsonic:
         if kinds.kind_of(info.name) not in ("audio", "video") or mime is None:
             raise ApiError(70, "The requested data was not found.")
         headers = {"X-Content-Type-Options": "nosniff", "Cache-Control": "private, max-age=300"}
-        return FileResponse(info.path, media_type=mime, headers=headers, filename=info.name if attachment else None,
+        return FileResponse(info.path, media_type=mime, headers=headers, filename=clean(info.name) if attachment else None,
                             content_disposition_type="attachment" if attachment else "inline")
 
     def stream(self, user, p):
@@ -1152,7 +1249,7 @@ class Subsonic:
         """(bytes, mime) of the picture scaled down to `size` pixels wide (rounded up to one of the thumbnail widths), when the app
         asks for a size up to the largest of those; cached on disk. The original when it asks for none or more, when Pillow is not
         installed, or when the picture cannot be scaled."""
-        if not size.isdigit() or int(size) > thumbs.MAX_WIDTH:
+        if not is_number(size) or int(size) > thumbs.MAX_WIDTH:
             return data, mime
         width = thumbs.clamp_width(size)
         key = "subsonic|%s|%d" % (hashlib.sha1(data, usedforsecurity=False).hexdigest(), width)
@@ -1167,7 +1264,7 @@ class Subsonic:
         return small
 
     def _folder_art(self, user, root: str, parts, depth: int):
-        dirs, songs = self._list(user, root, parts)
+        dirs, songs = self._list(user, root, parts, False)
         if songs:
             found = mediainfo.read_folder_cover(os.path.dirname(songs[0].path))
             if found:
