@@ -26,6 +26,7 @@ class Ctx:
     queue_subfolders: bool = True    # Play all and Shuffle include the folders below the one you are in
     view: str = "list"           # how a folder is shown: "list" (rows) or "grid" (covers)
     thumbs: bool = False         # thumbnails are switched on (thumbnails = true): the cover view and its switches exist
+    tap_turn: str = "topbottom"  # a tap in the readers turns the page by "topbottom" (upper part back, the rest forward) or "leftright"
 
 
 def layout(title: str, body: str, ctx: Ctx, *, head: str = "", scripts: tuple = (), bar: bool = True,
@@ -62,6 +63,8 @@ def layout(title: str, body: str, ctx: Ctx, *, head: str = "", scripts: tuple = 
     # scheme.js is NOT deferred: it must run before the first paint so a saved dark/light choice never flashes.
     # data-shell: a signed-in page opened on its own moves into the shell (scheme.js), where the player outlives page changes
     to_shell = " data-shell='%s'" % escape(u.shell()) if (shell and ctx.user) else ""
+    if ctx.tap_turn == "leftright":                     # read by tapzones.js; without it the readers split the page top to bottom
+        to_shell += " data-tap-turn='leftright'"
     return ("<!doctype html><html lang='en' data-icons='%s'%s><head><meta charset='utf-8'>"
             "<meta name='viewport' content='width=device-width, initial-scale=1, viewport-fit=cover'>"
             "<title>%s</title>%s%s<script src='%s'></script>%s%s</head>"
@@ -1053,6 +1056,9 @@ def settings_page(ctx: Ctx, themes: list, saved: bool = False, stations: bool = 
             "<label class='pl-field'><span>Live TV: when I leave the channel page</span><select name='tv_sound'>%s</select></label>"
             "<label class='pl-field'><span>Play all and Shuffle on a folder</span><select name='queue_subfolders'>"
             "<option value='yes'%s>Include the folders below it</option><option value='no'%s>Only the files in that folder</option></select></label>"
+            "<label class='pl-field'><span>Readers: a tap on the page turns it</span><select name='tap_turn'>"
+            "<option value='topbottom'%s>Top: back. The rest of the page: forward</option>"
+            "<option value='leftright'%s>Left: back. The rest of the page: forward</option></select></label>"
             "<button class='pl-btn pl-btn-primary' type='submit'>Save</button></form>%s"
             "<p><a href='%s'>&larr; Back to the library</a></p></main>"
             % (note, escape(ctx.urls.settings()), opts, icon_opts,
@@ -1066,6 +1072,7 @@ def settings_page(ctx: Ctx, themes: list, saved: bool = False, stations: bool = 
                "".join("<option value='%s'%s>%s</option>" % (k, " selected" if (k == "keep") == ctx.tv_sound else "", label)
                        for k, label in (("keep", "Keep the sound playing in the player bar"), ("stop", "Stop it"))),
                " selected" if ctx.queue_subfolders else "", "" if ctx.queue_subfolders else " selected",
+               "" if ctx.tap_turn == "leftright" else " selected", " selected" if ctx.tap_turn == "leftright" else "",
                ("<section class='pl-card'><h2>Radio and TV</h2><p class='pl-muted'>Find stations and channels in public catalogues and save them "
                 "into your upload folder, where pluteus plays them (and shows them to music apps as radio).</p>"
                 "<p><a class='pl-btn' href='%s'>Find radio stations</a> <a class='pl-btn' href='%s'>Find TV channels</a>%s</p></section>"

@@ -118,6 +118,19 @@ def test_the_subfolder_switch_in_settings_limits_play_all_and_shuffle(client):
     assert len(titles("/api/queue/music/Artist")) == 4
 
 
+def test_the_tap_switch_in_settings_marks_every_page_for_the_readers(client):
+    c, alice, _ = client
+    origin = {**alice, "origin": "http://testserver", "content-type": "application/x-www-form-urlencoded"}
+    settings = lambda: c.get("/settings", headers={**alice, **HTML}).text                                      # noqa: E731
+    assert "<option value='topbottom' selected>" in settings() and "data-tap-turn" not in settings()           # top and bottom is the start
+    c.post("/settings", content="tap_turn=leftright", headers=origin)
+    assert "<option value='leftright' selected>" in settings() and " data-tap-turn='leftright'><head>" in settings()   # on the html element
+    c.post("/settings", content="tap_turn=junk", headers=origin)                                               # junk changes nothing
+    assert "<option value='leftright' selected>" in settings()
+    c.post("/settings", content="tap_turn=topbottom", headers=origin)
+    assert "<option value='topbottom' selected>" in settings() and "data-tap-turn" not in settings()
+
+
 def test_tv_mode_is_a_per_browser_switch_with_its_own_script_and_the_player_merges_on_wide_screens(client):
     c, alice, _ = client
     settings = c.get("/settings", headers={**alice, **HTML}).text

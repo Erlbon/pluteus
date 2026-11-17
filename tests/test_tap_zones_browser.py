@@ -94,11 +94,12 @@ def page(site):
         browser.close()
 
 
-def tap(page, share=None, below_bar=None):
-    """Click the reader's page at a share of its height (0 = its top edge), or a number of pixels below its top edge."""
+def tap(page, share=None, below_bar=None, across=0.5):
+    """Click the reader's page at a share of its height (0 = its top edge), or a number of pixels below its top edge; `across` is the
+    share of its width (0 = its left edge)."""
     box = page.locator(".pl-reader-stage").bounding_box()
     y = box["y"] + (below_bar if below_bar is not None else share * box["height"])
-    page.mouse.click(box["x"] + box["width"] / 2, y)
+    page.mouse.click(box["x"] + across * box["width"], y)
     page.wait_for_timeout(400)
 
 
@@ -186,3 +187,55 @@ def test_epub_a_link_in_the_text_still_works_and_an_open_menu_only_closes(page):
     page.frame_locator("#viewer iframe").locator("#note").click()                       # a link in the book: it goes to chapter 3
     page.wait_for_function("() => { const f = document.querySelector('#viewer iframe'), h = f && f.contentDocument.querySelector('h1');"
                            " return h && h.textContent === 'Chapter 3'; }")
+
+
+def choose_left_and_right(page):
+    """Settings: a tap turns the page by its left and right parts (kept per user)."""
+    page.goto(page.site + "/settings?noshell=1")
+    page.select_option("select[name=tap_turn]", "leftright")
+    page.click("button.pl-btn-primary")
+    page.wait_for_url(lambda url: "saved=1" in url)
+
+
+def test_left_and_right_in_the_comic_and_pdf_readers(page):
+    choose_left_and_right(page)
+    pct = lambda: page.inner_text("#pct")
+    for address in ("/read/lib/Comic.cbz?noshell=1", "/view/lib/Paper.pdf?noshell=1"):
+        page.goto(page.site + address)
+        page.wait_for_function("() => document.getElementById('pct').textContent === '1 / 3'")
+        tap(page, 0.15, across=0.7)                                        # high up on the right: forward (the height no longer counts)
+        page.wait_for_function("() => document.getElementById('pct').textContent === '2 / 3'")
+        tap(page, 0.9, across=0.36)                                        # just right of the left part: forward
+        page.wait_for_function("() => document.getElementById('pct').textContent === '3 / 3'")
+        tap(page, 0.9, across=0.15)                                        # low down on the left: back
+        page.wait_for_function("() => document.getElementById('pct').textContent === '2 / 3'")
+        tap(page, below_bar=10, across=0.7)                                # the quiet strip under the bar still turns nothing
+        assert pct() == "2 / 3" and bars_shown(page)
+
+
+def test_left_and_right_in_the_picture_viewer(page):
+    from urllib.parse import unquote
+    choose_left_and_right(page)
+    page.goto(page.site + "/view/lib/pics/2.png?noshell=1")
+    page.wait_for_selector("#page")
+    tap(page, 0.15, across=0.7)
+    page.wait_for_url(lambda url: "pics/3.png" in unquote(url))
+    page.goto(page.site + "/view/lib/pics/2.png?noshell=1")
+    page.wait_for_selector("#page")
+    tap(page, 0.9, across=0.15)
+    page.wait_for_url(lambda url: "pics/1.png" in unquote(url))
+
+
+def test_left_and_right_in_the_epub_reader(page):
+    choose_left_and_right(page)
+    page.goto(page.site + "/read/lib/Long.epub?noshell=1")
+    page.wait_for_function("() => { const f = document.querySelector('#viewer iframe'); return f && f.contentDocument.querySelector('p'); }")
+    page.wait_for_timeout(500)
+    start = page.evaluate(EPUB_AT)
+    tap(page, 0.15, across=0.7)                                            # high up on the right: forward
+    page.wait_for_function("s => document.querySelector('.epub-container').scrollLeft > s", arg=start)
+    second = page.evaluate(EPUB_AT)
+    tap(page, 0.9, across=0.7)                                             # the second page: the book's frame has moved, the tap is still on the right
+    page.wait_for_function("s => document.querySelector('.epub-container').scrollLeft > s", arg=second)
+    tap(page, 0.9, across=0.15)                                            # low down on the left: back
+    page.wait_for_function("s => document.querySelector('.epub-container').scrollLeft === s", arg=second)

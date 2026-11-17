@@ -2,6 +2,9 @@
 
 Release notes are taken from the section of the tagged version (`## 0.5.0 ...`).
 
+## Unreleased
+- **Tap left and right to turn pages, if you prefer.** Settings has a new choice, **Readers: a tap on the page turns it**. The start is as before: the upper part of the page goes back, the rest goes forward. With the other choice the left part goes back and the rest goes forward. It holds for the ebook, comic, PDF and picture readers, and is kept per user, so it follows you to every device. Swipes, keys and the buttons are unchanged.
+
 ## 0.9.28 - 2026-11-12
 - **A tap log for the ebook reader (for finding a double page turn on a real phone).** Settings has a new switch, **Tap log (for a bug report)**, off by default. While it is off nothing is recorded or stored and no button shows. While it is on, the reader records, with times, every tap, key and swipe as the page receives it, what each tap was decided to be (a page forward, a page back, ignored and why), every page turn with the scroll numbers behind it (and a turn dropped because another was running), where the reader was, and the screen's pixel ratio and size. A **Log** button opens a panel with **Mark** (press it when something goes wrong), **Copy** and **Clear**. It is kept in this browser only (the last 600 lines, for this tab, surviving a reload), is never sent anywhere, and holds no book text. Tested with a phone over adb wireless debugging: taps, double taps and the last page of a chapter all behaved.
 - **Code review of 0.9.27: 73 fixes** (`docs/code-review-2026-11-12.md` has every finding with its number). The ones a user or owner can notice:

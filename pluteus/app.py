@@ -506,7 +506,8 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
                        extras=prefs.get("player_extras", True) is not False,
                        tv_sound=prefs.get("tv_sound", True) is not False,
                        view_scope="folder" if prefs.get("view_scope") == "folder" else "all",
-                       queue_subfolders=prefs.get("queue_subfolders", True) is not False)
+                       queue_subfolders=prefs.get("queue_subfolders", True) is not False,
+                       tap_turn="leftright" if prefs.get("tap_turn") == "leftright" else "topbottom")
 
     def unauthorized(request: Request, mode: str, wait: int) -> Response:
         if wait:
@@ -1089,6 +1090,8 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
                     prefs["tv_sound"] = form["tv_sound"] == "keep"
                 if form.get("queue_subfolders") in ("yes", "no"):
                     prefs["queue_subfolders"] = form["queue_subfolders"] == "yes"
+                if form.get("tap_turn") in ("topbottom", "leftright"):
+                    prefs["tap_turn"] = form["tap_turn"]
             await run_in_threadpool(state.update_prefs, user.name, change)
             return RedirectResponse(urls.settings() + "?saved=1", 303)
         return HTMLResponse(web.settings_page(ctx_for(user), themes.names(), "saved" in request.query_params,

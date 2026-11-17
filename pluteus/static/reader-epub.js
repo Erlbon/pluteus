@@ -242,7 +242,7 @@
   function prev() { turn(false); }
   $("next").addEventListener("click", next);
   $("prev").addEventListener("click", prev);
-  // a tap on the page (tapzones.js): upper part back, lower part forward. The book's text is a frame of its own, so its taps are passed on
+  // a tap on the page (tapzones.js): upper part back, lower part forward (or left and right, the user's choice in Settings). The book's text is a frame of its own, so its taps are passed on
   // here (a link in the book still works: tapzones.js leaves taps on links alone). In the scrolling layout a tap turns nothing.
   var taps = window.plTapZones({
     stage: document.querySelector(".pl-reader-stage"), back: prev, forward: next,
@@ -254,7 +254,8 @@
   rendition.on("click", function (e) {
     var frame = e.view && e.view.frameElement;
     if (!frame || e.defaultPrevented || e.button) { L.add("click from the book's page not used", { prevented: e.defaultPrevented ? 1 : 0, button: e.button }); return; }
-    taps.tap(frame.getBoundingClientRect().top + e.clientY, e.target, "book frame");
+    var at = frame.getBoundingClientRect();
+    taps.tap(at.left + e.clientX, at.top + e.clientY, e.target, "book frame");
   });
 
   function onKey(e) {

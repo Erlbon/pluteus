@@ -1,6 +1,7 @@
 /* pluteus readers (EPUB, comic, PDF, pictures): what a tap on the page does. The page is split from top to bottom, so either thumb
    reaches forward (a left hand could not reach the old right-hand edge): the upper part goes back a page, and the rest, where a thumb
-   rests, goes forward. The bars always stay (a band that hid them, 0.9.20 to 0.9.24, was more in the way than useful). The first 24 px
+   rests, goes forward. A user who prefers the sides picks that under Settings (the page then carries data-tap-turn="leftright" on its
+   html element): the left part goes back, the rest goes forward. The bars always stay (a band that hid them, 0.9.20 to 0.9.24, was more in the way than useful). The first 24 px
    under the bar do nothing, so a tap that misses a bar button by a little turns no page. A tap while a menu is open only closes the menu;
    a tap on a link, a button or a field, a tap that ends a drag, and a tap that clears a text selection do nothing here. The swipe that
    turns a page is here too (plSwipe, at the end); keys stay with each reader. */
@@ -9,23 +10,25 @@
   var QUIET = 24, BACK = 0.30;
 
   /* opts: stage (the page area), back(), forward(), and optionally enabled() (false: taps do nothing, say while zoomed), menuOpen() and
-     closeMenus(). Returns { tap(clientY, target), watch(doc) }: a reader whose page is a frame of its own (the EPUB reader) passes on
-     the taps made in there, with clientY in this window. */
+     closeMenus(). Returns { tap(clientX, clientY, target), watch(doc) }: a reader whose page is a frame of its own (the EPUB reader)
+     passes on the taps made in there, with clientX and clientY in this window. */
   window.plTapZones = function (opts) {
     var hadSelection = false;
+    var sides = document.documentElement.getAttribute("data-tap-turn") === "leftright";
 
-    function zone(clientY) {
-      var box = opts.stage.getBoundingClientRect(), y = clientY - box.top;
+    function zone(clientX, clientY) {
+      var box = opts.stage.getBoundingClientRect(), x = clientX - box.left, y = clientY - box.top;
       if (y < QUIET || y > box.height) return "";
+      if (sides) return x < 0 || x > box.width ? "" : (x / box.width < BACK ? "back" : "forward");
       return y / box.height < BACK ? "back" : "forward";
     }
     function note(what, detail) { if (opts.note) opts.note(what, detail); }     // the reader's tap log (optional): what became of each tap, and why
-    function tap(clientY, target, source) {
-      var from = (source || "page") + " y=" + Math.round(clientY);
+    function tap(clientX, clientY, target, source) {
+      var from = (source || "page") + " x=" + Math.round(clientX) + " y=" + Math.round(clientY) + (sides ? " (left/right)" : "");
       if (target && target.closest && target.closest("a, button, input, select, textarea, label, .pl-menu")) { note("ignored: a link or control", from); return false; }
       if (hadSelection) { hadSelection = false; note("ignored: it only cleared a text selection", from); return false; }
       if (opts.menuOpen && opts.menuOpen()) { opts.closeMenus(); note("closed a menu", from); return true; }
-      var where = zone(clientY);
+      var where = zone(clientX, clientY);
       if (!where || (opts.enabled && !opts.enabled())) { note("ignored: " + (where ? "this layout takes no taps" : "outside the page or in the quiet strip"), from); return false; }
       note("page " + where, from);
       (where === "back" ? opts.back : opts.forward)();
@@ -40,7 +43,7 @@
     watch(document);
     opts.stage.addEventListener("click", function (e) {
       if (e.defaultPrevented || e.button) return;
-      if (tap(e.clientY, e.target, "stage")) e.preventDefault();
+      if (tap(e.clientX, e.clientY, e.target, "stage")) e.preventDefault();
     });
     return { tap: tap, watch: watch };
   };
