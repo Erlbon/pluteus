@@ -260,6 +260,14 @@ the LAN (`http://<server>:<port>`) or your public HTTPS address; behind a proxy 
 gives the Kobo use the public name. pluteus never contacts the Kobo store, so while a Kobo is pointed here its own store purchases,
 wishlist and Kobo account do not sync (put the original `api_endpoint` line back to return). Not tried on a real device yet.
 
+## The e-reader page (no app, no cable)
+
+`/ereader` (or just `/e`, quicker to type on an e-reader keyboard) is the library as plain pages for the **built-in web browser of an
+e-reader**. On a Kobo: Settings, Beta features, Web browser, then open `http://<your pluteus address>/e` and sign in once. Folders open
+like a drive, your Read next list is at the top, and tapping a book downloads it: the Kobo asks to download it and puts it in its library.
+No scripts or pictures, big rows, 30 entries a page, so it stays quick on e-ink. Always on; it shows what the web listing shows to that user.
+It does not sync reading positions: for that, use Kobo sync above.
+
 ## OPDS 2.0
 
 The OPDS feeds under `/opds` answer in **OPDS 2.0 (JSON)** when the app asks for `application/opds+json` (or `?format=opds2` in a
@@ -279,6 +287,7 @@ comic page streaming. With `thumbnails = true` books carry **cover thumbnails** 
 | `/dav/{root}/{path}` | read-only WebDAV (`webdav = true`) |
 | `/kosync/...` | KOReader progress sync (`kosync = true`) |
 | `/kobo/<app key>/...` | Kobo sync for a Kobo's own reader (`kobo = true`) |
+| `/ereader`, `/e` | the library as plain pages for an e-reader's web browser |
 | `/thumb/{root}/{path}?w=N` | cover thumbnail (`thumbnails = true`) |
 | `/cover/{root}/{path}` | the picture of a song or a folder (player, folder page) |
 | `/api/shelf/...`, `/api/bookmarks/...`, `/api/progress/...` | per-user JSON for the pages |

@@ -260,3 +260,37 @@ def test_a_removed_user_takes_their_kobo_rows_along(client):
 def test_token_round_trip():
     assert read_token(base64.b64encode(json.dumps({"pluteus": 1, "states": 5}).encode()).decode()) == {"pluteus": 1, "states": 5}
     assert read_token("") is None and read_token("!!!") is None
+
+
+# ---- the e-reader page: the library for the Kobo's own web browser ---------------------------------------------------------------
+
+def signed_in(client):
+    r = client.post("/login", data={"username": "alice", "password": "pw"}, headers={"Origin": "http://testserver"}, follow_redirects=False)
+    assert r.status_code == 303
+    return client
+
+
+def test_ereader_page_needs_a_login(client):
+    r = client.get("/ereader", headers={"Accept": "text/html"}, follow_redirects=False)
+    assert r.status_code == 303 and "/login" in r.headers["location"]
+
+
+def test_ereader_page_lists_read_next_and_libraries_and_opens_folders(client):
+    signed_in(client)
+    shelve(client, "Dune.epub")
+    start = client.get("/e").text
+    assert "Read next" in start and "/dl/b/Dune.epub" in start and "/ereader/b" in start and "<script" not in start
+    folder = client.get("/ereader/b").text
+    assert "/ereader/b/Series" in folder and "/dl/b/Emma.kepub.epub" in folder
+    inside = client.get("/ereader/b/Series").text
+    assert "/dl/b/Series/01%20One.epub" in inside and ">Up<" in inside
+    assert client.get("/dl/b/Series/01%20One.epub").content[:2] == b"PK"            # the tap downloads it with the same login
+
+
+def test_ereader_page_comes_in_pages(client, lib):
+    for n in range(35):
+        make_epub(lib / "b" / "many" / ("%03d.epub" % n), title="Book %d" % n)
+    signed_in(client)
+    first = client.get("/ereader/b/many").text
+    assert "000.epub" in first and "034.epub" not in first and "page=2" in first and "page 1 of 2" in first
+    assert "034.epub" in client.get("/ereader/b/many?page=2").text

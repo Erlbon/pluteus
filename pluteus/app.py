@@ -34,7 +34,7 @@ from starlette.responses import (FileResponse, HTMLResponse, JSONResponse, Plain
                                  RedirectResponse, Response, StreamingResponse)
 from starlette.routing import Route
 
-from . import aboutfiles, cast, castdevices, cbz, debuglog, fetchimage, keypath, kinds, m3uimport, markdown, mediainfo, notes, opds, opds2, radio, relay, stationsave, streams, subtitles, tabular, thumbs, textview, uploads, vault, web, ziputil
+from . import aboutfiles, cast, castdevices, cbz, debuglog, ereader, fetchimage, keypath, kinds, m3uimport, markdown, mediainfo, notes, opds, opds2, radio, relay, stationsave, streams, subtitles, tabular, thumbs, textview, uploads, vault, web, ziputil
 from .auth import Authenticator
 from .bodies import read_limited
 from .cbz import CbzError
@@ -2370,6 +2370,54 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
     if cfg.kosync:
         from .kosync import KoSync
         routes.append(Route("/kosync/{route:path}", KoSync(auth, state, Throttle()).handle, methods=["GET", "PUT", "POST"]))
+    def ereader_rows(user, root: str, entries) -> list:
+        rows = []
+        for e in entries:
+            if e.is_dir:
+                rows.append(("dir", lib.display_name(e.name), urls.ereader(root, e.parts), None))
+            else:
+                kind = "book" if ereader.readable(e.name) else "other"
+                rows.append((kind, e.name, urls.download(root, e.parts), e.size if e.has_stat else None))
+        return rows
+
+    def ereader_view(user, root: str | None, parts: tuple, page: int) -> str:
+        title = "Pluteus"
+        if root is None:                                    # the start: Read next, then the libraries
+            nxt = []
+            for row, p, info in shelf_entries(user, "next", 60):
+                if info is None:
+                    nxt.append(("dir", lib.display_name(p[-1]), urls.ereader(row["root"], p), None))
+                else:
+                    nxt.append(("book" if ereader.readable(info.name) else "other", info.name, urls.download(row["root"], p), info.size))
+            libs = [("dir", r.name, urls.ereader(r.name), None) for r in lib.roots_for(user)]
+            sections = ([("Read next", nxt)] if nxt else []) + [("Libraries", libs)]
+            return ereader.page(title, "Tap a folder to open it, a book to download it.", sections, [])
+        listing = lib.list_dir(user, root, parts, False, False)
+        pages = max(1, -(-len(listing) // ereader.PER_PAGE))
+        page = min(max(1, page), pages)
+        shown = lib.with_stats(listing[(page - 1) * ereader.PER_PAGE: page * ereader.PER_PAGE])
+        here = urls.ereader(root, parts)
+        nav = [("Start", urls.ereader())]
+        nav.append(("Up", urls.ereader(root, parts[:-1]) if parts else urls.ereader()))
+        if page > 1:
+            nav.append(("Previous", "%s?page=%d" % (here, page - 1)))
+        if page < pages:
+            nav.append(("Next", "%s?page=%d" % (here, page + 1)))
+        where = " / ".join([root] + [lib.display_name(p) for p in parts]) + ("  (page %d of %d)" % (page, pages) if pages > 1 else "")
+        name = lib.display_name(parts[-1]) if parts else root
+        return ereader.page(name, where, [("", ereader_rows(user, root, shown))], nav)
+
+    @guarded("web")
+    async def ereader_page(request: Request, user):
+        """The library for an e-reader's own web browser: plain pages, a tap on a book downloads it (pluteus/ereader.py)."""
+        root = request.path_params.get("root")
+        parts = _parts(request.path_params.get("path", ""))
+        body = await run_in_threadpool(ereader_view, user, root, parts, _page_number(request))
+        return HTMLResponse(body, headers={"Cache-Control": "no-store"})
+
+    routes += [Route("/ereader", ereader_page), Route("/e", ereader_page), Route("/ereader/{root}", ereader_page),
+               Route("/ereader/{root}/{path:path}", ereader_page)]
+
     if cfg.kobo:
         from .kobo import KoboSync
 
