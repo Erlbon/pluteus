@@ -2370,6 +2370,54 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
     if cfg.kosync:
         from .kosync import KoSync
         routes.append(Route("/kosync/{route:path}", KoSync(auth, state, Throttle()).handle, methods=["GET", "PUT", "POST"]))
+    if cfg.kobo:
+        from .kobo import KoboSync
+
+        class KoboLibrary:
+            """What Kobo sync needs from the library, with this user's rights: the books of a shelf, one file, its cover and its metadata."""
+            @staticmethod
+            def books(user, shelf: str, most: int, per_folder: int) -> list:
+                out = []
+                for row, parts, info in shelf_entries(user, shelf, most):
+                    if info is not None:
+                        out.append((row["root"], parts, info, row["added"]))
+                        continue
+                    try:                                    # a folder on the shelf: the books directly inside it, in its order
+                        listing = lib.list_dir(user, row["root"], parts, cfg.show_all_files, False)
+                    except (NotFound, PathError, OSError):
+                        continue
+                    taken = 0
+                    for e in listing:
+                        if e.is_dir or not e.name.lower().endswith(".epub") or taken >= per_folder:
+                            continue
+                        found = KoboLibrary.file(user, row["root"], e.parts)
+                        if found is not None:
+                            out.append((row["root"], tuple(e.parts), found, row["added"]))
+                            taken += 1
+                return out
+
+            @staticmethod
+            def file(user, root: str, parts):
+                try:
+                    return lib.file_info(user, root, parts, cfg.show_all_files) if lib.has_root(user, root) else None
+                except (NotFound, PathError, OSError):
+                    return None
+
+            @staticmethod
+            def meta(info) -> dict:
+                entry = SimpleNamespace(name=info.name, path=info.path, size=info.size, mtime=info.mtime, is_dir=False)
+                return meta.lookup_many([entry]).get(info.path, {})
+
+            @staticmethod
+            async def cover(info, root: str, width: int):
+                return await make_thumb_in_turn(info, root, width)
+
+            display = staticmethod(lib.display_name)
+
+        kobo_sync = KoboSync(cfg, auth, state, Throttle(), KoboLibrary())
+        every_kobo = ["GET", "HEAD", "PUT", "POST", "DELETE"]
+        routes += [Route("/kobo/{key}", kobo_sync.handle, methods=every_kobo),
+                   Route("/kobo/{key}/{route:path}", kobo_sync.handle, methods=every_kobo)]
     cast_manager = None
     if cfg.cast:
         cast_manager = castdevices.Manager(cfg.cast_devices, castdevices.backends_for(cfg.cast_devices))

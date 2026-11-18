@@ -18,7 +18,7 @@ medieval library. Pronounced "PLOO-tee-us".
 - **Music and audiobooks:** a player with cover, tags (title, artist, album, year, genre), lyrics (plain or timed `.lrc`), chapters, bookmarks,
   speed and sleep timer, and the lock-screen controls of the phone.
 - **More ways in**, all read-only and all switched off until you turn them on: **Subsonic** for music apps (Android Auto through them),
-  **WebDAV** to mount the library as a drive, **KOReader** progress sync, **OPDS 2.0** next to OPDS 1.2, and optional cover thumbnails for the feeds.
+  **WebDAV** to mount the library as a drive, **KOReader** progress sync, **Kobo sync** for a Kobo's own reader, **OPDS 2.0** next to OPDS 1.2, and optional cover thumbnails for the feeds.
 - **Per-user app keys** so no app has to store your real password, **favourites and "read next"** lists, and an optional **cover view** of folders.
 - **Safe to put on the internet** behind HTTPS: login lockouts that escalate, known devices, same-site checks, a
   read-only view of your libraries (pluteus writes to a library only for the shared notes you switch on, `notes = "edit"` on a root).
@@ -237,6 +237,29 @@ Progress sync, Custom sync server, the server address ending in `/kosync`, then 
 KOReader identifies a book by a hash of the file, so this stores one position per user and book hash: it syncs KOReader with KOReader
 and is not connected to the progress of the web readers. Not tried on a real device yet.
 
+## Kobo sync (a Kobo's own reader)
+
+`kobo = true` in `[server]` lets a **Kobo e-reader with its normal software** (no KOReader needed) use pluteus as its library: the
+books on your **Read next** list appear in the Kobo's library with their covers, titles, authors and series, download on the Kobo,
+and the Kobo's reading position is kept here, so a reset or second Kobo picks it up. It works the way Calibre-Web and Komga do it.
+
+1. Make an app key for the user on the admin page (Users).
+2. Connect the Kobo to a computer by USB and open `.kobo/Kobo/Kobo eReader.conf` (the `.kobo` folder is hidden). Under
+   `[OneStoreServices]` change the line `api_endpoint=https://storeapi.kobo.com` to
+   `api_endpoint=https://<your pluteus address>/kobo/<app key>`, save, and eject the Kobo.
+3. Put books on your Read next list (the + button next to a book or folder in the web listing), then tap **Sync** on the Kobo.
+
+What is synced is the **Read next** list, never the whole library: each EPUB on it, and the EPUBs directly inside a folder on it (up to
+100 per folder, 500 in all). `.kepub.epub` files go to the Kobo as Kobo EPUBs (the Kobo's faster reader with page numbers and
+statistics), other EPUBs as EPUB. A book taken off the list leaves the Kobo at the next sync; a book removed on the Kobo stays off it until
+you put it on the list again. Covers are made from the EPUB when the Kobo asks (thumbnails need not be switched on). Reading positions are
+kept per user and book for Kobo devices: like KOReader sync they are separate from the web readers.
+
+Good to know: the address carries the key, so treat it like a password (revoking the key ends it). The Kobo must reach the address: over
+the LAN (`http://<server>:<port>`) or your public HTTPS address; behind a proxy set `trust_proxy = true` so the addresses pluteus
+gives the Kobo use the public name. pluteus never contacts the Kobo store, so while a Kobo is pointed here its own store purchases,
+wishlist and Kobo account do not sync (put the original `api_endpoint` line back to return). Not tried on a real device yet.
+
 ## OPDS 2.0
 
 The OPDS feeds under `/opds` answer in **OPDS 2.0 (JSON)** when the app asks for `application/opds+json` (or `?format=opds2` in a
@@ -255,6 +278,7 @@ comic page streaming. With `thumbnails = true` books carry **cover thumbnails** 
 | `/rest/{name}` | Subsonic / OpenSubsonic API (`subsonic = true`) |
 | `/dav/{root}/{path}` | read-only WebDAV (`webdav = true`) |
 | `/kosync/...` | KOReader progress sync (`kosync = true`) |
+| `/kobo/<app key>/...` | Kobo sync for a Kobo's own reader (`kobo = true`) |
 | `/thumb/{root}/{path}?w=N` | cover thumbnail (`thumbnails = true`) |
 | `/cover/{root}/{path}` | the picture of a song or a folder (player, folder page) |
 | `/api/shelf/...`, `/api/bookmarks/...`, `/api/progress/...` | per-user JSON for the pages |

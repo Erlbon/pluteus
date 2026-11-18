@@ -205,6 +205,8 @@ def create_admin_app(main_app) -> Starlette:
             {"name": "WebDAV (mount as a drive)", "on": cfg.webdav, "setting": "webdav = true", "address": base + "/dav/",
              "keys": "password or key"},
             {"name": "KOReader sync", "on": cfg.kosync, "setting": "kosync = true", "address": base + "/kosync", "keys": have},
+            {"name": "Kobo sync (a Kobo's own reader)", "on": cfg.kobo, "setting": "kobo = true", "address": base + "/kobo/<app key>",
+             "keys": have},
             {"name": "Cover thumbnails (feeds, cover view)", "on": cfg.thumbnails, "setting": "thumbnails = true", "address": "", "keys": ""},
             {"name": "Uploads", "on": bool(cfg.uploads_dir), "setting": "uploads_dir = ...", "address": "per-user folders", "keys": ""},
             {"name": "Stream relay (radio over the server)", "on": cfg.relay, "setting": "relay = true",
@@ -487,8 +489,8 @@ def create_admin_app(main_app) -> Starlette:
         lines = ["pluteus %s, python %s, %s" % (__version__, platform.python_version(), platform.platform()),
                  "running for %s" % adminweb.duration(time.time() - st.started),
                  "base_path=%r trust_proxy=%s cookie_secure=%s" % (cfg.base_path, cfg.trust_proxy, cfg.cookie_secure),
-                 "services: subsonic=%s webdav=%s kosync=%s thumbnails=%s relay=%s uploads=%s debug_config=%s"
-                 % (cfg.subsonic, cfg.webdav, cfg.kosync, cfg.thumbnails, cfg.relay, bool(cfg.uploads_dir), cfg.debug),
+                 "services: subsonic=%s webdav=%s kosync=%s kobo=%s thumbnails=%s relay=%s uploads=%s debug_config=%s"
+                 % (cfg.subsonic, cfg.webdav, cfg.kosync, cfg.kobo, cfg.thumbnails, cfg.relay, bool(cfg.uploads_dir), cfg.debug),
                  "libraries: %s" % ", ".join(sorted(st.library.cfg.roots)),
                  "users: %d, with an app key: %d" % (len(auth.users), len(state.appkey_users())),
                  "debug logging: %s" % ("on (config)" if debug.always else ("on, %d s left" % debug.remaining() if debug.remaining() else "off")),

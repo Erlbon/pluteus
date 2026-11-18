@@ -3,6 +3,7 @@
 Release notes are taken from the section of the tagged version (`## 0.5.0 ...`).
 
 ## Unreleased
+- **Kobo sync: a Kobo's own reader can use pluteus.** With `kobo = true` and `api_endpoint=<site>/kobo/<app key>` in the Kobo's `Kobo eReader.conf`, the books on your **Read next** list (and the EPUBs directly in a folder on it) appear in the Kobo's library with cover, title, author and series, download on a Sync, and the Kobo's reading position is kept here. A book taken off the list leaves the Kobo; one removed on the Kobo stays off until it is put on the list again. `.kepub.epub` files go as Kobo EPUBs. Off by default; the admin page lists it under Services and shows the address with a new key. No request leaves the server: the Kobo store does not sync while a Kobo is pointed here. Not tried on a real device yet.
 - **Tap left and right to turn pages, if you prefer.** Settings has a new choice, **Readers: a tap on the page turns it**. The start is as before: the upper part of the page goes back, the rest goes forward. With the other choice the left part goes back and the rest goes forward. It holds for the ebook, comic, PDF and picture readers, and is kept per user, so it follows you to every device. Swipes, keys and the buttons are unchanged.
 
 ## 0.9.28 - 2026-11-12
