@@ -47,6 +47,12 @@ CREATE INDEX IF NOT EXISTS bookmarks_file ON bookmarks (username, root, path);
 CREATE TABLE IF NOT EXISTS kosync (
     username TEXT NOT NULL, document TEXT NOT NULL, progress TEXT NOT NULL, percentage REAL NOT NULL,
     device TEXT NOT NULL, device_id TEXT NOT NULL, timestamp REAL NOT NULL, PRIMARY KEY (username, document));
+CREATE TABLE IF NOT EXISTS kobo_books (
+    username TEXT NOT NULL, book TEXT NOT NULL, root TEXT NOT NULL, path TEXT NOT NULL, PRIMARY KEY (username, book));
+CREATE TABLE IF NOT EXISTS kobo_sent (
+    username TEXT NOT NULL, book TEXT NOT NULL, sent REAL NOT NULL, removed REAL, PRIMARY KEY (username, book));
+CREATE TABLE IF NOT EXISTS kobo_state (
+    username TEXT NOT NULL, book TEXT NOT NULL, data TEXT NOT NULL, updated REAL NOT NULL, PRIMARY KEY (username, book));
 """
 
 MIN_SONG_SECONDS = 20           # a song heard for less than this was passed on the way (skipped), not one to pick up again
@@ -258,11 +264,11 @@ class StateDB:
     # Every table that holds rows per user name. A name that leaves the configuration takes all of them with it, so a new
     # user who is later given the same name starts empty (purge_user). A new per-user table must be added here.
     USER_TABLES = ("sessions", "devices", "appkeys", "streams", "playqueue", "progress", "dismissed", "prefs", "shelves",
-                   "bookmarks", "kosync")
+                   "bookmarks", "kosync", "kobo_books", "kobo_sent", "kobo_state")
 
     def purge_user(self, username: str) -> int:
         """Delete everything kept for one user name: sessions and known devices, the app key, stored stream logins, the
-        saved play queue, reading progress and dismissed rows, preferences, shelves, bookmarks and KOReader sync. Called
+        saved play queue, reading progress and dismissed rows, preferences, shelves, bookmarks, KOReader sync and Kobo sync. Called
         when the name disappears from the configuration (reload.py, the admin page). Returns the number of rows removed."""
         removed = 0
         with self._lock, self._db:
@@ -384,6 +390,60 @@ class StateDB:
                         (username, document))
         return None if row is None else {"progress": row[0], "percentage": row[1], "device": row[2], "device_id": row[3],
                                          "timestamp": int(row[4])}
+
+    # ---- Kobo sync (kobo.py): which file a book id is, which books the Kobo has, and the reading state it sent ---------------------
+    def kobo_remember(self, username: str, books: list) -> None:
+        """[(book id, root, path)]: the ids handed to a Kobo, so its later requests (download, cover, state) can be answered."""
+        if books:
+            with self._lock, self._db:
+                self._db.executemany("INSERT OR REPLACE INTO kobo_books VALUES (?,?,?,?)", [(username, *b) for b in books])
+
+    def kobo_where(self, username: str, book: str):
+        """(root, path) of a book id this user has been sent, or None."""
+        row = self._one("SELECT root, path FROM kobo_books WHERE username=? AND book=?", (username, book))
+        return (row[0], row[1]) if row else None
+
+    def kobo_sent(self, username: str) -> dict:
+        """{book id: None while it is on the Kobo, else the time it was removed there}."""
+        return {r[0]: r[1] for r in self._all("SELECT book, removed FROM kobo_sent WHERE username=?", (username,))}
+
+    def kobo_mark_sent(self, username: str, books: list, now=None) -> None:
+        now = time.time() if now is None else now
+        if books:
+            with self._lock, self._db:
+                self._db.executemany("INSERT OR REPLACE INTO kobo_sent VALUES (?,?,?,NULL)", [(username, b, now) for b in books])
+
+    def kobo_removed(self, username: str, book: str, now=None) -> int:
+        """The Kobo removed this book: it is not sent again until it is put on the list again."""
+        return self._write("UPDATE kobo_sent SET removed=? WHERE username=? AND book=?", (time.time() if now is None else now, username, book))
+
+    def kobo_unsend(self, username: str, book: str) -> int:
+        return self._write("DELETE FROM kobo_sent WHERE username=? AND book=?", (username, book))
+
+    def kobo_forget(self, username: str) -> int:
+        """A Kobo starting afresh (no sync token): everything is sent again."""
+        return self._write("DELETE FROM kobo_sent WHERE username=?", (username,))
+
+    def kobo_state(self, username: str, book: str):
+        row = self._one("SELECT data FROM kobo_state WHERE username=? AND book=?", (username, book))
+        try:
+            return json.loads(row[0]) if row else None
+        except ValueError:
+            return None
+
+    def kobo_put_state(self, username: str, book: str, data: dict, now=None) -> None:
+        self._write("INSERT OR REPLACE INTO kobo_state VALUES (?,?,?,?)",
+                    (username, book, json.dumps(data, separators=(",", ":")), time.time() if now is None else now))
+
+    def kobo_states_since(self, username: str, since: float) -> list:
+        """[(book id, state)] changed after `since`."""
+        out = []
+        for book, data in self._all("SELECT book, data FROM kobo_state WHERE username=? AND updated>?", (username, since)):
+            try:
+                out.append((book, json.loads(data)))
+            except ValueError:
+                continue
+        return out
 
     # ---- preferences ------------------------------------------------------------
     def get_prefs(self, username: str) -> dict:

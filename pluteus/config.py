@@ -104,6 +104,7 @@ class Config:
     webdav: bool = False           # read-only WebDAV under /dav (mount the library in Explorer, Finder, file managers)
     thumbnails: bool = False       # cover thumbnails (/thumb): in the OPDS feeds and the web cover view. Off until switched on
     kosync: bool = False           # KOReader progress sync under /kosync
+    kobo: bool = False             # Kobo sync under /kobo/<app key>: a Kobo's own reader gets the user's Read next list
     subsonic: bool = False       # answer the Subsonic / OpenSubsonic API under /rest (music apps, Android Auto through them)
     subsonic_uploads: bool = True  # music apps see each user's upload folder too; false = left out (admin page, Libraries tab)
     relay: bool = False            # the stream relay under /relay: radio stations a browser cannot play directly (plain http on an https site, no CORS) go through the server
@@ -127,7 +128,7 @@ class Config:
 # [[roots]] by mistake would silently do nothing. Every table's keys are therefore checked.
 _SERVER_KEYS = {"host", "port", "page_size", "base_path", "realm", "auth_cache_seconds", "anonymous_user",
                 "session_days", "cookie_secure", "trust_proxy", "allowed_hosts", "opds_pse", "show_all_files", "text_view_kb",
-                "admin_port", "admin_host", "site_port", "update_check", "update_repo", "share_target", "join_token", "join_user", "admin_url", "library_bases", "subsonic", "subsonic_uploads", "webdav", "kosync", "thumbnails", "relay", "relay_streams_user", "relay_streams_total", "relay_key", "relay_allow", "cast", "cast_media_base", "debug"}
+                "admin_port", "admin_host", "site_port", "update_check", "update_repo", "share_target", "join_token", "join_user", "admin_url", "library_bases", "subsonic", "subsonic_uploads", "webdav", "kosync", "kobo", "thumbnails", "relay", "relay_streams_user", "relay_streams_total", "relay_key", "relay_allow", "cast", "cast_media_base", "debug"}
 _GLOBAL_KEYS = {"exclude", "extensions", "display_strip", "adult_marker", "private_marker", "hidden_marker", "metadata", "cache_dir",
                 "data_dir", "themes_dir", "theme", "uploads_dir", "upload_max_mb", "upload_quota_mb"}
 MAX_ARTIST_LEVEL = 5
@@ -355,7 +356,7 @@ def parse_config(data: dict, check_roots: bool = True) -> Config:
         relay=_flag(server, "relay", False), debug=_flag(server, "debug", False), relay_streams_user=_in_range(server, "relay_streams_user", 2, 1, 50),
         relay_streams_total=_in_range(server, "relay_streams_total", 6, 1, 500), relay_key=str(server.get("relay_key", "")), relay_allow=_host_ports(server.get("relay_allow", ())),
         library_bases=tuple(str(b) for b in server.get("library_bases", ())), admin_url=_admin_url(server.get("admin_url", "")), join_token=str(server.get("join_token", "")), join_user=str(server.get("join_user", "")),
-        share_target=_flag(server, "share_target", True), subsonic=_flag(server, "subsonic", False), subsonic_uploads=_flag(server, "subsonic_uploads", True), webdav=_flag(server, "webdav", False), kosync=_flag(server, "kosync", False), thumbnails=_flag(server, "thumbnails", False), update_check=_flag(server, "update_check", False), update_repo=_repo_name(server.get("update_repo", "Erlbon/pluteus")),
+        share_target=_flag(server, "share_target", True), subsonic=_flag(server, "subsonic", False), subsonic_uploads=_flag(server, "subsonic_uploads", True), webdav=_flag(server, "webdav", False), kosync=_flag(server, "kosync", False), kobo=_flag(server, "kobo", False), thumbnails=_flag(server, "thumbnails", False), update_check=_flag(server, "update_check", False), update_repo=_repo_name(server.get("update_repo", "Erlbon/pluteus")),
         host=str(server.get("host", "127.0.0.1")), port=_in_range(server, "port", 8080, 1, 65535),
         page_size=_in_range(server, "page_size", 50, 1, 1000), base_path=base_path,
         display_strip=strip, extensions=extensions, excludes=excludes,

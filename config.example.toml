@@ -77,6 +77,7 @@ data_dir = 'D:\pluteus-data'
 # subsonic = true            # Subsonic / OpenSubsonic API under /rest: music apps (Symfonium, Tempo, ...) and Android Auto through them
 # webdav = true              # read-only WebDAV under /dav: mount the library in Explorer, Finder, Android file managers, Kodi
 # kosync = true              # KOReader progress sync under /kosync
+# kobo = true                # Kobo sync under /kobo/<app key>: a Kobo's own reader gets your Read next list (see README)
 # thumbnails = true          # cover thumbnails: cover links in the OPDS feeds and the cover view of folders (needs Pillow, installed with pluteus)
 
 # PERSONAL UPLOAD FOLDERS. Set uploads_dir and every user gets their own folder uploads_dir/<user name>, shown as the

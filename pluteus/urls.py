@@ -36,6 +36,9 @@ class Urls:
     def raw(self, root: str, parts) -> str:
         return self._build("raw", root, parts)
 
+    def ereader(self, root: str | None = None, parts=()) -> str:
+        return self._build("ereader", root, parts)
+
     def opds_shelf(self, shelf: str) -> str:
         return self.base + "/opds-shelves/" + shelf
 

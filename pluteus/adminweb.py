@@ -474,7 +474,9 @@ def _new_key_box(new_key: tuple, address: str) -> str:
                 "key in the catalogue address and leave the login boxes empty: <code>%s/k/%s/opds</code>. For use away from home, replace "
                 "<code>%s</code> with your public address (the one with https). Anyone who has that address can read what this user may read, so "
                 "keep it private; revoking the key ends it.</p>"
-                % (escape(secret), escape(name), escape(address), escape(address), escape(secret), escape(address)))
+                "<p class='pl-muted'><b>A Kobo's own reader</b> (Kobo sync, <code>kobo = true</code>): in <code>.kobo/Kobo/Kobo eReader.conf</code> "
+                "set <code>api_endpoint=%s/kobo/%s</code>. The same care applies: the key is in the address.</p>"
+                % (escape(secret), escape(name), escape(address), escape(address), escape(secret), escape(address), escape(address), escape(secret)))
 
 
 def users_page(ctx: Ctx, users: list, root_names: list, me: str, flash: str = "", error: str = "",
