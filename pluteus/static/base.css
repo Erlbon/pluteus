@@ -346,6 +346,15 @@ a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible
 .pl-sorted-asc::after { content: " \25B2"; font-size: .75em; }
 .pl-sorted-desc::after { content: " \25BC"; font-size: .75em; }
 .pl-table-filter { max-width: 14rem; margin-right: 8px; }
+/* a workbook's sheets, as tabs at the foot like Excel's; many sheets scroll sideways */
+.pl-sheet-tabs { display: flex; gap: 2px; min-width: 0; max-width: 60%; overflow-x: auto; margin: -4px 0; }
+.pl-sheet-tab {
+  padding: 5px 10px; white-space: nowrap; color: inherit; text-decoration: none; border: 1px solid transparent; border-top: 0;
+  border-radius: 0 0 6px 6px;
+}
+.pl-sheet-tab:hover, .pl-sheet-tab:focus-visible { border-color: var(--pl-line); background: var(--pl-card); }
+.pl-sheet-tab[aria-current] { color: var(--pl-fg); background: var(--pl-book-bg); border-color: var(--pl-line); box-shadow: inset 0 2px 0 var(--pl-accent); }
+.pl-sheet-hidden { font-style: italic; opacity: .7; }
 .pl-zip-wrap { max-width: 60rem; margin: 0 auto; padding: 14px 16px 48px; }
 .pl-zip { border-collapse: collapse; width: 100%; }
 .pl-zip th, .pl-zip td { padding: 5px 10px; border-bottom: 1px solid var(--pl-line); text-align: left; }

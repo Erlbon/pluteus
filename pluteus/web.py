@@ -111,7 +111,7 @@ def login_page(ctx: Ctx, next_url: str = "", error: str = "", username: str = ""
 
 
 KIND_ICON_NAMES = {"epub": "epub", "comic": "comic", "pdf": "pdf", "image": "image", "audio": "audio", "video": "video",
-                   "markdown": "text", "text": "text", "table": "table", "archive": "archive"}
+                   "markdown": "text", "text": "text", "table": "table", "archive": "archive", "document": "text", "sheet": "table"}
 ROOT_ICON, UPLOADS_ICON = ico("folder"), ico("upload")
 ICON_STYLES = (("gold", "Gold outlines"), ("aurora", "Outlines, a colour for each type"), ("color", "Colour tiles"))
 RECENT_TITLE = "Pick up where you left off"       # books, comics, PDFs, audiobooks and videos all appear in this box
@@ -965,18 +965,22 @@ def _cut_note(shown: int, size: int, truncated: bool, download_url: str) -> str:
 
 
 def markdown_page(ctx: Ctx, title: str, *, html: str, size: int, shown: int, truncated: bool, download_url: str,
-                  back_url: str, source_url: str, edit_url: str = "") -> str:
-    """A Markdown file rendered as a page. `html` comes from markdown.render (raw HTML already escaped)."""
+                  back_url: str, source_url: str, edit_url: str = "", kind_label: str = "Markdown", note: str = "") -> str:
+    """A Markdown file rendered as a page, or an office document's words (see officedoc) rendered the same way. `html` comes from
+    markdown.render (raw HTML already escaped). No `source_url`: no Source button (a Word file's source is a zip, not text)."""
     edit = ("<a class='pl-reader-btn' id='edit' href='%s' title='Edit this note' aria-label='Edit this note'>Edit</a>" % escape(edit_url)) if edit_url else ""
-    tools = edit + _download_link(download_url) + _reader_scheme() + _source_button(source_url)
+    tools = edit + _download_link(download_url) + _reader_scheme() + (_source_button(source_url) if source_url else "")
     stage = "<article class='pl-markdown' id='doc'>%s</article>" % html
-    foot = "<span>Markdown &middot; %s%s</span>" % (_size(size), _cut_note(shown, size, truncated, download_url))
+    foot = "<span>%s &middot; %s%s%s</span>" % (escape(kind_label), _size(size), " &middot; " + escape(note) if note else "",
+                                              _cut_note(shown, size, truncated, download_url))
     return _viewer(ctx, title, back_url, tools=tools, stage=stage, foot=foot, classes="pl-mdview", stage_class="pl-md-stage")
 
 
 def table_page(ctx: Ctx, title: str, *, table, size: int, shown: int, truncated: bool, download_url: str, back_url: str,
-               source_url: str) -> str:
-    """A CSV/TSV file as a table (see tabular.parse). The header row sticks; clicking a header sorts; a box filters rows."""
+               source_url: str, kind_label: str = "", sheets: tuple = ()) -> str:
+    """A CSV/TSV file as a table (see tabular.parse), or one sheet of a workbook (`kind_label` names the workbook's type, `sheets`
+    holds (name, url, is_current, is_hidden) for the tabs at the foot, as in Excel). The header row sticks; clicking a header sorts;
+    a box filters rows. No `source_url`: no Source button."""
     head, body = table.rows[0], table.rows[1:]
     ths = "".join("<th scope='col' data-col='%d'%s>%s</th>" % (i, " data-num='1'" if table.numeric[i] else "", escape(h))
                   for i, h in enumerate(head))
@@ -989,13 +993,22 @@ def table_page(ctx: Ctx, title: str, *, table, size: int, shown: int, truncated:
         notes.append("only the first %d columns are shown" % len(head))
     if table.cells_cut:
         notes.append("%d very long cell%s shortened" % (table.cells_cut, "" if table.cells_cut == 1 else "s"))
-    sep = {"\t": "tab", ",": "comma", ";": "semicolon", "|": "bar"}.get(table.delimiter, table.delimiter)
+    if kind_label:
+        what = escape(kind_label)
+    else:
+        what = "%s separated" % {"\t": "tab", ",": "comma", ";": "semicolon", "|": "bar"}.get(table.delimiter, table.delimiter)
     tools = ("<input class='pl-table-filter' id='filter' type='search' placeholder='Filter rows' aria-label='Filter rows'>" +
-             _download_link(download_url) + _reader_scheme() + _source_button(source_url))
+             _download_link(download_url) + _reader_scheme() + (_source_button(source_url) if source_url else ""))
     stage = ("<div class='pl-table-wrap'><table class='pl-table' id='table'><thead><tr>%s</tr></thead><tbody>%s</tbody></table></div>"
              % (ths, trs))
-    foot = ("<span id='count'>%d rows &times; %d columns &middot; %s separated &middot; %s%s%s</span>"
-            % (len(body), len(head), sep, _size(size), " &middot; " + escape("; ".join(notes)) if notes else "",
+    tabs = ""
+    if len(sheets) > 1:
+        tabs = "<nav class='pl-sheet-tabs' aria-label='Sheets'>%s</nav>" % "".join(
+            "<a class='pl-sheet-tab%s' href='%s'%s%s>%s</a>"
+            % (" pl-sheet-hidden" if hidden else "", escape(url), " aria-current='page'" if current else "",
+               " title='A hidden sheet'" if hidden else "", escape(name)) for name, url, current, hidden in sheets)
+    foot = ("%s<span id='count'>%d rows &times; %d columns &middot; %s &middot; %s%s%s</span>"
+            % (tabs, len(body), len(head), what, _size(size), " &middot; " + escape("; ".join(notes)) if notes else "",
                _cut_note(shown, size, truncated, download_url)))
     return _viewer(ctx, title, back_url, tools=tools, stage=stage, foot=foot, classes="pl-tableview",
                    stage_class="pl-table-stage", scripts=(ctx.urls.static("viewer-table.js"),))

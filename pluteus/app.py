@@ -34,7 +34,7 @@ from starlette.responses import (FileResponse, HTMLResponse, JSONResponse, Plain
                                  RedirectResponse, Response, StreamingResponse)
 from starlette.routing import Route
 
-from . import aboutfiles, cast, castdevices, cbz, debuglog, ereader, fetchimage, keypath, kinds, m3uimport, markdown, mediainfo, notes, opds, opds2, radio, relay, stationsave, streams, subtitles, tabular, thumbs, textview, uploads, vault, web, ziputil
+from . import aboutfiles, cast, castdevices, cbz, debuglog, ereader, fetchimage, keypath, kinds, m3uimport, markdown, mediainfo, notes, officedoc, officesheet, opds, opds2, radio, relay, stationsave, streams, subtitles, tabular, thumbs, textview, uploads, vault, web, ziputil
 from .auth import Authenticator
 from .bodies import read_limited
 from .cbz import CbzError
@@ -91,6 +91,7 @@ _OFFLINE_ERRNOS = {getattr(errno, name) for name in ("EIO", "ENETDOWN", "ENETUNR
 _OFFLINE_WINERRORS = {21, 51, 53, 55, 59, 64, 67, 121, 1231, 1232}      # device not ready, network path/name gone, timeouts
 _SECRET_QUERY = {"p", "apikey", "t", "s", "password", "token", "key", "secret"}
 access_log = logging.getLogger("pluteus.access")
+MAX_OFFICE_BYTES = 64 * 1024 * 1024     # a Word, PowerPoint or Excel file bigger than this is a download only (it is read whole to be shown)
 _LOG_UNSAFE = re.compile(r'[\x00-\x1f\x7f"\u0085  ]')      # control characters, line separators and the quote the line is wrapped in
 
 
@@ -1335,6 +1336,69 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
                               download_url=urls.download(root, parts), back_url=urls.browse(root, parts[:-1]),
                               source_url=urls.view(root, parts) + "?as=text")
 
+    def office_unreadable(user, root: str, parts: tuple, info, why: str):
+        rows = [("Name", info.name), ("Size", web._size(info.size))]
+        return web.info_page(ctx_for(user), info.name, rows=rows, download_url=urls.download(root, parts), back_url=urls.browse(root, parts[:-1]),
+                             note=why, text_url=urls.view(root, parts) + "?as=text")
+
+    def office_read(user, root: str, parts: tuple, info, reader):
+        """(what the reader gave, None) or (None, an info page saying why the file cannot be shown)."""
+        if info.size > MAX_OFFICE_BYTES:
+            return None, office_unreadable(user, root, parts, info, "This file is too large to show here (over %s). Download it to open it."
+                                           % web._size(MAX_OFFICE_BYTES))
+        try:
+            return reader(info.path), None
+        except officedoc.DocumentError as e:
+            return None, office_unreadable(user, root, parts, info, "This file cannot be shown: %s." % str(e).rstrip("."))
+        except Exception:                                     # a reader bug or a file no one foresaw: a page, never a 500
+            log.warning("office file unreadable: %s/%s", root, "/".join(parts), exc_info=True)
+            return None, office_unreadable(user, root, parts, info, "This file cannot be shown here. Download it to open it.")
+
+    def document_view(user, root: str, parts: tuple, info):
+        """A Word, OpenDocument, RTF or PowerPoint file: its words, with headings, emphasis, lists and tables, as a page."""
+        doc, unreadable = office_read(user, root, parts, info, officedoc.read_document)
+        if doc is None:
+            return unreadable
+        limit = cfg.text_view_kb * 1024
+        html, note = "", ""
+        if doc.markdown is not None and len(doc.markdown) <= limit:
+            try:
+                html = markdown.render_full(doc.markdown, urls, root, parts[:-1]).html
+            except markdown.TooLarge:
+                html = ""                                     # too slow to render: shown as plain paragraphs below
+        if not html:
+            plain = doc.plain
+            if len(plain) > limit:
+                plain, note = plain[:limit], "only the first %s characters are shown" % format(limit, ",")
+            html = "".join("<p>%s</p>" % escape_attr(p.strip("\n")).replace("\n", "<br>") for p in plain.split("\n\n") if p.strip())
+        if not html:
+            html = "<p class='pl-muted'>This document has no text.</p>"
+        return web.markdown_page(ctx_for(user), info.name, html=html, size=info.size, shown=info.size, truncated=False,
+                                 download_url=urls.download(root, parts), back_url=urls.browse(root, parts[:-1]), source_url="",
+                                 kind_label=doc.kind, note=note)
+
+    def sheet_view(user, root: str, parts: tuple, info, wanted: int):
+        """An Excel or OpenDocument workbook: one sheet at a time as a table, with a tab for each sheet at the foot."""
+        book, unreadable = office_read(user, root, parts, info, officesheet.read_workbook)
+        if book is None:
+            return unreadable
+        if not book.sheets:
+            return office_unreadable(user, root, parts, info, "This workbook has no sheets.")
+        if not 0 <= wanted < len(book.sheets):
+            wanted = next((i for i, s in enumerate(book.sheets) if not s.hidden), 0)   # the first sheet Excel would show
+        sheet = book.sheets[wanted]
+        try:
+            table = tabular.from_rows(sheet.rows)
+        except tabular.TableError:
+            table = tabular.Table(rows=[["This sheet is empty"]], delimiter="", numeric=[False])
+        if sheet.cut:
+            table.rows_cut = True
+        base = urls.view(root, parts)
+        tabs = tuple((s.name or "Sheet %d" % (i + 1), "%s?sheet=%d" % (base, i), i == wanted, s.hidden) for i, s in enumerate(book.sheets))
+        return web.table_page(ctx_for(user), info.name, table=table, size=info.size, shown=info.size, truncated=False,
+                              download_url=urls.download(root, parts), back_url=urls.browse(root, parts[:-1]), source_url="",
+                              kind_label=book.kind, sheets=tabs)
+
     def zip_view(user, root: str, parts: tuple, info):
         ctx, back, download = ctx_for(user), urls.browse(root, parts[:-1]), urls.download(root, parts)
         try:
@@ -1363,8 +1427,12 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
                     text_url=urls.view(root, parts) + "?as=text", back_url=urls.browse(root, parts[:-1]), **extra)
         return html, (IPTV_CSP if page is web.iptv_page else RADIO_CSP)
 
-    def view_page(user, root: str, parts: tuple, info, kind: str, as_text: bool):
+    def view_page(user, root: str, parts: tuple, info, kind: str, as_text: bool, sheet: int = -1):
         ctx, back, download = ctx_for(user), urls.browse(root, parts[:-1]), urls.download(root, parts)
+        if not as_text and kind == "document":
+            return document_view(user, root, parts, info)
+        if not as_text and kind == "sheet":
+            return sheet_view(user, root, parts, info, sheet)
         if not as_text and kind == "markdown":
             page = markdown_view(user, root, parts, info)
             if page is not None:
@@ -1426,7 +1494,9 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
             found = await run_in_threadpool(radio_view, user, root, parts, info)
             if found is not None:
                 return HTMLResponse(found[0], headers={"Content-Security-Policy": found[1]})
-        page = await run_in_threadpool(view_page, user, root, parts, info, kind, as_text)
+        sheet = request.query_params.get("sheet", "")
+        sheet = int(sheet) if sheet.isdigit() and len(sheet) < 6 else -1
+        page = await run_in_threadpool(view_page, user, root, parts, info, kind, as_text, sheet)
         return HTMLResponse(page)
 
     @guarded("media")

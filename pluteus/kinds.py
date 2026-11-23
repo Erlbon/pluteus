@@ -19,6 +19,10 @@ BOOKS = {".epub": "epub", ".cbz": "comic", ".cbr": "comic", ".cb7": "comic", ".c
 MARKDOWN = {".md", ".markdown"}
 TABLE = {".csv", ".tsv"}
 ARCHIVE = {".zip"}
+# Office files: their words (officedoc / officetext) or their cell values (officesheet), shown as a page or a table
+DOCUMENT = {".doc", ".dot", ".docx", ".docm", ".dotx", ".dotm", ".odt", ".ott", ".rtf",
+            ".pptx", ".pptm", ".ppsx", ".ppsm", ".potx", ".potm"}
+SHEET = {".xls", ".xlt", ".xlsx", ".xlsm", ".xltx", ".xltm", ".ods", ".ots"}
 TEXT = {".txt", ".md", ".markdown", ".rst", ".log", ".csv", ".tsv", ".json", ".jsonl", ".xml", ".yaml", ".yml", ".ini",
         ".cfg", ".conf", ".toml", ".nfo", ".diz", ".srt", ".vtt", ".sub", ".ass", ".url", ".m3u", ".m3u8", ".pls",
         ".reg", ".tex", ".bib", ".py", ".js", ".mjs", ".ts", ".css", ".html", ".htm", ".xhtml", ".sh", ".bat", ".cmd",
@@ -37,7 +41,8 @@ def extension(name: str) -> str:
 
 
 def kind_of(name: str) -> str:
-    """'epub' | 'comic' | 'pdf' | 'image' | 'audio' | 'video' | 'markdown' | 'table' | 'archive' | 'text' | 'other'."""
+    """'epub' | 'comic' | 'pdf' | 'image' | 'audio' | 'video' | 'markdown' | 'table' | 'archive' | 'document' | 'sheet' | 'text' |
+    'other'."""
     ext = extension(name)
     if ext in BOOKS:
         return BOOKS[ext]
@@ -55,6 +60,10 @@ def kind_of(name: str) -> str:
         return "table"
     if ext in ARCHIVE:
         return "archive"
+    if ext in DOCUMENT:
+        return "document"
+    if ext in SHEET:
+        return "sheet"
     if ext in TEXT:
         return "text"
     return "other"

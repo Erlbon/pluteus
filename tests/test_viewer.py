@@ -64,7 +64,7 @@ def d(name):
 # ---- kinds ---------------------------------------------------------------------------------------------------------
 @pytest.mark.parametrize("name,kind", [
     ("a.epub", "epub"), ("A.CBZ", "comic"), ("x.pdf", "pdf"), ("p.JPG", "image"), ("p.svg", "image"), ("s.mp3", "audio"),
-    ("v.mkv", "video"), ("n.txt", "text"), ("n.py", "text"), ("page.html", "text"), ("r.docx", "other"),
+    ("v.mkv", "video"), ("n.txt", "text"), ("n.py", "text"), ("page.html", "text"), ("r.docx", "document"), ("r.xlsx", "sheet"), ("r.psd", "other"),
     ("README", "other"), ("archive.tar.gz", "other"), (".hidden", "other")])
 def test_kind_of(name, kind):
     assert kinds.kind_of(name) == kind

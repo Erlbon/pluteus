@@ -44,25 +44,36 @@ def parse(text: str, ext: str = ".csv") -> Table:
         raise TableError("the file contains NUL characters")
     table = Table(delimiter=_delimiter(text[:8192], ext))
     reader = csv.reader(io.StringIO(text, newline=""), delimiter=table.delimiter)
-    width = 0
     try:
-        for row in reader:
-            if not row:
-                continue
-            if len(table.rows) >= MAX_ROWS:
-                table.rows_cut = True
-                break
-            if len(row) > MAX_COLS:
-                table.cols_cut = True
-                row = row[:MAX_COLS]
-            for i, cell in enumerate(row):
-                if len(cell) > MAX_CELL:
-                    row[i] = cell[:MAX_CELL] + "…"
-                    table.cells_cut += 1
-            width = max(width, len(row))
-            table.rows.append(row)
+        return _fill(table, reader)
     except csv.Error as e:
         raise TableError(str(e))
+
+
+def from_rows(rows: list) -> Table:
+    """A table from rows of cell texts (a workbook's sheet, see officesheet), with the same limits as a CSV file. Empty rows at the
+    top are left out, so the first row with something in it is the header. Raises TableError when no row has anything in it."""
+    start = next((i for i, r in enumerate(rows) if any(c.strip() for c in r)), len(rows))
+    return _fill(Table(delimiter=""), (list(r) for r in rows[start:]))
+
+
+def _fill(table: Table, rows) -> Table:
+    width = 0
+    for row in rows:
+        if not row:
+            continue
+        if len(table.rows) >= MAX_ROWS:
+            table.rows_cut = True
+            break
+        if len(row) > MAX_COLS:
+            table.cols_cut = True
+            row = row[:MAX_COLS]
+        for i, cell in enumerate(row):
+            if len(cell) > MAX_CELL:
+                row[i] = cell[:MAX_CELL] + "…"
+                table.cells_cut += 1
+        width = max(width, len(row))
+        table.rows.append(row)
     if not table.rows:
         raise TableError("there are no rows")
     table.rows = [r + [""] * (width - len(r)) for r in table.rows]
