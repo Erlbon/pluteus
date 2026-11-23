@@ -150,3 +150,36 @@ def test_the_admin_page_asks_nothing_unless_switched_on(admin):
     client, app, _ = admin
     html = client.get("/", headers=BOSS).text
     assert "update check is off" in html
+
+
+@pytest.mark.parametrize("kind,link,words", [
+    ("installed", "https://github.com/Erlbon/pluteus/releases/download/v0.3.2/Pluteus-Setup-0.3.2.exe", "download and run the installer"),
+    ("windows", "https://github.com/Erlbon/pluteus/releases/download/v0.3.2/pluteus.exe", "download the new pluteus.exe"),
+    ("linux", "https://github.com/Erlbon/pluteus/releases/download/v0.3.2/pluteus-linux-x86_64.tar.gz", "Linux program"),
+])
+def test_a_newer_version_links_the_file_that_fits_this_install(monkeypatch, kind, link, words):
+    import pluteus.updatecheck as uc
+    monkeypatch.setattr(uc, "install_kind", lambda: kind)
+    page = render({"state": "update", "latest": "0.3.2", "advisories": []})
+    assert "0.3.2 is available" in page and ("href='%s'" % link) in page and words in page
+
+
+def test_from_source_a_newer_version_keeps_the_docker_words(monkeypatch):
+    import pluteus.updatecheck as uc
+    monkeypatch.setattr(uc, "install_kind", lambda: "source")
+    assert "docker compose" in render({"state": "update", "latest": "0.3.2", "advisories": []})
+
+
+def test_the_install_kind_follows_the_marker_the_setup_writes(tmp_path, monkeypatch):
+    import sys
+
+    import pluteus.updatecheck as uc
+    assert uc.install_kind() == "source"
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setattr(sys, "executable", str(tmp_path / "pluteus.exe"))
+    if sys.platform == "win32":
+        assert uc.install_kind() == "windows"
+        (tmp_path / uc.INSTALLED_MARKER).write_text("x")
+        assert uc.install_kind() == "installed"
+    else:
+        assert uc.install_kind() == "linux"

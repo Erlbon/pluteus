@@ -58,6 +58,34 @@ def in_range(version: tuple, spec: str) -> bool:
     return True
 
 
+INSTALLED_MARKER = "installed-by-setup.txt"       # the Windows installer writes it next to the programs (installer/pluteus.iss)
+RELEASES = "https://github.com/Erlbon/pluteus/releases"
+
+
+def install_kind() -> str:
+    """How this copy was installed, which decides what a newer version is fetched as: 'installed' (the Windows setup),
+    'windows' (the portable pluteus.exe), 'linux' (the Linux program) or 'source' (git, pip or Docker)."""
+    import os
+    import sys
+    if not getattr(sys, "frozen", False):
+        return "source"
+    if os.name != "nt":
+        return "linux"
+    return "installed" if os.path.isfile(os.path.join(os.path.dirname(sys.executable), INSTALLED_MARKER)) else "windows"
+
+
+def download(kind: str, latest: str) -> tuple:
+    """(what to do, the address of the file) for a newer version; ('', '') when it is not one file to download."""
+    tag = "%s/download/v%s/" % (RELEASES, latest)
+    if kind == "installed":
+        return "download and run the installer", tag + "Pluteus-Setup-%s.exe" % latest
+    if kind == "windows":
+        return "download the new pluteus.exe", tag + "pluteus.exe"
+    if kind == "linux":
+        return "download the new Linux program", tag + "pluteus-linux-x86_64.tar.gz"
+    return "", ""
+
+
 def fetch_json(url: str, timeout: float = 6.0):
     req = urllib.request.Request(url, headers={"Accept": "application/vnd.github+json", "User-Agent": "pluteus-update-check",
                                                "X-GitHub-Api-Version": "2022-11-28"})

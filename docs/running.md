@@ -88,9 +88,13 @@ copy config.example.toml config.toml              # edit: roots, data_dir, uploa
 Behind Caddy set `host = "127.0.0.1"` (Caddy on the same machine) or `"0.0.0.0"` (Caddy in Docker Desktop reaching the
 host through `host.docker.internal`; then keep the port closed on the router and allow it only locally in the firewall).
 
-Starting at boot:
+Starting by itself:
 
-- **Windows: `tools\install-task.ps1`** (Task Scheduler, nothing to download):
+- **Windows, the easy way: the installer** (`Pluteus-Setup-<version>.exe` from the release). Pluteus runs in the tray while you
+  are logged on, as you, so libraries on network shares and mapped drives work. See "Download" in the README.
+- **Windows: `tools\install-task.ps1`** (Task Scheduler, nothing to download), for a server that starts at boot with no one
+  logged on. Mind that LOCAL SERVICE has no network identity: it cannot read libraries on `\\server\share`, and no task account
+  sees mapped drives such as `Z:`. For those use `-AtLogon` (as you) or the installer's tray.
 
   ```powershell
   .\tools\install-task.ps1 -Config C:\ProgramData\pluteus\config.toml -Start   # at boot, as LOCAL SERVICE (elevated PowerShell)

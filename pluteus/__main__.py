@@ -109,6 +109,10 @@ def main(argv=None) -> int:
     sup.add_argument("--config", required=True)
     sup.add_argument("--log", required=True, help="file the server's output is appended to")
     sup.add_argument("--delay", type=float, default=10.0, help="seconds to wait before starting it again")
+    tray = sub.add_parser("tray", help="Windows: run in the tray by the clock (what the installed Pluteus does)")
+    tray.add_argument("--config", default="", help="use this config.toml instead of the one in your settings folder")
+    tray.add_argument("--autostart", action="store_true", help="started at logon: no balloon")
+    tray.add_argument("--quit", action="store_true", help="ask a running tray to quit, and exit")
     admin = sub.add_parser("admin", help="open the admin window (users and config file)")
     admin.add_argument("--config", help="path to config.toml (default: the one used last time)")
 
@@ -143,6 +147,10 @@ def main(argv=None) -> int:
     if a.cmd == "supervise":
         from .supervise import run as supervise
         return supervise(a.config, a.log, a.delay)
+    if a.cmd == "tray":
+        from .tray import main as tray_main
+        return tray_main((["--config", a.config] if a.config else []) + (["--autostart"] if a.autostart else [])
+                         + (["--quit"] if a.quit else []))
     if a.cmd == "admin":
         try:
             from .admin_gui import main as admin_main

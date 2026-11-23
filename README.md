@@ -65,11 +65,23 @@ Put it behind HTTPS (a reverse proxy such as Caddy) before exposing it beyond yo
 
 ## Download (no Python needed)
 
-Each [release](https://github.com/Erlbon/pluteus/releases) has **`pluteus.exe`** (Windows) and **`pluteus-linux-x86_64.tar.gz`** (Linux,
-runs on most current distributions). Both are the same program as `python -m pluteus`.
+Each [release](https://github.com/Erlbon/pluteus/releases) has **`Pluteus-Setup-<version>.exe`** (the Windows installer),
+**`pluteus.exe`** (the same for Windows as one portable file) and **`pluteus-linux-x86_64.tar.gz`** (Linux, runs on most current
+distributions). All are the same program as `python -m pluteus`.
 
-**Just run it** (double-click `pluteus.exe`, or `./pluteus`): the first time it asks for an administrator name and a password (you type
-it, it is not shown), saves its settings in your own settings folder (`%APPDATA%\Pluteus` on Windows, `~/.config/pluteus` on Linux),
+**The Windows installer** needs no administrator rights: it installs for you alone (in `%LOCALAPPDATA%\Programs\Pluteus`) and adds
+Pluteus to the Start menu. Pluteus then lives in the **tray** by the clock and starts when you log on (a tick in the installer and
+in the icon's menu). It runs as you, so it reads your network shares (`\\server\share`) and mapped drives (`Z:`) as Explorer does,
+which a service started at boot cannot. Click the icon to open Pluteus; right-click for the menu: Open Pluteus, Admin page,
+Start when I log on, Show the log, Quit Pluteus. The server is started again if it ever stops, and its output goes to
+`pluteus.log` in the settings folder. On the first start a page opens in your browser to make the administrator account.
+Windows Firewall asks the first time whether other devices may reach it: tick **Private networks**. To update, run the newer
+setup over the old one (the admin page links to it when the update check is on); uninstalling leaves your settings, users and
+reading positions in `%APPDATA%\Pluteus`. For a server that starts at boot with no one logged on, see `tools\install-task.ps1` in
+[docs/running.md](docs/running.md) (and mind the note there about network shares).
+
+**Or just run it** (double-click `pluteus.exe`, or `./pluteus`): the first time it asks for an administrator name and a password (on
+Windows on a page in your browser, on Linux in the terminal; you type it, it is not shown), saves its settings in your own settings folder (`%APPDATA%\Pluteus` on Windows, `~/.config/pluteus` on Linux),
 starts, and opens the admin page in your browser, where the **Libraries** tab adds your book and comic folders with a folder picker.
 After that, running it again just starts the server. Other commands: `pluteus share FOLDER` (below) and `pluteus serve --config config.toml`. They are **not code-signed**, so Windows SmartScreen may warn on the first run ("More info",
 then "Run anyway"). RAR and 7z comics (CBR, CB7) need `bsdtar` (built into Windows 10 and later; `libarchive-tools` on Debian and

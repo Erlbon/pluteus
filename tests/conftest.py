@@ -15,6 +15,14 @@ from pluteus.fs import longpath
 FAST = dict(n=2 ** 4)   # tiny scrypt cost, tests only
 
 
+@pytest.fixture(autouse=True)
+def _no_real_browser(monkeypatch):
+    """No test opens a tab in the real browser (the first run on Windows opens its set-up page there). A test that wants to
+    see what would be opened patches webbrowser.open itself, after this."""
+    import webbrowser
+    monkeypatch.setattr(webbrowser, "open", lambda *a, **kw: True)
+
+
 def wait_until(condition, timeout=10.0, step=0.01):
     """Poll `condition` until it is true (returns its value) or `timeout` seconds have passed (returns the last, false
     value). For tests that wait for a thread: no fixed sleep that is too short on a slow machine and too long on a fast one."""

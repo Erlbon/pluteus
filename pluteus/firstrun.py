@@ -124,14 +124,30 @@ def create_config(path: str, name: str, password: str, folder: str, *, port: int
     return folder
 
 
-def start(config_path: str | None, run_server, read=input, read_password=getpass.getpass, say=print, open_browser=True) -> int:
-    """Start with the default (or the given) configuration, creating it on the first run. `run_server(cfg, path)` runs the server."""
+def start(config_path: str | None, run_server, read=input, read_password=getpass.getpass, say=print, open_browser=True,
+          in_browser: bool | None = None) -> int:
+    """Start with the default (or the given) configuration, creating it on the first run. `run_server(cfg, path)` runs the server.
+
+    On Windows the first run asks in the browser (setupweb: the same page as the installed tray program); elsewhere, or with
+    in_browser=False, in the console."""
     from .config import ConfigError, load_config
     from .share import free_port
 
     path = config_path or default_config_path()
     first = not os.path.exists(path)
-    if first:
+    if in_browser is None:
+        in_browser = os.name == "nt"
+    if first and in_browser:
+        from . import setupweb
+        say("")
+        say("Welcome to Pluteus. This is the first run: your browser opens a page to make the administrator account.")
+        made = setupweb.run(path, on_url=lambda url: say("If it does not open, go to  %s" % url))
+        if not made:
+            print("Error: the set-up page stopped before the settings were saved (%s)." % path, file=sys.stderr)
+            return 2
+        say("Settings saved in %s" % path)
+        open_browser = False                             # the set-up page itself moves on to the admin page
+    elif first:
         if not sys.stdin or not sys.stdin.isatty():
             print("Error: no configuration yet (%s) and this is not a terminal to ask in. Run pluteus in a terminal once." % path,
                   file=sys.stderr)

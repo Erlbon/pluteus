@@ -408,7 +408,7 @@ def test_card35_first_run_opens_the_browser_only_once_the_admin_page_answers(tmp
         opened.clear()
         path = str(tmp_path / ("home%d" % number) / "config.toml")
         code = firstrun.start(path, run, read=feed(["boss", ""]), read_password=feed(["long-enough-1", "long-enough-1"]),
-                              say=lambda *a: None, open_browser=True)
+                              say=lambda *a: None, open_browser=True, in_browser=False)
         if expected:
             assert was_opened.wait(10)                                  # the browser is opened from a thread of its own
         assert code == 0 and len(opened) == expected and timers == []
@@ -605,7 +605,8 @@ def test_card64_first_run_asks_for_the_folder_again_instead_of_leaving_a_dead_co
     path = str(tmp_path / "library" / "settings" / "config.toml")
     started, said = [], []
     code = firstrun.start(path, lambda cfg, p: started.append(cfg) or 0, read=feed(["boss", str(tmp_path / "library"), str(tmp_path / "books")]),
-                          read_password=feed(["long-enough-1", "long-enough-1"]), say=said.append, open_browser=False)
+                          read_password=feed(["long-enough-1", "long-enough-1"]), say=said.append, open_browser=False,
+                          in_browser=False)
     assert code == 0 and started[0].roots["library"].path == str(tmp_path / "books")
     assert any("inside root" in s for s in said)
     load_config(path)

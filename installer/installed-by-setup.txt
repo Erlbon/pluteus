@@ -1,0 +1,4 @@
+This Pluteus was installed by the Windows setup (Pluteus-Setup-<version>.exe).
+
+Its admin page therefore links a newer version's setup, which is run over this install. Your settings, users and reading
+positions are not here but in %APPDATA%\Pluteus, and uninstalling leaves them there.

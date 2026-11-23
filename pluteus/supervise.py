@@ -90,16 +90,52 @@ def rotate_log(log: str, max_bytes: int = MAX_LOG_BYTES) -> bool:
         return False
 
 
+def own_command() -> list:
+    """How this program starts itself. A packaged exe (PyInstaller) is the program itself: it has no `-m`. The windowed tray exe
+    of the installed folder starts its console sibling pluteus.exe (hidden by CREATE_NO_WINDOW), whose output can go to a file.
+    Otherwise this Python on the pluteus package."""
+    if getattr(sys, "frozen", False):
+        sibling = os.path.join(os.path.dirname(sys.executable), "pluteus.exe")
+        if os.path.basename(sys.executable).lower() != "pluteus.exe" and os.path.isfile(sibling):
+            return [sibling]
+        return [sys.executable]
+    return [sys.executable, "-m", "pluteus"]
+
+
+def _wait(child, stop) -> int | None:
+    """The child's exit code; None when `stop` was set first (the child is then ended)."""
+    if stop is None:
+        return child.wait()
+    while True:
+        try:
+            return child.wait(timeout=0.5)
+        except subprocess.TimeoutExpired:
+            if stop.is_set():
+                child.terminate()
+                try:
+                    child.wait(timeout=10)
+                except subprocess.TimeoutExpired:
+                    child.kill()
+                    child.wait()
+                return None
+
+
 def run(config: str, log: str, delay: float = 10.0, max_runs: int | None = None, command: list | None = None,
-        sleep=time.sleep, clock=time.monotonic, max_log_bytes: int = MAX_LOG_BYTES) -> int:
-    """Run the server in a loop. `command`, `max_runs`, `sleep` and `clock` exist for tests; normally this never returns."""
+        sleep=time.sleep, clock=time.monotonic, max_log_bytes: int = MAX_LOG_BYTES, stop=None, on_state=None) -> int:
+    """Run the server in a loop. `command`, `max_runs`, `sleep` and `clock` exist for tests; normally this never returns.
+
+    The tray (pluteus/tray.py) runs it in a thread and passes `stop` (a threading.Event: set it, and the server is ended and
+    run returns) and `on_state(text)`, told "running" at each start and "stopped, starting again in N seconds" after an exit."""
     job = _kill_on_close_job()                     # noqa: F841 - must stay referenced until we exit
-    # A packaged exe (PyInstaller) is the program itself: it has no `-m`. Otherwise run this Python on the pluteus package.
-    own = [sys.executable] if getattr(sys, "frozen", False) else [sys.executable, "-m", "pluteus"]
-    command = command or own + ["serve", "--config", config]
+    command = command or own_command() + ["serve", "--config", config]
     flags = CREATE_NO_WINDOW if sys.platform == "win32" else 0
+    if stop is not None:
+        sleep = stop.wait                          # a wait between starts ends at once when stop is set
+    say = on_state or (lambda text: None)
     runs = fast_exits = 0
     while max_runs is None or runs < max_runs:
+        if stop is not None and stop.is_set():
+            return 0
         runs += 1
         rotate_log(log, max_log_bytes)
         began = clock()
@@ -113,11 +149,15 @@ def run(config: str, log: str, delay: float = 10.0, max_runs: int | None = None,
                 out.write(_stamp("could not start: %s" % err))
                 code = -1
             else:
+                say("running")
                 try:
-                    code = child.wait()
+                    code = _wait(child, stop)
                 except KeyboardInterrupt:
                     child.terminate()
                     child.wait()
+                    out.write(_stamp("stopped"))
+                    return 0
+                if code is None:
                     out.write(_stamp("stopped"))
                     return 0
             if max_runs is not None and runs >= max_runs:
@@ -126,5 +166,6 @@ def run(config: str, log: str, delay: float = 10.0, max_runs: int | None = None,
             fast_exits = 0 if clock() - began >= GOOD_RUN_SECONDS else fast_exits + 1
             wait = backoff_delay(fast_exits, delay)
             out.write(_stamp("pluteus exited with code %s, starting again in %d seconds" % (code, wait)))
+        say("stopped, starting again in %d seconds" % wait)
         sleep(wait)
     return 0

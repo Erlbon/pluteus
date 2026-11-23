@@ -54,7 +54,7 @@ def test_a_given_library_folder_is_used_and_a_missing_one_is_refused(tmp_path):
 
 def test_start_without_settings_and_without_a_terminal_explains_instead_of_hanging(tmp_path, capsys, monkeypatch):
     monkeypatch.setattr(sys.stdin, "isatty", lambda: False, raising=False)
-    assert firstrun.start(str(tmp_path / "none" / "config.toml"), lambda cfg, path: 0) == 2
+    assert firstrun.start(str(tmp_path / "none" / "config.toml"), lambda cfg, path: 0, in_browser=False) == 2
     assert "terminal" in capsys.readouterr().err
 
 
@@ -63,7 +63,8 @@ def test_first_run_asks_creates_the_settings_and_starts(tmp_path, monkeypatch):
     started = []
     path = str(tmp_path / "home" / "config.toml")
     code = firstrun.start(path, lambda cfg, p: started.append((cfg, p)) or 0, read=feed(["boss", ""]),
-                          read_password=feed(["long-enough-1", "long-enough-1"]), say=lambda *a: None, open_browser=False)
+                          read_password=feed(["long-enough-1", "long-enough-1"]), say=lambda *a: None, open_browser=False,
+                          in_browser=False)
     assert code == 0 and os.path.exists(path) and started[0][1] == path and "boss" in started[0][0].users
     # the second start asks nothing and runs with the same settings
     again = []
@@ -80,3 +81,26 @@ def test_no_arguments_and_start_both_mean_start(monkeypatch, tmp_path):
     monkeypatch.setenv("PLUTEUS_HOME", str(path.parent))
     assert cli.main([]) == 0 and cli.main(["start"]) == 0 and cli.main(["start", "--config", str(path)]) == 0
     assert seen == [str(path)] * 3
+
+
+def test_the_first_run_in_the_browser_writes_the_settings_and_starts(tmp_path, monkeypatch):
+    """Windows' first run: the set-up page is served, filled in (here by setupweb.run's stand-in), then the server starts."""
+    from pluteus import setupweb
+    path = str(tmp_path / "home" / "config.toml")
+
+    def fake_page(config_path, on_url=None, **kw):
+        assert setupweb.Setup(config_path).submit("boss", "long-enough-1", "long-enough-1", "") == ""
+        return True
+
+    monkeypatch.setattr(setupweb, "run", fake_page)
+    started = []
+    assert firstrun.start(path, lambda cfg, p: started.append((cfg, p)) or 0, say=lambda *a: None, in_browser=True,
+                          read=lambda *a: pytest.fail("asked in the console")) == 0
+    assert "boss" in started[0][0].users
+
+
+def test_a_set_up_page_closed_unfinished_starts_nothing(tmp_path, monkeypatch, capsys):
+    from pluteus import setupweb
+    monkeypatch.setattr(setupweb, "run", lambda *a, **kw: False)
+    assert firstrun.start(str(tmp_path / "c.toml"), lambda cfg, p: pytest.fail("started"), say=lambda *a: None, in_browser=True) == 2
+    assert "set-up page" in capsys.readouterr().err

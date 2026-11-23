@@ -1,7 +1,7 @@
 name: Release
 
 # Push a tag like v0.5.0 (it must equal "v" + the version in pluteus/__init__.py, and pluteus/CHANGELOG.md needs a "## 0.5.0" section) to build
-# pluteus.exe on Windows and pluteus-linux-x86_64.tar.gz on Linux, test both, and publish them as a GitHub Release.
+# pluteus.exe and the installer Pluteus-Setup-<version>.exe on Windows and pluteus-linux-x86_64.tar.gz on Linux, test them, and publish them as a GitHub Release.
 # The two builds run side by side and only hand their files over; the release is made by a third job, and only when both
 # builds and both smoke tests passed. So there is never a public release with one of the two files missing.
 # Re-running on an existing tag (Actions > Release > Run workflow) uploads the files again instead of failing.
@@ -65,11 +65,41 @@ jobs:
           taskkill //F //T //IM pluteus.exe > /dev/null 2>&1 || true
           cat serve.log
           exit "$status"
+      - name: Build the installed folder (pluteus.exe and pluteus-tray.exe) and the setup
+        shell: bash
+        env:
+          PLUTEUS_BUILD: folder
+        run: |
+          python -m PyInstaller pluteus.spec --noconfirm --workpath build/folder
+          version=$(python -c "import pluteus; print(pluteus.__version__)")
+          iscc="/c/Program Files (x86)/Inno Setup 6/ISCC.exe"
+          # Inno Setup 6 is on GitHub's Windows images; should an image ever drop it, it comes from Chocolatey (not pinned).
+          [ -x "$iscc" ] || choco install innosetup -y --no-progress
+          "$iscc" //Qp "//DAppVersion=$version" installer/pluteus.iss
+          ls -la dist
+      - name: "Smoke test the setup: a silent install, the installed programs serve, then a silent uninstall"
+        shell: bash
+        run: |
+          version=$(python -c "import pluteus; print(pluteus.__version__)")
+          app="$RUNNER_TEMP/pluteus-app"
+          "./dist/Pluteus-Setup-$version.exe" //VERYSILENT //SUPPRESSMSGBOXES //NORESTART //CURRENTUSER "//DIR=$(cygpath -w "$app")" '//TASKS=' "//LOG=$(cygpath -w "$RUNNER_TEMP/setup.log")"
+          [ -f "$app/pluteus.exe" ] && [ -f "$app/pluteus-tray.exe" ] && [ -f "$app/installed-by-setup.txt" ] || { cat "$RUNNER_TEMP/setup.log"; exit 1; }
+          "$app/pluteus.exe" --version
+          "$app/pluteus-tray.exe" --quit
+          "$app/pluteus.exe" serve --config smoke/config/config.toml > serve-installed.log 2>&1 &
+          status=0
+          python tools/smoke.py check smoke --base http://127.0.0.1:8600 --admin http://127.0.0.1:8601 || status=$?
+          taskkill //F //T //IM pluteus.exe > /dev/null 2>&1 || true
+          cat serve-installed.log
+          [ "$status" = 0 ] || exit "$status"
+          "$app/unins000.exe" //VERYSILENT //SUPPRESSMSGBOXES //NORESTART
+          for i in $(seq 1 30); do [ -f "$app/pluteus.exe" ] || break; sleep 1; done
+          [ ! -f "$app/pluteus.exe" ] || { echo "the uninstall left pluteus.exe behind"; exit 1; }
       - name: Collect the files for the release
         shell: bash
         run: |
           mkdir upload
-          cp dist/pluteus.exe release_notes.md upload/
+          cp dist/pluteus.exe dist/Pluteus-Setup-*.exe release_notes.md upload/
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: release-windows
@@ -135,9 +165,10 @@ jobs:
       - name: Publish the GitHub Release with both files
         run: |
           ls -la release
-          [ -s release/pluteus.exe ] && [ -s release/pluteus-linux-x86_64.tar.gz ] && [ -s release/release_notes.md ] || { echo "a file for the release is missing"; exit 1; }
+          setup="release/Pluteus-Setup-${TAG#v}.exe"
+          [ -s release/pluteus.exe ] && [ -s "$setup" ] && [ -s release/pluteus-linux-x86_64.tar.gz ] && [ -s release/release_notes.md ] || { echo "a file for the release is missing"; exit 1; }
           if gh release view "$TAG" >/dev/null 2>&1; then
-            gh release upload "$TAG" release/pluteus.exe release/pluteus-linux-x86_64.tar.gz --clobber
+            gh release upload "$TAG" "$setup" release/pluteus.exe release/pluteus-linux-x86_64.tar.gz --clobber
           else
-            gh release create "$TAG" release/pluteus.exe release/pluteus-linux-x86_64.tar.gz --verify-tag --title "Pluteus $TAG" --notes-file release/release_notes.md
+            gh release create "$TAG" "$setup" release/pluteus.exe release/pluteus-linux-x86_64.tar.gz --verify-tag --title "Pluteus $TAG" --notes-file release/release_notes.md
           fi

@@ -155,7 +155,12 @@ def _update_cell(u) -> str:
     if state == "security":
         return _light("bad", "security issue in this version")
     if state == "update":
-        return _light("warn", "%s is available (git pull, then docker compose build --pull and docker compose up -d)" % u.get("latest", "a newer version"))
+        from .updatecheck import download, install_kind, parse_version
+        latest = u.get("latest") or ""
+        what, url = download(install_kind(), latest) if parse_version(latest) else ("", "")
+        if url:
+            return _light("warn", "%s is available: " % latest) + "<a href='%s'>%s</a>" % (escape(url, quote=True), escape(what))
+        return _light("warn", "%s is available (git pull, then docker compose build --pull and docker compose up -d)" % (latest or "a newer version"))
     if state == "ok":
         return _light("ok", "up to date")
     return _light("off", "checking..." if state == "checking" else "could not check for updates")
