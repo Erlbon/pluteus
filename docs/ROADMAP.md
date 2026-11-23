@@ -331,8 +331,8 @@ delegation (card 85) only the folder, download and viewer routes move out of `ap
   phone's own processing (Python and Tailscale's encryption on a phone CPU), and a phone on the same Wi-Fi as the reader, where every
   byte crosses the air twice. Any caching must keep the "no index, live folders" design. Needs a measurement on two real installations first.
 - **Video over a link: the owner's approach (2026-11-23): "Easiest solution is just not to share videos to satellite servers."** Video
-  files are left out of what a linked server is given. Whether that is a fixed rule or a per-link switch that is off by default is still
-  to be decided. The notes below stay for the case where video is ever shared.
+  files are left out of what a linked server is given. **108B (owner, 2026-11-23):** a switch per link, **off by default**; the owner of
+  the sharing server can turn video on for one link (for example over a fast connection). The notes below apply to links where it is on.
 - **Video over a link: no clear solution (owner, 2026-11-23: "video is going to be a beast").** A film must keep arriving at its own
   bitrate, and every seek starts a new transfer. Today the player is the browser's own video element (`preload = "auto"` in
   `shell.js`) with Range requests; the browser decides how far ahead it reads. If the sharing server's upload is slower than the video's
