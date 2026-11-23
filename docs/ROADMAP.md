@@ -326,8 +326,10 @@ delegation (card 85) only the folder, download and viewer routes move out of `ap
 **Open questions:**
 
 - **Reading progress on friends' servers (card 90, later):** kept on the server where you read, or sent back to the server that owns the book.
-- **Speed:** browsing over the network is slower than a local disk; any caching must keep the "no index, live folders" design. Needs a
-  measurement on two real installations first.
+- **Speed:** a linked folder is slower than a local library, but should be close to opening the other server directly: with
+  delegation the network trip is the same, plus one short hop and the receiving server passing the answer on. Two cases to measure: the
+  phone's own processing (Python and Tailscale's encryption on a phone CPU), and a phone on the same Wi-Fi as the reader, where every
+  byte crosses the air twice. Any caching must keep the "no index, live folders" design. Needs a measurement on two real installations first.
 
 ### Research (2026-11-23)
 
