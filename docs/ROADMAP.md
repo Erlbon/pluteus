@@ -261,6 +261,12 @@ on a decision page when it starts.
 there is no internet, and it passes the home server's full library on to devices that cannot run Tailscale (e-readers, TVs, a guest's
 tablet). Without linked libraries that needs two sites on the phone (a local pluteus and a reverse proxy); with them it is one site.
 
+**A more modular pluteus first? (owner, 2026-11-23: "might" want to consider it.)** Linked libraries mean a root that is not a
+folder on disk, and every protocol (web, OPDS, WebDAV, Subsonic, the readers) would have to read through it. Today `app.py` holds most of
+the routes in about 2,700 lines, and folders are read directly with `os.scandir` in several modules (`fs.py`, `uploads.py`,
+`streams.py` and others). One storage layer that every protocol reads through, with the protocols as separate parts that can be switched
+on, would let a remote root drop in without touching each protocol. Whether and how much to restructure is decided before step 1.
+
 **Decided so far (owner, 2026-11-23):**
 
 - **Shared servers are a separate folder option**, not mixed into the ordinary libraries: a linked server shows up as its own kind of folder,
