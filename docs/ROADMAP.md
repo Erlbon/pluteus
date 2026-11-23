@@ -292,14 +292,26 @@ delegation (card 85) only the folder, download and viewer routes move out of `ap
 - **95 Keys:** one read-only key per linked server, stored hashed on the sharing side, each linked server a row on the admin page with
   "last seen" and Revoke. A lost device is handled in Tailscale (remove it from the network); pluteus needs nothing extra for that.
 - **96 The phone stays the target device**, not a travel router: far more people have an old phone than a travel router.
-- **Later:** 90, reading progress split between servers.
+- **97 Trusted link for your own servers (owner, 2026-11-23):** servers under one owner's control get a tighter link than friends'
+  servers. Each server keeps its own users and nothing is kept in step between them; on a trusted link the receiving server says *who*
+  is reading ("this is erlend"), the link key vouches for it, and the sharing server treats the reader as its own user of that name, with
+  that user's rights there. Friends' servers keep the plain guest link (card 92); trust is switched on only for links marked as your own.
+  **It includes importing users from the other machine:** on a trusted link, the admin page can list the other server's users and import
+  chosen ones, so the same names exist on both sides. An import is a one-off copy started by the owner, not ongoing sync.
+- **90, reading progress:** answered for your own servers by the trusted link (progress lands on the server that owns the book, under
+  the reader's own name). For friends' servers it stays later.
 - **Dropped:** 91, offline copies. Sync between installations was never part of the idea (owner: "I have never suggested sync between
   the pluteus"); it was added in this roadmap item by mistake.
 
 **Open questions:**
 
 - **Rights on the receiving side:** whether the sharing side's `.adult` setting for the server user is enough, or the receiving side adds its own.
-- **Reading progress (card 90, later):** kept on the server where you read, or sent back to the server that owns the book.
+- **Reading progress on friends' servers (card 90, later):** kept on the server where you read, or sent back to the server that owns the book.
+- **User import (card 97):** whether the password hash comes along (the same password works on both servers) or the imported user
+  sets a new one; how the other server's library rights map to this server's libraries (names differ between machines); whether app
+  keys come along (proposed: never; make new ones); what happens when a name already exists here.
+- **A user removed on one server:** whether the trusted link stops working for that name at once (proposed: yes, the name must exist on
+  both sides at every request).
 - **Key hand-over:** an invite link (like `/join/<token>`) or copying a key by hand.
 - **Speed:** browsing over the network is slower than a local disk; any caching must keep the "no index, live folders" design.
 - **Reaching each other:** Tailscale is the expected link; nothing is opened to the internet for it.
@@ -365,5 +377,7 @@ decides whether a short-lived cache is needed.
 | 2 | Server users with hashed, read-only keys and a Revoke row on the admin page (cards 94, 95) | medium |
 | 3 | The versioned `/link/v1` API on the sharing side (cards 85, 87) | large |
 | 4 | A linked server as a separate folder on the receiving side: browse, open, download, the readers, "not reachable" (cards 85, 89, 92) | large |
-| 5 | OPDS, Subsonic and WebDAV through a linked folder | large |
-| 6 | Friends' servers (card 93) | to be sized |
+| 5 | Trusted link for your own servers: the reader's name passed through, progress on the owning server (cards 90, 97) | large |
+| 6 | Import users from the other server over a trusted link (card 97) | medium |
+| 7 | OPDS, Subsonic and WebDAV through a linked folder | large |
+| 8 | Friends' servers (card 93) | to be sized |
