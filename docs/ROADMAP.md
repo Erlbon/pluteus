@@ -257,15 +257,15 @@ Still open: a TV mode that has been tried on a real TV browser (the keys are che
 to each other. It is meant for every platform (Windows, Linux, Docker, an Android phone). Not started; the design questions below are decided
 on a decision page when it starts.
 
-**Where it came from:** an old Android phone as a portable pluteus server (Termux + Tailscale). It carries a small library of its own for when
-there is no internet, and it passes the home server's full library on to devices that cannot run Tailscale (e-readers, TVs, a guest's
+**Where it came from:** an old Android phone as a portable pluteus server (Termux + Tailscale). It carries a small library of its own, and it passes the home server's full library on to devices that cannot run Tailscale (e-readers, TVs, a guest's
 tablet). Without linked libraries that needs two sites on the phone (a local pluteus and a reverse proxy); with them it is one site.
 
 **A more modular pluteus first? (owner, 2026-11-23: "might" want to consider it.)** Linked libraries mean a root that is not a
 folder on disk, and every protocol (web, OPDS, WebDAV, Subsonic, the readers) would have to read through it. Today `app.py` holds most of
 the routes in about 2,700 lines, and folders are read directly with `os.scandir` in several modules (`fs.py`, `uploads.py`,
 `streams.py` and others). One storage layer that every protocol reads through, with the protocols as separate parts that can be switched
-on, would let a remote root drop in without touching each protocol. Whether and how much to restructure is decided before step 1.
+on, would let a remote root drop in without touching each protocol. **Ruled (review card 86):** no big restructure; with
+delegation (card 85) only the folder, download and viewer routes move out of `app.py` into their own module, with a "local or linked" switch.
 
 **Decided so far (owner, 2026-11-23):**
 
@@ -274,17 +274,33 @@ on, would let a remote root drop in without touching each protocol. Whether and 
 - **Special remote-server users.** The server that shares creates a user that exists only for another server to connect with; it is not a person
   and has no web login. **Possibly keys only** (no password): to be checked. The existing app keys (read only, revocable on the admin page, also
   usable in the address as `/k/<app key>/...`) are the starting point.
+- **No sync between pluteus installations.** Linking shows another server's library live; nothing is copied or kept in step between servers.
+
+**Ruled in the critical review (owner, 2026-11-23, cards 85-96 in `docs/linked-libraries-review-2026-11-23.md`):**
+
+- **85 Delegation:** the other pluteus does the work. The linked folder's pages, feeds, downloads, CBZ pages and thumbnails come from the
+  sharing server through a small pluteus API and are passed through; the receiving server does not read the other server's files.
+  This also answers "how the servers talk": pluteus's own API, not WebDAV.
+- **86 No big restructure** (see above).
+- **87 Versioned API from day one:** `/link/v1/...`; each side states its version, and a mismatch is said in words.
+- **88 Tests with two servers in one test process**, wired through the test client.
+- **89 A linked server that is down says so** ("not reachable since ..."), never an empty folder; OPDS and WebDAV answer with an error.
+- **92 One guest on the other side:** the admin page says that everyone who sees a linked folder reads as one server user there, and the
+  receiving side chooses which local users see each linked folder.
+- **93 Own servers first, friends' servers later.**
+- **94 No re-sharing:** a server user never sees linked folders, only local ones. This also ends the loop question.
+- **95 Keys:** one read-only key per linked server, stored hashed on the sharing side, each linked server a row on the admin page with
+  "last seen" and Revoke. A lost device is handled in Tailscale (remove it from the network); pluteus needs nothing extra for that.
+- **96 The phone stays the target device**, not a travel router: far more people have an old phone than a travel router.
+- **Later:** 90, reading progress split between servers.
+- **Dropped:** 91, offline copies. Sync between installations was never part of the idea (owner: "I have never suggested sync between
+  the pluteus"); it was added in this roadmap item by mistake.
 
 **Open questions:**
 
-- **How the servers talk:** pluteus's own API, or its existing read-only WebDAV (`/dav`). WebDAV would also let any WebDAV source (Nextcloud,
-  a NAS) be linked.
-- **Keys:** only keys for server users, or also a password; how a key is made, handed over and revoked; one key per linked server.
-  App keys are stored in clear text today (see README, App keys), which matters more when another server holds one.
-- **Rights on the receiving side:** which local users see a linked server, and whether its `.adult` marking carries across.
-- **Reading progress:** kept on the server where you read, or sent back to the server that owns the book.
-- **Offline copies:** keeping a chosen part of a linked library on the device (the phone's offline half).
-- **Loops:** A links to B and B links back to A; a chain of more than two servers.
+- **Rights on the receiving side:** whether the sharing side's `.adult` setting for the server user is enough, or the receiving side adds its own.
+- **Reading progress (card 90, later):** kept on the server where you read, or sent back to the server that owns the book.
+- **Key hand-over:** an invite link (like `/join/<token>`) or copying a key by hand.
 - **Speed:** browsing over the network is slower than a local disk; any caching must keep the "no index, live folders" design.
 - **Reaching each other:** Tailscale is the expected link; nothing is opened to the internet for it.
 
@@ -339,13 +355,15 @@ restart. Over Tailscale the traffic is encrypted anyway, so this is acceptable t
 [Microsoft: WebDAV drive not authenticated](https://learn.microsoft.com/en-us/troubleshoot/windows-client/networking/error-access-network-drive-mapped-web-share),
 [Microsoft: Basic auth DAV shares do not reconnect](https://learn.microsoft.com/en-US/troubleshoot/windows-client/networking/cannot-automatically-reconnect-dav-share).
 
-**Still to find out (needs a second installation or the phone):** how long a big folder takes to list over WebDAV through Tailscale, which
-decides whether pluteus's own API is needed for speed as well as for the extras.
+**Still to find out (needs a second installation or the phone):** how long a big folder takes to list through a linked server over Tailscale (now that pluteus's own API is the link, card 85), which
+decides whether a short-lived cache is needed.
 
 | Step | Contents | Size |
 |---|---|---|
-| 0 | Decision page for the questions above | small |
-| 1 | Remote-server users (keys only, if decided) on the sharing side | medium |
-| 2 | A linked server as a separate folder: browse, open, download, the readers | large |
-| 3 | OPDS, Subsonic and WebDAV through a linked server | large |
-| 4 | Offline copies of chosen folders | large |
+| 0 | Decision page for the open questions above | small |
+| 1 | Move the folder, download and viewer routes out of `app.py`, with a "local or linked" switch (card 86) | large |
+| 2 | Server users with hashed, read-only keys and a Revoke row on the admin page (cards 94, 95) | medium |
+| 3 | The versioned `/link/v1` API on the sharing side (cards 85, 87) | large |
+| 4 | A linked server as a separate folder on the receiving side: browse, open, download, the readers, "not reachable" (cards 85, 89, 92) | large |
+| 5 | OPDS, Subsonic and WebDAV through a linked folder | large |
+| 6 | Friends' servers (card 93) | to be sized |
