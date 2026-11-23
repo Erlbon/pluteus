@@ -250,3 +250,42 @@ matters mainly for devices that only receive.
 Done in 0.9.8: Subsonic recently played (from the saved positions, nothing new is logged) and resume (`savePlayQueue`, `getPlayQueue`); the player bar merged into the pluteus bar on wide screens; a TV mode for the web pages (large buttons, remote arrow keys; Kodi over WebDAV still covers most of it); a way to forget the per-folder List / Covers choices; a manual Docker image workflow (`docker.yml`, publishes only when ticked). The release workflow already smoke tests the packaged exe, and the Linux build, on every tag.
 
 Still open: a TV mode that has been tried on a real TV browser (the keys are checked in a desktop browser only).
+
+## 7. Linked libraries (shared servers)
+
+**Owner, 2026-11-23:** one pluteus installation can show another pluteus installation's library, so users can daisy-chain their libraries
+to each other. It is meant for every platform (Windows, Linux, Docker, an Android phone). Not started; the design questions below are decided
+on a decision page when it starts.
+
+**Where it came from:** an old Android phone as a portable pluteus server (Termux + Tailscale). It carries a small library of its own for when
+there is no internet, and it passes the home server's full library on to devices that cannot run Tailscale (e-readers, TVs, a guest's
+tablet). Without linked libraries that needs two sites on the phone (a local pluteus and a reverse proxy); with them it is one site.
+
+**Decided so far (owner, 2026-11-23):**
+
+- **Shared servers are a separate folder option**, not mixed into the ordinary libraries: a linked server shows up as its own kind of folder,
+  apart from the local roots.
+- **Special remote-server users.** The server that shares creates a user that exists only for another server to connect with; it is not a person
+  and has no web login. **Possibly keys only** (no password): to be checked. The existing app keys (read only, revocable on the admin page, also
+  usable in the address as `/k/<app key>/...`) are the starting point.
+
+**Open questions:**
+
+- **How the servers talk:** pluteus's own API, or its existing read-only WebDAV (`/dav`). WebDAV would also let any WebDAV source (Nextcloud,
+  a NAS) be linked.
+- **Keys:** only keys for server users, or also a password; how a key is made, handed over and revoked; one key per linked server.
+  App keys are stored in clear text today (see README, App keys), which matters more when another server holds one.
+- **Rights on the receiving side:** which local users see a linked server, and whether its `.adult` marking carries across.
+- **Reading progress:** kept on the server where you read, or sent back to the server that owns the book.
+- **Offline copies:** keeping a chosen part of a linked library on the device (the phone's offline half).
+- **Loops:** A links to B and B links back to A; a chain of more than two servers.
+- **Speed:** browsing over the network is slower than a local disk; any caching must keep the "no index, live folders" design.
+- **Reaching each other:** Tailscale is the expected link; nothing is opened to the internet for it.
+
+| Step | Contents | Size |
+|---|---|---|
+| 0 | Decision page for the questions above | small |
+| 1 | Remote-server users (keys only, if decided) on the sharing side | medium |
+| 2 | A linked server as a separate folder: browse, open, download, the readers | large |
+| 3 | OPDS, Subsonic and WebDAV through a linked server | large |
+| 4 | Offline copies of chosen folders | large |
