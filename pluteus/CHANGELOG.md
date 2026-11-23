@@ -2,7 +2,7 @@
 
 Release notes are taken from the section of the tagged version (`## 0.5.0 ...`).
 
-## Unreleased
+## 0.9.30 - 2026-11-23
 - **A Windows installer, and Pluteus in the tray.** The release gets `Pluteus-Setup-<version>.exe` next to the portable `pluteus.exe`. It installs for you alone, with no administrator rights, and adds Pluteus to the Start menu. Pluteus then sits in the tray by the clock and starts when you log on (a tick in the installer and in the icon's menu). Because it runs as you, it reads libraries on network shares and mapped drives, which a service started at boot cannot. Click the icon to open Pluteus; right-click for Open Pluteus, Admin page, Start when I log on, Show the log and Quit Pluteus. The server is started again if it stops, and writes `pluteus.log` in the settings folder. Starting it a second time just opens Pluteus. Uninstalling leaves your settings, users and reading positions.
 - **The first start on Windows asks in the browser.** With no settings yet, a page on this computer only asks for the administrator's name, the password twice and, if you like, a first library folder, then Pluteus starts and the admin page opens. This holds for the installed and the portable `pluteus.exe`; Linux still asks in the terminal.
 - **The update notice links the file to get.** With the update check on, a newer version links its installer when Pluteus was installed by the setup, the new `pluteus.exe` for the portable one, and the Linux program on Linux (Docker and source keep their instructions).
