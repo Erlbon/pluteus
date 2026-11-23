@@ -254,8 +254,8 @@ Still open: a TV mode that has been tried on a real TV browser (the keys are che
 ## 7. Linked libraries (shared servers)
 
 **Owner, 2026-11-23:** one pluteus installation can show another pluteus installation's library, so users can daisy-chain their libraries
-to each other. It is meant for every platform (Windows, Linux, Docker, an Android phone). Not started; the design questions below are decided
-on a decision page when it starts.
+to each other. It is meant for every platform (Windows, Linux, Docker, an Android phone). Not started. The design was decided on 2026-11-23
+(critical review 85-96, card 97, decision page 98-107); two questions remain open at the end of the decisions.
 
 **Where it came from:** an old Android phone as a portable pluteus server (Termux + Tailscale). It carries a small library of its own, and it passes the home server's full library on to devices that cannot run Tailscale (e-readers, TVs, a guest's
 tablet). Without linked libraries that needs two sites on the phone (a local pluteus and a reverse proxy); with them it is one site.
@@ -272,7 +272,7 @@ delegation (card 85) only the folder, download and viewer routes move out of `ap
 - **Shared servers are a separate folder option**, not mixed into the ordinary libraries: a linked server shows up as its own kind of folder,
   apart from the local roots.
 - **Special remote-server users.** The server that shares creates a user that exists only for another server to connect with; it is not a person
-  and has no web login. **Possibly keys only** (no password): to be checked. The existing app keys (read only, revocable on the admin page, also
+  and has no web login. **Keys only** (no password): checked and decided as 98A below. The existing app keys (read only, revocable on the admin page, also
   usable in the address as `/k/<app key>/...`) are the starting point.
 - **No sync between pluteus installations.** Linking shows another server's library live; nothing is copied or kept in step between servers.
 
@@ -303,18 +303,31 @@ delegation (card 85) only the folder, download and viewer routes move out of `ap
 - **Dropped:** 91, offline copies. Sync between installations was never part of the idea (owner: "I have never suggested sync between
   the pluteus"); it was added in this roadmap item by mistake.
 
+**Decided on the decision page (owner, 2026-11-23, questions 98-107, all as recommended):**
+
+- **98A Keys only:** a server user has no password, cannot open the web pages or the admin page, and exists only for its linked
+  server's key. A new kind of user in the configuration.
+- **99B 18+ on both sides:** the sharing side marks adult folders in what it sends; the receiving side shows them only to its own
+  users with the adult right, whatever the server user may see.
+- **100A Invite:** the sharing server makes a one-time invite for a short time; it is pasted on the receiving server, and the two
+  servers swap the key themselves. Nobody sees or copies the key.
+- **101A Import brings the password hash:** an imported user has the same password as on the other server from the start (both use
+  scrypt). A password changed later on one server is not changed on the other (no sync).
+- **102B Libraries matched by name:** a library with the same name carries the right across, "every library" stays every library, and a
+  name with no match is dropped and shown before the import is saved.
+- **103B Adult, upload and notes come along; admin never** (it is given on each server).
+- **104A App keys never come along:** an imported user makes new ones, one per device.
+- **105A A name that exists is skipped and reported:** the user here stays as it is, and the trusted link uses it for that name.
+- **106A A removed user stops the link at once:** the name must exist on both servers at every request; nothing is removed on the other
+  server.
+- **107B Addresses:** private addresses (Tailscale, home network) as they are; a public address only over https with its certificate
+  checked. Never plain http over the internet.
+
 **Open questions:**
 
-- **Rights on the receiving side:** whether the sharing side's `.adult` setting for the server user is enough, or the receiving side adds its own.
 - **Reading progress on friends' servers (card 90, later):** kept on the server where you read, or sent back to the server that owns the book.
-- **User import (card 97):** whether the password hash comes along (the same password works on both servers) or the imported user
-  sets a new one; how the other server's library rights map to this server's libraries (names differ between machines); whether app
-  keys come along (proposed: never; make new ones); what happens when a name already exists here.
-- **A user removed on one server:** whether the trusted link stops working for that name at once (proposed: yes, the name must exist on
-  both sides at every request).
-- **Key hand-over:** an invite link (like `/join/<token>`) or copying a key by hand.
-- **Speed:** browsing over the network is slower than a local disk; any caching must keep the "no index, live folders" design.
-- **Reaching each other:** Tailscale is the expected link; nothing is opened to the internet for it.
+- **Speed:** browsing over the network is slower than a local disk; any caching must keep the "no index, live folders" design. Needs a
+  measurement on two real installations first.
 
 ### Research (2026-11-23)
 
@@ -372,7 +385,7 @@ decides whether a short-lived cache is needed.
 
 | Step | Contents | Size |
 |---|---|---|
-| 0 | Decision page for the open questions above | small |
+| 0 | Decision page (done 2026-11-23, questions 98-107) | small |
 | 1 | Move the folder, download and viewer routes out of `app.py`, with a "local or linked" switch (card 86) | large |
 | 2 | Server users with hashed, read-only keys and a Revoke row on the admin page (cards 94, 95) | medium |
 | 3 | The versioned `/link/v1` API on the sharing side (cards 85, 87) | large |
