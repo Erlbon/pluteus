@@ -282,6 +282,60 @@ tablet). Without linked libraries that needs two sites on the phone (a local plu
 - **Speed:** browsing over the network is slower than a local disk; any caching must keep the "no index, live folders" design.
 - **Reaching each other:** Tailscale is the expected link; nothing is opened to the internet for it.
 
+### Research (2026-11-23)
+
+Facts gathered for the decision page. Nothing here is decided.
+
+**What pluteus has today:**
+
+- **Every user needs a password.** A `[[users]]` entry without a `password_hash` is refused (`config.py`). A keys-only server user is
+  therefore a new kind of user, not a setting on an existing one.
+- **App keys are close to what a server link needs:** read only, no uploads, no admin page, cannot start a web session, revoked at
+  once from the admin page. But there is **one key per user**, and it is kept **in clear text** because Subsonic's token login and KOReader
+  sync must recompute it. A server link uses neither, so **its key can be stored as a hash**: SHA-256 (or HMAC-SHA256 with a server
+  secret) is enough for a long random key, since the protection comes from the key's randomness; bcrypt or scrypt would add
+  delay to every request for nothing. A short visible prefix lets the admin page tell keys apart without showing them.
+- **The receiving server must keep the key it was given in a form it can use**, so it cannot be hashed there. Pluteus already seals
+  stored secrets for the stream relay (`vault.py`, master key from `relay_key` or `relay.key` in the data folder); the same vault fits.
+- **An invite link already exists:** `pluteus share --private` signs a visitor in through `/join/<token>`. The same pattern could hand a
+  key from one server to the other, so nobody copies a key by hand.
+- **WebDAV** (`/dav`, read only) lists folders through the same per-user library calls as the web site, so the user's roots and the
+  `.adult` rules apply, and it takes the app key as its password. A server user without the adult right simply never sees the adult
+  folders. It lists at most 5000 entries per folder (`MAX_ENTRIES` in `webdav.py`), so a linked library would need paging or a higher
+  cap for bigger folders. It carries no pluteus extras: EPUB titles and authors, covers, notes, progress.
+
+**How others do it:**
+
+- **Nextcloud (Open Cloud Mesh, an IETF draft):** server A sends an invite token; B sends it back to accept, which puts B on A's allow list.
+  Each share then has its own shared secret, which the newer flow exchanges for a short-lived access token. The useful parts for pluteus are
+  an invite-and-accept handshake, one secret per link, and revoking one link without touching the others.
+- **Plex:** friends share libraries through one central plex.tv account. Pluteus has no central service and should not get one.
+- **Jellyfin:** no federation; it has been asked for, but recent forum posts say it is not planned. People link servers by mounting each
+  other's SMB shares over a VPN, which gets cumbersome as more people join.
+- **Komga, Audiobookshelf, Navidrome:** nothing found.
+- **Tailscale identity:** on a computer, a server can ask the local Tailscale who is connecting (`whois`: node, owner, tags) and could
+  trust that instead of a key. The Android app gives Termux no such access, so the phone needs keys anyway. Tailscale identity could
+  be an extra check, not the only one.
+
+**Windows Explorer and WebDAV over plain http** (for people who mount a pluteus as a drive, not for server links): Windows sends a
+password over WebDAV only over https unless the registry value `BasicAuthLevel` = 2 is set under the WebClient service's Parameters key
+and the WebClient service is restarted. Even then Windows does not remember the password, so the drive must be mapped again after a
+restart. Over Tailscale the traffic is encrypted anyway, so this is acceptable there.
+
+**Sources:**
+[OCM draft (IETF)](https://datatracker.ietf.org/doc/html/draft-ietf-ocm-open-cloud-mesh-05),
+[OCM integration draft](https://www.ietf.org/archive/id/draft-nordin-ocm-integration-protocol-00.html),
+[Nextcloud OCM commands](https://docs.nextcloud.com/server/stable/admin_manual/occ_ocm.html),
+[Jellyfin forum: federation](https://forum.jellyfin.org/t-federation-system),
+[API key hashing (ADR)](https://docs.sso.earthobservation.vam.wfp.org/architecture/decisions/adrs/0008-api-key-hashing),
+[API key authentication (Zuplo)](https://zuplo.com/learning-center/how-to-implement-api-key-authentication),
+[Tailscale LocalAPI client (Go)](https://pkg.go.dev/tailscale.com@v1.90.6/client/local),
+[Microsoft: WebDAV drive not authenticated](https://learn.microsoft.com/en-us/troubleshoot/windows-client/networking/error-access-network-drive-mapped-web-share),
+[Microsoft: Basic auth DAV shares do not reconnect](https://learn.microsoft.com/en-US/troubleshoot/windows-client/networking/cannot-automatically-reconnect-dav-share).
+
+**Still to find out (needs a second installation or the phone):** how long a big folder takes to list over WebDAV through Tailscale, which
+decides whether pluteus's own API is needed for speed as well as for the extras.
+
 | Step | Contents | Size |
 |---|---|---|
 | 0 | Decision page for the questions above | small |
