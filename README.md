@@ -76,9 +76,19 @@ which a service started at boot cannot. Click the icon to open Pluteus; right-cl
 Start when I log on, Show the log, Quit Pluteus. The server is started again if it ever stops, and its output goes to
 `pluteus.log` in the settings folder. On the first start a page opens in your browser to make the administrator account.
 Windows Firewall asks the first time whether other devices may reach it: tick **Private networks**. To update, run the newer
-setup over the old one (the admin page links to it when the update check is on); uninstalling leaves your settings, users and
-reading positions in `%APPDATA%\Pluteus`. For a server that starts at boot with no one logged on, see `tools\install-task.ps1` in
+setup over the old one (the admin page links to it when the update check is on). For a server that starts at boot with no one logged on, see `tools\install-task.ps1` in
 [docs/running.md](docs/running.md) (and mind the note there about network shares).
+
+**Where your settings and data live.** The installer asks for the settings folder: settings, users, reading positions, uploaded
+files and the daily backups all go there. The standard place is `%APPDATA%\Pluteus`, inside your Windows profile, so reinstalling
+Windows loses it. Pick a folder on a data drive instead (for example `F:\Pluteus`) and it survives: after reinstalling Windows, run
+the setup again and pick the same folder; the `config.toml` there is used as it is. Another folder than the standard one is kept in
+your `PLUTEUS_HOME` variable. Uninstalling never removes the folder or the variable. If the drive is missing at logon (a USB disk,
+a share that connects late), the tray waits for it instead of starting a new set-up.
+
+To move an existing settings folder: quit Pluteus, move the folder, and in its `config.toml` change `data_dir` and `uploads_dir`
+to `"data"` and `"uploads"` if they are full paths into the old folder (relative paths are read from the folder `config.toml` is
+in, and a new install writes them that way). Then run the setup and pick the new folder.
 
 **Or just run it** (double-click `pluteus.exe`, or `./pluteus`): the first time it asks for an administrator name and a password (on
 Windows on a page in your browser, on Linux in the terminal; you type it, it is not shown), saves its settings in your own settings folder (`%APPDATA%\Pluteus` on Windows, `~/.config/pluteus` on Linux),

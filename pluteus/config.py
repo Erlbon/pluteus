@@ -405,6 +405,30 @@ def _toml_hint(message: str, raw: bytes) -> str:
     return ""
 
 
+PATH_KEYS = ("data_dir", "cache_dir", "themes_dir", "uploads_dir")
+
+
+def resolve_relative_paths(data: dict, config_path: str) -> dict:
+    """Pluteus's own folders (data_dir, cache_dir, themes_dir, uploads_dir) written as relative paths are read relative to the
+    folder that holds the config file, not to the folder Pluteus happened to be started from. So a settings folder such as
+    F:\\Pluteus with data_dir = "data" can be moved or restored as a whole (after reinstalling Windows) and still works.
+    Absolute paths and empty values are left as they are; library paths ([[roots]]) are not touched."""
+    base = os.path.dirname(os.path.abspath(config_path))
+
+    def fix(table: dict) -> dict:
+        out = dict(table)
+        for key in PATH_KEYS:
+            value = out.get(key)
+            if isinstance(value, str) and value and not os.path.isabs(value):
+                out[key] = os.path.normpath(os.path.join(base, os.path.expanduser(value)))
+        return out
+
+    data = fix(data)
+    if isinstance(data.get("server"), dict):
+        data["server"] = fix(data["server"])
+    return data
+
+
 def load_config(path: str, check_roots: bool = True) -> Config:
     try:
         with open(path, "rb") as f:
@@ -416,7 +440,7 @@ def load_config(path: str, check_roots: bool = True) -> Config:
         raise ConfigError("%s is not UTF-8 text: %s" % (path, e))
     except tomllib.TOMLDecodeError as e:
         raise ConfigError("%s is not valid TOML: %s%s" % (path, e, _toml_hint(str(e), raw)))
-    cfg = parse_config(data, check_roots)
+    cfg = parse_config(resolve_relative_paths(data, path), check_roots)
     check_config_paths(cfg, path)
     return cfg
 

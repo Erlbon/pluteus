@@ -43,14 +43,15 @@ def default_config_path() -> str:
     return os.path.join(config_dir(), "config.toml")
 
 
-def build_config_text(*, admin: str, password_hash: str, library_folder: str, home: str, port: int, admin_port: int) -> str:
+def build_config_text(*, admin: str, password_hash: str, library_folder: str, port: int, admin_port: int) -> str:
     return "\n".join([
         "# Pluteus configuration, created on the first run. Add libraries on the admin page (Libraries tab) or edit this file.",
         "[server]",
         'host = "0.0.0.0"                   # reachable from other devices on this network; the site asks for a login',
         "port = %d" % port,
-        "data_dir = %s" % _toml_string(os.path.join(home, "data")),
-        "uploads_dir = %s" % _toml_string(os.path.join(home, "uploads")),
+        # relative to this file's folder, so the whole settings folder can be moved or restored and still works
+        'data_dir = "data"',
+        'uploads_dir = "uploads"',
         "admin_port = %d                  # the admin page" % admin_port,
         'admin_host = "127.0.0.1"           # ... for this computer only',
         "",
@@ -106,8 +107,7 @@ def create_config(path: str, name: str, password: str, folder: str, *, port: int
     folder = os.path.abspath(os.path.expanduser(folder)) if folder else placeholder
     if folder != placeholder and not os.path.isdir(folder):
         raise ValueError("%s is not a folder" % folder)
-    text = build_config_text(admin=name, password_hash=hash_password(password), library_folder=folder, home=home,
-                             port=port, admin_port=admin_port)
+    text = build_config_text(admin=name, password_hash=hash_password(password), library_folder=folder, port=port, admin_port=admin_port)
     try:
         validate(text, os.path.abspath(path))
     except EditError as e:

@@ -287,6 +287,8 @@ class Tray:
     def _work(self) -> None:
         from . import setupweb, supervise
         from .config import ConfigError, load_config
+        if not wait_for_drive(self.config_path, self.stop, self.set_state):
+            return
         if not os.path.exists(self.config_path):
             self.set_state("waiting for the set-up page")
             made = setupweb.run(self.config_path, cancel=self.stop, on_url=lambda url: setattr(self, "setup_url", url))
@@ -314,6 +316,23 @@ class Tray:
             self.u32.DispatchMessageW(self.ctypes.byref(msg))
         self.stop.set()
         return 0
+
+
+def wait_for_drive(config_path: str, stop: threading.Event, on_state, every: float = 5.0) -> bool:
+    """The settings folder may be on a data drive (PLUTEUS_HOME = F:\\Pluteus, chosen in the installer). At logon that drive can
+    be missing for a while (a USB disk, a mapped share that connects late), and a missing settings folder must not be taken for
+    a first run, which would open the set-up page. So wait until the drive is there. False when told to stop first."""
+    drive = os.path.splitdrive(os.path.abspath(config_path))[0]
+    if not drive:
+        return True
+    root = drive + os.sep
+    if os.path.isdir(root):
+        return True
+    on_state("waiting for %s (the settings folder's drive)" % drive)
+    while not stop.wait(every):
+        if os.path.isdir(root):
+            return True
+    return False
 
 
 def _quiet_streams(config_path: str) -> None:

@@ -16,7 +16,7 @@ import threading
 import time
 import tomllib
 
-from .config import ConfigError, Config, check_config_paths, parse_config
+from .config import ConfigError, Config, check_config_paths, parse_config, resolve_relative_paths
 
 
 class EditError(Exception):
@@ -197,6 +197,8 @@ def validate(text: str, path: str | None = None) -> Config:
     except tomllib.TOMLDecodeError as e:
         raise EditError("the edit would produce invalid TOML (%s); nothing written" % e)
     try:
+        if path:
+            data = resolve_relative_paths(data, path)      # the same reading as load_config, so the checks match the next start
         cfg = parse_config(data, check_roots=False)
         if path:
             check_config_paths(cfg, path)

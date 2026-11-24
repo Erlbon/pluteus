@@ -104,3 +104,30 @@ def test_a_set_up_page_closed_unfinished_starts_nothing(tmp_path, monkeypatch, c
     monkeypatch.setattr(setupweb, "run", lambda *a, **kw: False)
     assert firstrun.start(str(tmp_path / "c.toml"), lambda cfg, p: pytest.fail("started"), say=lambda *a: None, in_browser=True) == 2
     assert "set-up page" in capsys.readouterr().err
+
+
+def test_the_first_configuration_can_be_moved_as_a_whole(tmp_path, monkeypatch):
+    """Its own folders are written relative to the settings folder, so a copy elsewhere (a data drive restored after
+    reinstalling Windows) uses its own data and uploads, not the old place's."""
+    import shutil
+    old = tmp_path / "old" / "config.toml"
+    firstrun.create_config(str(old), "admin", "long-enough-1", "")
+    text = old.read_text(encoding="utf-8")
+    assert 'data_dir = "data"' in text and 'uploads_dir = "uploads"' in text
+    new = tmp_path / "moved"
+    shutil.copytree(old.parent, new)
+    monkeypatch.chdir(tmp_path)                                              # not the settings folder
+    cfg = load_config(str(new / "config.toml"), check_roots=False)
+    assert cfg.data_dir == str(new / "data") and cfg.uploads_dir == str(new / "uploads")
+
+
+def test_relative_folders_are_read_from_the_config_file_s_folder(tmp_path):
+    from pluteus.config import resolve_relative_paths
+    home = tmp_path / "home"
+    data = {"cache_dir": "cache", "server": {"data_dir": "state", "themes_dir": str(tmp_path / "abs"), "uploads_dir": ""},
+            "roots": [{"name": "x", "path": "relative-library"}]}
+    got = resolve_relative_paths(data, str(home / "config.toml"))
+    assert got["cache_dir"] == str(home / "cache") and got["server"]["data_dir"] == str(home / "state")
+    assert got["server"]["themes_dir"] == str(tmp_path / "abs") and got["server"]["uploads_dir"] == ""
+    assert got["roots"][0]["path"] == "relative-library"                     # libraries are not touched
+    assert data["server"]["data_dir"] == "state"                             # the input is not changed

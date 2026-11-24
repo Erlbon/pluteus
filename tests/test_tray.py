@@ -128,3 +128,27 @@ def test_the_installed_tray_starts_its_console_sibling(tmp_path, monkeypatch):
 def test_the_tray_entry_hands_commands_to_the_command_line():
     text = (ROOT / "tools" / "pluteus_tray_entry.py").read_text(encoding="utf-8")
     assert "pluteus.__main__ import main" in text and "pluteus.tray import main" in text
+
+
+def test_the_installer_asks_for_the_settings_folder_and_remembers_it_in_pluteus_home():
+    code = ISS.split("[Code]")[1]
+    assert "CreateInputDirPage(wpSelectDir" in code and "{userappdata}\\Pluteus" in code
+    assert "RegQueryStringValue(HKCU, 'Environment', 'PLUTEUS_HOME'" in code          # an update offers the folder in use
+    assert "RegWriteStringValue(HKCU, 'Environment', 'PLUTEUS_HOME'" in code
+    assert "RegDeleteValue(HKCU, 'Environment', 'PLUTEUS_HOME')" in code               # the standard place needs no variable
+    assert "ChangesEnvironment=yes" in ISS
+    run = next(x for x in ISS.splitlines() if x.startswith('Filename: "{app}\\pluteus-tray.exe"'))
+    assert '--config ""{code:ConfigFile}""' in run
+    assert "'PLUTEUS_HOME'" not in ISS.split("CurUninstallStepChanged")[1]              # uninstalling keeps it, like the folder
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="drive letters are Windows'")
+def test_a_missing_settings_drive_is_waited_for_not_taken_for_a_first_run():
+    stop = threading.Event()
+    states = []
+    here = os.path.join(os.path.splitdrive(os.getcwd())[0] + os.sep, "x", "config.toml")
+    assert tray.wait_for_drive(here, stop, states.append) and states == []
+    missing = next(d for d in "QRSTUVWXYJKLMNOP" if not os.path.isdir(d + ":\\"))
+    stop.set()
+    assert tray.wait_for_drive(missing + r":\Pluteus\config.toml", stop, states.append, every=0.01) is False
+    assert states and missing + ":" in states[0]

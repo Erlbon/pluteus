@@ -42,6 +42,8 @@ page_size = 50              # entries per OPDS / web page
 # WHERE STATE LIVES. Set data_dir for a real install: it holds logins (sessions), reading progress, user
 # preferences and the hourly backups. Without it all of that is kept in memory and lost on every restart
 # (the server prints a warning). Keep it OUTSIDE the library folders. In Docker it is /data.
+# A relative path (data_dir = "data") is read from the folder this file is in, not from where Pluteus was started;
+# the same holds for cache_dir, themes_dir and uploads_dir. Then the whole settings folder can be moved or restored.
 data_dir = 'D:\pluteus-data'
 
 # ADMIN PAGE (local network only). A web page on its OWN port for status, locks/known devices and users. Off unless

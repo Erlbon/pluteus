@@ -9,6 +9,9 @@
 ; in the browser at the first start (80B, pluteus/setupweb.py); no firewall rule: Windows asks by itself the first time (81B);
 ; uninstalling leaves the settings folder %APPDATA%\Pluteus (config, users, reading positions), so a new install finds them
 ; again (82A); an update is the new setup run over this one, which the admin page links to (83B, via installed-by-setup.txt).
+; Settings folder (2026-11-24, Erlend chose A): a page asks where settings and data live. Another folder than %APPDATA%\Pluteus
+; is kept in the user's PLUTEUS_HOME variable, so a folder on a data drive (F:\Pluteus) survives reinstalling Windows: run the
+; setup again, pick the same folder, and the config.toml there is used as it is. Uninstalling leaves the variable and the folder.
 ; No redactor_common, so none of the Redactor family's update contract.
 
 #ifndef AppVersion
@@ -46,6 +49,8 @@ ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 CloseApplications=yes
 RestartApplications=no
+; PLUTEUS_HOME is written to the user's environment: tell running programs (Explorer, so the next logon start) about it
+ChangesEnvironment=yes
 
 [Tasks]
 Name: "startatlogon"; Description: "Start Pluteus when I log on (it stays in the tray by the clock)"; GroupDescription: "Starting:"
@@ -67,13 +72,97 @@ Name: "{autoprograms}\Pluteus"; Filename: "{app}\pluteus-tray.exe"
 Name: "{autodesktop}\Pluteus"; Filename: "{app}\pluteus-tray.exe"; Tasks: desktopicon
 
 [Run]
-Filename: "{app}\pluteus-tray.exe"; Description: "Start Pluteus"; Flags: nowait postinstall skipifsilent
+; --config: this setup's own environment predates the PLUTEUS_HOME it just wrote, so the folder is named outright
+Filename: "{app}\pluteus-tray.exe"; Parameters: "--config ""{code:ConfigFile}"""; Description: "Start Pluteus"; Flags: nowait postinstall skipifsilent
 
 [InstallDelete]
 ; the folder build's libraries are replaced as a whole, so nothing of an older build is left behind in _internal
 Type: filesandordirs; Name: "{app}\_internal"
 
 [Code]
+var
+  DataPage: TInputDirWizardPage;
+
+// The standard place, used when PLUTEUS_HOME is not set (pluteus/firstrun.py config_dir).
+function StandardDataDir: String;
+begin
+  Result := ExpandConstant('{userappdata}\Pluteus');
+end;
+
+// The folder in use now: the user's PLUTEUS_HOME when set (read from the registry, not this process's environment), else the
+// standard place. An update or a reinstall therefore offers the folder already in use.
+function CurrentDataDir: String;
+begin
+  if not RegQueryStringValue(HKCU, 'Environment', 'PLUTEUS_HOME', Result) or (Trim(Result) = '') then
+    Result := StandardDataDir;
+end;
+
+function DataDir(Param: String): String;
+begin
+  Result := RemoveBackslashUnlessRoot(Trim(DataPage.Values[0]));
+end;
+
+function ConfigFile(Param: String): String;
+begin
+  Result := AddBackslash(DataDir('')) + 'config.toml';
+end;
+
+procedure InitializeWizard;
+begin
+  DataPage := CreateInputDirPage(wpSelectDir, 'Settings and data',
+    'Where should Pluteus keep its settings and data?',
+    'Pluteus keeps its settings, users, reading positions and uploaded files in this folder. ' +
+    'A folder on a data drive (for example F:\Pluteus) survives reinstalling Windows: run this setup again and pick the same folder.' + #13#10#13#10 +
+    'If the folder already holds a Pluteus config.toml, it is used as it is. Uninstalling never removes this folder.',
+    False, 'Pluteus');
+  DataPage.Add('Settings and data folder:');
+  DataPage.Values[0] := CurrentDataDir;
+end;
+
+function NextButtonClick(CurPageID: Integer): Boolean;
+begin
+  Result := True;
+  if CurPageID = DataPage.ID then
+  begin
+    // the program folder is replaced by every update: settings must not live inside it
+    if Pos(Lowercase(AddBackslash(ExpandConstant('{app}'))), Lowercase(AddBackslash(DataDir('')))) = 1 then
+    begin
+      MsgBox('Pick a folder outside the program folder (' + ExpandConstant('{app}') + '): updates replace that folder.', mbError, MB_OK);
+      Result := False;
+    end
+    else if not DirExists(ExtractFileDrive(DataDir('')) + '\') then
+    begin
+      MsgBox('The drive ' + ExtractFileDrive(DataDir('')) + ' is not there. Connect it, or pick another folder.', mbError, MB_OK);
+      Result := False;
+    end;
+  end;
+end;
+
+function UpdateReadyMemo(Space, NewLine, MemoUserInfoInfo, MemoDirInfo, MemoTypeInfo, MemoComponentsInfo,
+  MemoGroupInfo, MemoTasksInfo: String): String;
+var
+  Found: String;
+begin
+  if FileExists(ConfigFile('')) then
+    Found := ' (settings found there, kept as they are)'
+  else
+    Found := ' (new: the first start asks for an administrator)';
+  Result := MemoDirInfo + NewLine + NewLine + 'Settings and data folder:' + NewLine + Space + DataDir('') + Found;
+  if MemoTasksInfo <> '' then
+    Result := Result + NewLine + NewLine + MemoTasksInfo;
+end;
+
+procedure CurStepChanged(CurStep: TSetupStep);
+begin
+  if CurStep = ssPostInstall then
+  begin
+    if CompareText(DataDir(''), StandardDataDir) = 0 then
+      RegDeleteValue(HKCU, 'Environment', 'PLUTEUS_HOME')
+    else
+      RegWriteStringValue(HKCU, 'Environment', 'PLUTEUS_HOME', DataDir(''));
+  end;
+end;
+
 // A running tray (and the server it started) must be gone before its files are replaced or removed. It is asked to quit first
 // (`pluteus-tray.exe --quit`: it ends the server and removes its icon); one that does not go within 15 seconds is ended.
 procedure StopPluteus;
