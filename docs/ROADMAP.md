@@ -412,3 +412,48 @@ decides whether a short-lived cache is needed.
 | 6 | Import users from the other server over a trusted link (card 97) | medium |
 | 7 | OPDS, Subsonic and WebDAV through a linked folder | large |
 | 8 | Friends' servers (card 93) | to be sized |
+
+## 8. An Android server app
+
+**Where it stands (2026-11-25):** the proof of concept works. An Asus Zenfone 9 (Android 14) runs pluteus 0.9.30 under Termux, is reached
+over Tailscale (`http://zenfone-9:8080`), and comes back by itself after a restart (Termux:Boot, always-on VPN). It was set up with a laptop
+adb script and a one-line Termux script (`C:\Temp\Claude\pluteus-android`: `setup-phone.ps1`, `termux-setup.sh`, `termux-guide.md`). The
+owner: "working pretty well". The week's test (guide, section 10) is still to run.
+
+**Open question 109: an Android server app, after the week's test.**
+- **A:** build one: pluteus installed like any app, its own foreground service, no Termux, no adb settings.
+- **B:** stay on Termux plus the setup scripts.
+- My view: decide after the week's test. For the owner's own phone B already does the job, and a reset is rebuilt with one run. An app
+  is worth it when other people are to run it (card 96: the phone is the target device because far more people have an old phone than a
+  travel router). It is a large job: Python and Pillow packaged inside the APK (for example Chaquopy or BeeWare Briefcase), a foreground
+  service, storage access, a settings screen, and updates.
+
+**What could stop it being approved on Google Play (checked 2026-11-25):**
+- **Storage access, the biggest one.** "All files access" (`MANAGE_EXTERNAL_STORAGE`) is for file managers, backup, antivirus and
+  document managers; plain media access is listed as a use that is *not* allowed. Music and video can go through MediaStore, but EPUB,
+  CBZ and PDF are not media, so the app would have the user pick the library folder through the Storage Access Framework. Pluteus reads
+  ordinary paths today; reading through Android's content addresses means a storage layer between pluteus and Android.
+- **Running all the time.** Since Android 14 every foreground service declares a type, and Play wants each type declared in the Console.
+  The common `dataSync` type is capped at 6 hours a day from Android 15, so a server around the clock would need `specialUse` with a written
+  reason, which Play reviews. How Play judges a "local media server" reason was not found.
+- **The IPTV pickers.** Play removes apps that facilitate unauthorised streaming, and IPTV players are a known target. The iptv-org
+  list is of free channels, but a Play build may be safer without the IPTV catalogue. (A risk, not a rule that was found.)
+- **The account.** A new personal developer account must keep at least 12 testers in a closed test for 14 days before it may publish.
+  An organisation account avoids that but needs a D-U-N-S number.
+- **Other paperwork:** a privacy policy and the Data safety form (the app holds user names and password hashes), and targeting a recent
+  Android version every year.
+- **Outside Play:** Google's developer verification began on 30 Sep 2026 in Brazil, Indonesia, Singapore and Thailand and is to cover
+  all certified devices in 2027. Apps from unverified developers can still be installed with adb or Android's "advanced" flow. F-Droid
+  needs the source to be public, and pluteus is private today.
+- **Not a problem:** an app serving on the local network or over the user's own Tailscale (Tailscale stays a separate app; bundling a VPN
+  would bring Play's VPN rules in). Android's phantom process killer only hits child processes, which an app does not need.
+
+**Sources:** [Play: All files access](https://support.google.com/googleplay/android-developer/answer/10467955),
+[Android: foreground service types](https://developer.android.com/guide/components/fg-service-types),
+[Android: foreground service timeouts](https://developer.android.com/develop/background-work/services/fgs/timeout),
+[Play: foreground service declaration](https://support.google.com/googleplay/android-developer/answer/13392821),
+[Play: testing requirements for new personal accounts](https://support.google.com/googleplay/android-developer/answer/14151465),
+[Android developer verification](https://android-developers.googleblog.com/2026/03/android-developer-verification-rolling-out-to-all-developers.html),
+[Android Authority: first wave](https://androidauthority.com/android-sideloading-developer-verification-first-wave-rollout-3717921).
+
+**Next pluteus question number: 110.**
