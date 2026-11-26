@@ -17,6 +17,7 @@ import json
 import logging
 import os
 import re
+import secrets
 import threading
 import time
 from types import SimpleNamespace
@@ -53,6 +54,7 @@ log = logging.getLogger("pluteus")
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 LOGO_UPLOAD_MAX = 1_500_000          # the largest picture accepted for a station logo (bytes)
 LOGO_UPLOAD_SIDE = 512              # it is made no larger than this many pixels wide or tall
+LOGIN_FORM_COOKIE = "pluteus_login_form"   # the login form's token (see login_page_response)
 _PROXY_HEADERS = ("x-forwarded-for", "x-forwarded-host", "x-forwarded-proto", "forwarded", "via")
 _PLAIN_HOST = re.compile(r"[A-Za-z0-9.-]+|\[[0-9A-Fa-f:.]+\]")       # a host name or address, nothing that could break out of a link
 current_admin_link: contextvars.ContextVar = contextvars.ContextVar("current_admin_link", default="")   # set per request
@@ -632,15 +634,40 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
         next_url = _safe_next(request.query_params.get("next", ""), cfg.base_path, urls.home())
         if user:
             return RedirectResponse(next_url, 303)
-        return HTMLResponse(web.login_page(login_ctx(), next_url))
+        return login_page_response(request, next_url)
+
+    def login_page_response(request: Request, next_url: str, error: str = "", username: str = "",
+                            status: int = 200, headers: dict | None = None) -> HTMLResponse:
+        """The login page with a fresh form token, kept in a cookie as well. Some browsers (a Kobo e-reader's) send
+        neither Origin nor Referer with the form; the token, which another website can neither read nor set, then
+        shows that the form came from this page."""
+        form_token = secrets.token_urlsafe(24)
+        response = HTMLResponse(web.login_page(login_ctx(), next_url, error, username, form_token), status,
+                                headers={"Cache-Control": "no-store", **(headers or {})})
+        response.set_cookie(LOGIN_FORM_COOKIE, form_token, max_age=3600, path=cookie_path,
+                            httponly=True, samesite="lax", secure=cookie_secure(request))
+        return response
+
+    def login_form_from_here(request: Request, form: dict) -> bool:
+        if csrf_ok(request):
+            return True
+        sent = request.headers.get("origin") or request.headers.get("referer") or ""
+        cookie, echoed = request.cookies.get(LOGIN_FORM_COOKIE, ""), form.get("form_token", "")
+        if sent in ("", "null") and cookie and hmac.compare_digest(cookie, echoed):
+            return True                         # no Origin or Referer at all: the token vouches for the form
+        log.warning("refused POST /login as cross-site: origin=%r referer=%r host=%r sec-fetch-site=%r token=%s",
+                    request.headers.get("origin"), request.headers.get("referer"), request.headers.get("host"),
+                    request.headers.get("sec-fetch-site"),
+                    "matched" if cookie and hmac.compare_digest(cookie, echoed) else ("no cookie" if not cookie else "wrong"))
+        return False
 
     async def login_submit(request: Request):
-        if not csrf_ok(request):
-            return PlainTextResponse("Cross-site request refused", 403)
         raw_form = await read_limited(request, 16384)
         if raw_form is None:
             return PlainTextResponse("Request too large", 413)
         form = _form(raw_form)
+        if not login_form_from_here(request, form):
+            return PlainTextResponse("Cross-site request refused", 403)
         username, password = form.get("username", ""), form.get("password", "")
         next_url = _safe_next(form.get("next", ""), cfg.base_path, urls.home())
         ip = limiter_ip(request)
@@ -648,14 +675,13 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
         async with login_gate.turn(username):           # one check at a time per name (see logingate.py)
             wait = limiter.wait_seconds(username, ip, device=device_id, known=known)
             if wait:
-                return HTMLResponse(web.login_page(login_ctx(), next_url,
-                                                    "Too many failed attempts. Try again in %d seconds." % wait,
-                                                    username), 429, headers={"Retry-After": str(wait)})
+                return login_page_response(request, next_url,
+                                           "Too many failed attempts. Try again in %d seconds." % wait,
+                                           username, 429, {"Retry-After": str(wait)})
             user = await run_in_threadpool(auth.check, username, password)
             if user is None:
                 note_failure(username, ip, device_id, known)
-                return HTMLResponse(web.login_page(login_ctx(), next_url, "Wrong user name or password.",
-                                                   username), 401)
+                return login_page_response(request, next_url, "Wrong user name or password.", username, 401)
             limiter.success(username, device_id)
         token = sessions.start(user)
         real_ip = client_ip(request)

@@ -23,6 +23,11 @@ def post(client, url, data, origin="http://testserver", **headers):
     return client.post(url, content=urlencode(data), headers=h)
 
 
+def no_login_cookies(r) -> bool:
+    """A refused login hands out no session or device cookie (only the login form's token for the next try)."""
+    return not any(h.startswith(("pluteus_session=", "pluteus_device=")) for h in r.headers.get_list("set-cookie"))
+
+
 def login(client, user="alice", pw="pw-alice", next_url=""):
     return post(client, "/login", {"username": user, "password": pw, "next": next_url})
 
@@ -199,7 +204,7 @@ def test_wrong_password_and_unknown_user_look_the_same(web):
     for user, pw in (("alice", "bad"), ("ghost", "bad")):
         r = login(client, user, pw)
         assert r.status_code == 401 and "Wrong user name or password." in r.text
-        assert "set-cookie" not in r.headers
+        assert no_login_cookies(r)
     assert client.get("/", headers=HTML).status_code == 303
 
 
@@ -211,6 +216,25 @@ def test_login_is_refused_without_a_same_site_origin(web):
     ok = post(client, "/login", {"username": "alice", "password": "pw-alice"}, origin=None,
               referer="http://testserver/login")                                    # Referer is an accepted fallback
     assert ok.status_code == 303
+
+
+def test_a_browser_that_sends_no_origin_or_referer_signs_in_with_the_form_token(web, caplog):
+    """A Kobo e-reader's browser sends neither header with the login form: the token on the page and in a cookie vouches."""
+    client, _ = web
+    page = client.get("/login")
+    token = page.text.split("name='form_token' value='")[1].split("'")[0]
+    assert token and client.cookies.get("pluteus_login_form") == token
+    creds = {"username": "alice", "password": "pw-alice"}
+    assert post(client, "/login", dict(creds, form_token="wrong"), origin=None).status_code == 403
+    assert "refused POST /login as cross-site" in caplog.text and "token=wrong" in caplog.text
+    assert post(client, "/login", dict(creds, form_token=token), origin="http://evil.example").status_code == 403
+    assert post(client, "/login", dict(creds, form_token=token), origin="null").status_code == 303
+    client.cookies.clear()
+    client.get("/login")                                                       # a new page, a new token
+    fresh = client.cookies.get("pluteus_login_form")
+    assert post(client, "/login", dict(creds, form_token=fresh), origin=None).status_code == 303
+    other = TestClient(client.app, follow_redirects=False)                     # another website cannot know the cookie
+    assert post(other, "/login", dict(creds, form_token=fresh), origin=None).status_code == 403
 
 
 @pytest.mark.parametrize("target,expected", [
@@ -254,7 +278,7 @@ def test_login_form_locks_after_five_failures_even_for_the_right_password(web):
         assert login(client, pw="wrong").status_code == 401
     r = login(client)                                                                  # correct, but locked
     assert r.status_code == 429 and int(r.headers["retry-after"]) > 0 and "Too many failed attempts" in r.text
-    assert "set-cookie" not in r.headers
+    assert no_login_cookies(r)
     assert login(client, "bob", "pw-bob").status_code == 303                           # other accounts are not affected
 
 
