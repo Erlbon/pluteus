@@ -200,6 +200,17 @@ def test_home_lists_unfinished_epubs_newest_first(signed_in):
     assert "Plain Filename" not in html and "notes" not in html and "x.epub" not in html
 
 
+def test_the_e_reader_start_page_lists_unfinished_books_as_downloads(signed_in):
+    """A book left unfinished on the phone or PC can be fetched onto a Kobo from the top of its start page."""
+    client, app = signed_in
+    assert "Pick up where you left off" not in client.get("/ereader").text                       # nothing unfinished yet
+    app.state.state.put_progress("alice", "books", "Good Author/Real Book.epub", "a", 0.5, now=100)
+    html = client.get("/ereader").text
+    assert "Pick up where you left off" in html
+    assert "href='/dl/books/Good%20Author/Real%20Book.epub'" in html                              # a download, not the web reader
+    assert html.index("Pick up where you left off") < html.index("Libraries")
+
+
 def test_home_hides_continue_reading_for_roots_a_user_lost(signed_in):
     client, app = signed_in
     app.state.state.put_progress("carol", "books", "Good Author/Real Book.epub", "a", 0.5)

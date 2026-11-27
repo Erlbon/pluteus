@@ -715,14 +715,15 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
                     and kind in kinds.KINDS_WITH_PROGRESS and not passing_by(r["path"], r["locator"]):
                 parts = tuple(r["path"].split("/"))
                 try:                                   # skip books that are now hidden, excluded or gone
-                    lib.file_info(user, r["root"], parts, cfg.show_all_files)
+                    info = lib.file_info(user, r["root"], parts, cfg.show_all_files)
                 except (NotFound, PathError, OSError):
                     continue
                 link = urls.read(r["root"], parts) if kind in ("epub", "comic") else urls.view(r["root"], parts)
                 parent = lib.display_name(parts[-2]) if len(parts) > 1 else ""
                 out.append({"href": link, "label": os.path.splitext(parts[-1])[0], "percent": r["percent"], "kind": kind,
                             "where": r["root"] + (" / " + parent if parent else ""),
-                            "dismiss": urls.dismiss(r["root"], parts)})
+                            "dismiss": urls.dismiss(r["root"], parts),
+                            "download": urls.download(r["root"], parts), "name": parts[-1], "size": info.size})
         return out[:6]
 
     def shelf_entries(user, shelf: str, limit: int = 60) -> list:
@@ -2489,8 +2490,12 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
                     nxt.append(("dir", lib.display_name(p[-1]), urls.ereader(row["root"], p), None))
                 else:
                     nxt.append(("book" if ereader.readable(info.name) else "other", info.name, urls.download(row["root"], p), info.size))
+            # what this user left unfinished in the web readers (phone, PC), as downloads; only what a Kobo can open.
+            # The place in the book does not come along: the Kobo's own reader starts from the beginning.
+            recent = [("book", c["name"], c["download"], c["size"]) for c in continue_reading(user) if ereader.readable(c["name"])]
             libs = [("dir", r.name, urls.ereader(r.name), None) for r in lib.roots_for(user)]
-            sections = ([("Read next", nxt)] if nxt else []) + [("Libraries", libs)]
+            sections = (([(web.RECENT_TITLE, recent)] if recent else []) + ([("Read next", nxt)] if nxt else [])
+                        + [("Libraries", libs)])
             return ereader.page(title, "Tap a folder to open it, a book to download it.", sections, [])
         listing = lib.list_dir(user, root, parts, False, False)
         pages = max(1, -(-len(listing) // ereader.PER_PAGE))
