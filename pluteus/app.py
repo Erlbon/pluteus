@@ -299,6 +299,15 @@ def _form(body: bytes) -> dict:
     return {k: v[0] for k, v in parse_qs(body.decode("utf-8", "replace"), keep_blank_values=True).items()}
 
 
+def _host_name_without_port(host: str) -> str:
+    """'name' for a Host value that carries no port ('name', '[::1]'), else '' (a Host with a port never matches another port)."""
+    try:
+        parts = urlsplit("//" + host)
+        return (parts.hostname or "").lower() if parts.port is None else ""
+    except ValueError:
+        return ""
+
+
 def create_app(cfg: Config, config_path: str | None = None, reload_interval: float = 2.0) -> Starlette:
     lib = Library(cfg)
     meta = MetaService(MetaCache(cfg.cache_dir or cfg.data_dir), enabled=cfg.metadata)
@@ -365,7 +374,16 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
         if cfg.trust_proxy:                       # a proxy that rewrote Host says what the browser really used
             accepted.add(request.headers.get("x-forwarded-host", "").split(",")[0].strip().lower())
         accepted.discard("")
-        return urlsplit(origin).netloc.lower() in accepted
+        sent = urlsplit(origin)
+        if sent.netloc.lower() in accepted:
+            return True
+        # Some proxies pass Host on without the port the browser used (https://name:8443 arrives as Host: name). A Host with no
+        # port therefore accepts the same name on any port; a Host that carries a port must still match it exactly.
+        try:
+            name = (sent.hostname or "").lower()
+        except ValueError:
+            return False
+        return bool(name) and any(_host_name_without_port(h) == name for h in accepted)
 
     def device_state(request: Request, username: str):
         """(known, device id, last address): has this browser logged in as `username` before (it still has its device

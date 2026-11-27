@@ -285,10 +285,12 @@ wishlist and Kobo account do not sync (put the original `api_endpoint` line back
 ## The e-reader page (no app, no cable)
 
 `/ereader` (or just `/e`, quicker to type on an e-reader keyboard) is the library as plain pages for the **built-in web browser of an
-e-reader**. On a Kobo: Settings, Beta features, Web browser, then open `http://<your pluteus address>/e` and sign in once. Folders open
-like a drive, your Read next list is at the top, and tapping a book downloads it: the Kobo asks to download it and puts it in its library.
-No scripts or pictures, big rows, 30 entries a page, so it stays quick on e-ink. Always on; it shows what the web listing shows to that user.
-It does not sync reading positions: for that, use Kobo sync above.
+e-reader**. On a Kobo: Settings, Beta features, Web browser, then open your pluteus address and sign in once: a Kobo is sent to this
+page by itself. At the top are the books you left unfinished in the web readers on your phone or PC ("Pick up where you left off"), then
+your Read next list, then the libraries; folders open like a drive, and tapping a book downloads it: the Kobo asks to download it and puts
+it in its library. No scripts or pictures, big rows, 30 entries a page, so it stays quick on e-ink. Always on; it shows what the web listing
+shows to that user. It does not carry your place in a book over to the Kobo: the Kobo's own reader starts the book from the beginning.
+This route needs no cable and no file edits on the Kobo, so it suits any model.
 
 ## OPDS 2.0
 

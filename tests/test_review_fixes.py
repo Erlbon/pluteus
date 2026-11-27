@@ -195,6 +195,22 @@ def test_a_proxy_that_rewrites_host_can_be_told_the_public_name(cfg, tmp_path):
     assert client.post("/login", content=body, headers=dict(form, **{"x-forwarded-host": "books.example.org"})).status_code == 403
 
 
+def test_a_proxy_that_drops_the_port_from_host_still_accepts_the_same_name(cfg, tmp_path):
+    """Caddy on https://pluteus.lan:8443 passed Host: pluteus.lan, and every login from a Kobo was refused as cross-site."""
+    body = "username=alice&password=pw-alice"
+
+    def post(origin, host):
+        client, _ = make(cfg, tmp_path)
+        return client.post("/login", content=body, headers={"content-type": "application/x-www-form-urlencoded",
+                                                            "origin": origin, "host": host}).status_code
+    assert post("https://pluteus.lan:8443", "pluteus.lan") == 303            # the port was dropped: same name counts
+    assert post("https://pluteus.lan", "pluteus.lan") == 303
+    assert post("https://evil.example:8443", "pluteus.lan") == 403           # another name never does
+    assert post("https://pluteus.lan.evil.example", "pluteus.lan") == 403
+    assert post("https://pluteus.lan:9000", "pluteus.lan:8443") == 403       # Host with a port: the port must match
+    assert post("http://[::1]:8443", "[::1]") == 303
+
+
 def test_a_folder_with_many_subfolders_hides_the_marked_ones_for_everyone_but_adults(cfg, tmp_path, library):
     big = library / "comics" / "Big"
     for i in range(40):
