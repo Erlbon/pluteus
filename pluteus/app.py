@@ -774,7 +774,11 @@ def create_app(cfg: Config, config_path: str | None = None, reload_interval: flo
 
     @guarded("web")
     async def home(request: Request, user):
-        recent = await run_in_threadpool(continue_reading, user)
+        if "kobo" in request.headers.get("user-agent", "").lower():
+            # a Kobo's built-in browser cannot run the normal pages (frames and scripts): it gets the plain e-reader pages.
+            # Only the start page does this, so /shell still opens the full site on purpose.
+            return RedirectResponse(urls.ereader(), 303)
+        recent =await run_in_threadpool(continue_reading, user)
         read_next = await run_in_threadpool(shelf_items, user, "next")
         favourites = await run_in_threadpool(shelf_items, user, "favourite")
         stations = await run_in_threadpool(station_shortcuts, user)

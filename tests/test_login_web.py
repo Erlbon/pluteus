@@ -237,6 +237,23 @@ def test_a_browser_that_sends_no_origin_or_referer_signs_in_with_the_form_token(
     assert post(other, "/login", dict(creds, form_token=fresh), origin=None).status_code == 403
 
 
+KOBO_AGENT = ("Mozilla/5.0 (Linux; U; Android 2.0; en-us;) AppleWebKit/538.1 (KHTML, like Gecko) Version/4.0 Mobile Safari/538.1 "
+              "(Kobo Touch 0377/4.38.21908)")
+
+
+def test_a_kobo_opening_the_start_page_gets_the_e_reader_pages(web):
+    """The Kobo's browser cannot run the normal pages (frames, scripts): its start page is the plain e-reader page."""
+    client, _ = web
+    login(client)
+    r = client.get("/", headers=dict(HTML, **{"user-agent": KOBO_AGENT}))
+    assert r.status_code == 303 and r.headers["location"] == "/ereader"
+    assert client.get("/ereader", headers={"user-agent": KOBO_AGENT}).status_code == 200
+    assert client.get("/", headers=HTML).status_code == 200                          # every other browser: unchanged
+    signed_out = TestClient(client.app, follow_redirects=False)
+    assert signed_out.get("/", headers=dict(HTML, **{"user-agent": KOBO_AGENT})).status_code == 303
+    assert "/login" in signed_out.get("/", headers=dict(HTML, **{"user-agent": KOBO_AGENT})).headers["location"]
+
+
 @pytest.mark.parametrize("target,expected", [
     ("/browse/comics", "/browse/comics"), ("/browse/comics?page=2", "/browse/comics?page=2"),
     ("//evil.example/x", "/"), ("https://evil.example/", "/"), ("\\\\evil.example", "/"),
